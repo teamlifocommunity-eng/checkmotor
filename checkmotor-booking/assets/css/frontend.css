@@ -1,0 +1,632 @@
+/* چک موتور — استایل فرم رزرو نوبت */
+
+.cmb-wrap {
+	--cmb-primary: #c62828;
+	--cmb-primary-dark: #8e0000;
+	--cmb-ink: #1f2430;
+	--cmb-muted: #6b7280;
+	--cmb-line: #e5e7eb;
+	--cmb-bg: #ffffff;
+	--cmb-soft: #f7f8fa;
+	--cmb-ok: #1b7f4b;
+	--cmb-radius: 14px;
+
+	direction: rtl;
+	text-align: right;
+	color: var(--cmb-ink);
+	font-family: inherit;
+	line-height: 1.9;
+	max-width: 980px;
+	margin: 0 auto;
+}
+
+.cmb-wrap *,
+.cmb-wrap *::before,
+.cmb-wrap *::after {
+	box-sizing: border-box;
+}
+
+/* ---------- نوار مراحل ---------- */
+
+.cmb-steps {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	list-style: none;
+	margin: 0 0 24px;
+	padding: 0;
+}
+
+.cmb-step {
+	flex: 1 1 120px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 14px;
+	color: var(--cmb-muted);
+	background: var(--cmb-soft);
+	border: 1px solid var(--cmb-line);
+	border-radius: var(--cmb-radius);
+	padding: 8px 12px;
+}
+
+.cmb-step span {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	border-radius: 50%;
+	background: #fff;
+	border: 1px solid var(--cmb-line);
+	font-size: 13px;
+	flex: 0 0 auto;
+}
+
+.cmb-step.is-active {
+	color: #fff;
+	background: var(--cmb-primary);
+	border-color: var(--cmb-primary);
+}
+
+.cmb-step.is-active span {
+	background: #fff;
+	color: var(--cmb-primary);
+	border-color: #fff;
+}
+
+.cmb-step.is-done {
+	color: var(--cmb-ok);
+	border-color: rgba(27, 127, 75, 0.35);
+	background: rgba(27, 127, 75, 0.08);
+}
+
+/* ---------- پنل‌ها ---------- */
+
+.cmb-panel {
+	display: none;
+}
+
+.cmb-panel.is-active {
+	display: block;
+	animation: cmb-fade 0.25s ease;
+}
+
+@keyframes cmb-fade {
+	from { opacity: 0; transform: translateY(6px); }
+	to { opacity: 1; transform: none; }
+}
+
+.cmb-panel__title {
+	margin: 0 0 6px;
+	font-size: 20px;
+}
+
+.cmb-panel__sub {
+	margin: 0 0 18px;
+	color: var(--cmb-muted);
+	font-size: 14px;
+}
+
+/* ---------- کارت خدمات ---------- */
+
+.cmb-services {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+	gap: 16px;
+}
+
+.cmb-service {
+	border: 1px solid var(--cmb-line);
+	border-radius: var(--cmb-radius);
+	padding: 16px;
+	background: var(--cmb-bg);
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	transition: border-color 0.2s, box-shadow 0.2s;
+	cursor: pointer;
+}
+
+.cmb-service:hover,
+.cmb-service:focus-visible,
+.cmb-service.is-selected {
+	border-color: var(--cmb-primary);
+	box-shadow: 0 6px 24px rgba(198, 40, 40, 0.12);
+	outline: none;
+}
+
+.cmb-service__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.cmb-service__head h4 {
+	margin: 0;
+	font-size: 17px;
+}
+
+.cmb-service__price {
+	font-size: 14px;
+	font-weight: 700;
+	color: var(--cmb-primary);
+	white-space: nowrap;
+}
+
+.cmb-service__poster img {
+	width: 100%;
+	height: auto;
+	border-radius: 10px;
+	display: block;
+}
+
+.cmb-service__desc {
+	margin: 0;
+	font-size: 14px;
+	color: var(--cmb-muted);
+}
+
+.cmb-service__meta {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	font-size: 13px;
+	color: var(--cmb-muted);
+}
+
+/* ---------- تقویم ---------- */
+
+.cmb-calendar {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+.cmb-day {
+	border: 1px solid var(--cmb-line);
+	border-radius: var(--cmb-radius);
+	padding: 12px;
+	background: var(--cmb-bg);
+}
+
+.cmb-day.is-disabled {
+	background: var(--cmb-soft);
+	opacity: 0.75;
+}
+
+.cmb-day__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 6px;
+	margin-bottom: 10px;
+	padding-bottom: 8px;
+	border-bottom: 1px dashed var(--cmb-line);
+}
+
+.cmb-day__head strong {
+	font-size: 15px;
+}
+
+.cmb-day__head span {
+	font-size: 13px;
+	color: var(--cmb-muted);
+}
+
+.cmb-day__reason {
+	margin: 0;
+	font-size: 13px;
+	color: var(--cmb-muted);
+	text-align: center;
+	padding: 10px 0;
+}
+
+.cmb-day__blocks {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.cmb-slot {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	width: 100%;
+	text-align: right;
+	border: 1px solid var(--cmb-line);
+	border-radius: 10px;
+	background: #fff;
+	padding: 10px 12px;
+	cursor: pointer;
+	font: inherit;
+	color: inherit;
+	transition: border-color 0.2s, background 0.2s;
+}
+
+.cmb-slot:hover:not(.is-disabled) {
+	border-color: var(--cmb-primary);
+}
+
+.cmb-slot.is-selected {
+	border-color: var(--cmb-primary);
+	background: rgba(198, 40, 40, 0.06);
+}
+
+.cmb-slot.is-disabled {
+	cursor: not-allowed;
+	opacity: 0.55;
+	background: var(--cmb-soft);
+}
+
+.cmb-slot__label {
+	font-weight: 700;
+	font-size: 14px;
+}
+
+.cmb-slot__time,
+.cmb-slot__meta {
+	font-size: 12px;
+	color: var(--cmb-muted);
+}
+
+/* ---------- فرم‌ها ---------- */
+
+.cmb-field {
+	display: block;
+	margin-bottom: 14px;
+}
+
+.cmb-field > span {
+	display: block;
+	font-size: 14px;
+	margin-bottom: 6px;
+}
+
+.cmb-field i {
+	color: var(--cmb-primary);
+	font-style: normal;
+}
+
+.cmb-field input,
+.cmb-field select,
+.cmb-field textarea {
+	width: 100%;
+	border: 1px solid var(--cmb-line);
+	border-radius: 10px;
+	padding: 10px 12px;
+	font: inherit;
+	background: #fff;
+	color: inherit;
+}
+
+.cmb-field input:focus,
+.cmb-field select:focus,
+.cmb-field textarea:focus {
+	outline: none;
+	border-color: var(--cmb-primary);
+	box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.12);
+}
+
+.cmb-grid-2 {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 0 14px;
+}
+
+/* ---------- کد تایید ---------- */
+
+.cmb-auth {
+	border: 1px solid var(--cmb-line);
+	border-radius: var(--cmb-radius);
+	padding: 18px;
+	background: var(--cmb-soft);
+	max-width: 460px;
+}
+
+.cmb-auth__hint {
+	font-size: 14px;
+	margin: 0 0 12px;
+}
+
+.cmb-otp-inputs {
+	display: flex;
+	gap: 8px;
+	justify-content: center;
+	margin-bottom: 14px;
+}
+
+.cmb-otp-inputs input {
+	width: 48px;
+	height: 56px;
+	text-align: center;
+	font-size: 22px;
+	font-weight: 700;
+	border: 1px solid var(--cmb-line);
+	border-radius: 10px;
+	background: #fff;
+	color: inherit;
+}
+
+.cmb-otp-inputs input:focus {
+	outline: none;
+	border-color: var(--cmb-primary);
+	box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.12);
+}
+
+/* ---------- دکمه‌ها ---------- */
+
+.cmb-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	border: 1px solid var(--cmb-line);
+	background: #fff;
+	color: var(--cmb-ink);
+	border-radius: 10px;
+	padding: 10px 20px;
+	font: inherit;
+	font-weight: 700;
+	cursor: pointer;
+	transition: background 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+.cmb-btn:hover {
+	border-color: var(--cmb-primary);
+}
+
+.cmb-btn--primary {
+	background: var(--cmb-primary);
+	border-color: var(--cmb-primary);
+	color: #fff;
+}
+
+.cmb-btn--primary:hover {
+	background: var(--cmb-primary-dark);
+	border-color: var(--cmb-primary-dark);
+}
+
+.cmb-btn[disabled],
+.cmb-btn.is-busy {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.cmb-link {
+	background: none;
+	border: none;
+	color: var(--cmb-primary);
+	font: inherit;
+	cursor: pointer;
+	padding: 4px 0;
+	text-decoration: underline;
+}
+
+.cmb-link[disabled] {
+	color: var(--cmb-muted);
+	cursor: default;
+	text-decoration: none;
+}
+
+.cmb-actions {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-top: 18px;
+}
+
+/* ---------- پیام‌ها ---------- */
+
+.cmb-alert,
+.cmb-notice {
+	border-radius: 10px;
+	padding: 12px 14px;
+	font-size: 14px;
+	margin-bottom: 16px;
+	border: 1px solid var(--cmb-line);
+	background: var(--cmb-soft);
+}
+
+.cmb-alert--error,
+.cmb-notice--error {
+	background: rgba(198, 40, 40, 0.08);
+	border-color: rgba(198, 40, 40, 0.35);
+	color: var(--cmb-primary-dark);
+}
+
+.cmb-alert--info {
+	background: rgba(21, 101, 192, 0.08);
+	border-color: rgba(21, 101, 192, 0.3);
+}
+
+.cmb-note {
+	font-size: 13px;
+	color: var(--cmb-muted);
+	background: var(--cmb-soft);
+	border-radius: 10px;
+	padding: 10px 12px;
+	margin: 14px 0 0;
+}
+
+.cmb-loading {
+	text-align: center;
+	color: var(--cmb-muted);
+	padding: 30px 0;
+	grid-column: 1 / -1;
+}
+
+/* ---------- خلاصه و رسید ---------- */
+
+.cmb-summary {
+	border: 1px solid var(--cmb-line);
+	border-radius: var(--cmb-radius);
+	padding: 12px 16px;
+	background: var(--cmb-soft);
+	margin-bottom: 18px;
+}
+
+.cmb-summary__row,
+.cmb-receipt__row {
+	display: flex;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 6px 0;
+	font-size: 14px;
+	border-bottom: 1px dashed var(--cmb-line);
+}
+
+.cmb-summary__row:last-child,
+.cmb-receipt__row:last-child {
+	border-bottom: none;
+}
+
+.cmb-summary__row span,
+.cmb-receipt__row span {
+	color: var(--cmb-muted);
+}
+
+.cmb-receipt {
+	text-align: center;
+	border: 2px solid var(--cmb-ok);
+	border-radius: var(--cmb-radius);
+	padding: 24px;
+	background: #fff;
+}
+
+.cmb-receipt__check {
+	font-size: 40px;
+	line-height: 1;
+}
+
+.cmb-receipt__title {
+	margin: 10px 0 6px;
+	font-size: 20px;
+	color: var(--cmb-ok);
+}
+
+.cmb-receipt__screenshot {
+	background: #fff8e1;
+	border: 1px dashed #f0a500;
+	border-radius: 10px;
+	padding: 12px;
+	font-weight: 700;
+	margin: 14px 0;
+	font-size: 15px;
+}
+
+.cmb-receipt__card {
+	text-align: right;
+	border: 1px solid var(--cmb-line);
+	border-radius: var(--cmb-radius);
+	padding: 12px 16px;
+	background: var(--cmb-soft);
+}
+
+/* ---------- نوبت‌های من ---------- */
+
+.cmb-bookings {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+	gap: 14px;
+}
+
+.cmb-booking {
+	border: 1px solid var(--cmb-line);
+	border-radius: var(--cmb-radius);
+	padding: 14px 16px;
+	background: #fff;
+}
+
+.cmb-booking header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+
+.cmb-booking header h4 {
+	margin: 0;
+	font-size: 16px;
+}
+
+.cmb-booking ul {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	font-size: 14px;
+}
+
+.cmb-badge {
+	font-size: 12px;
+	border-radius: 999px;
+	padding: 2px 10px;
+	background: var(--cmb-soft);
+	border: 1px solid var(--cmb-line);
+	white-space: nowrap;
+}
+
+.cmb-badge--confirmed {
+	color: var(--cmb-ok);
+	border-color: rgba(27, 127, 75, 0.35);
+	background: rgba(27, 127, 75, 0.08);
+}
+
+.cmb-badge--cancelled,
+.cmb-badge--no_show {
+	color: var(--cmb-primary-dark);
+	border-color: rgba(198, 40, 40, 0.35);
+	background: rgba(198, 40, 40, 0.08);
+}
+
+/* ---------- موبایل ---------- */
+
+@media (max-width: 600px) {
+	.cmb-steps {
+		gap: 6px;
+	}
+
+	.cmb-step {
+		flex: 1 1 auto;
+		font-size: 0;
+		padding: 6px;
+		justify-content: center;
+	}
+
+	.cmb-step span {
+		font-size: 13px;
+	}
+
+	.cmb-otp-inputs input {
+		width: 44px;
+		height: 52px;
+		font-size: 20px;
+	}
+
+	.cmb-actions .cmb-btn {
+		flex: 1 1 auto;
+	}
+}
+
+/* ---------- چاپ رسید ---------- */
+
+@media print {
+	body * {
+		visibility: hidden;
+	}
+
+	.cmb-receipt,
+	.cmb-receipt * {
+		visibility: visible;
+	}
+
+	.cmb-receipt {
+		position: absolute;
+		inset: 0;
+		border: none;
+	}
+}

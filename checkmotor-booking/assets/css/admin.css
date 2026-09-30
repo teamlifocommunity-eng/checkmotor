@@ -1,0 +1,110 @@
+/* چک موتور — استایل پنل مدیریت */
+
+.cmb-admin {
+	direction: rtl;
+}
+
+.cmb-admin .form-table th {
+	text-align: right;
+	width: 220px;
+}
+
+.cmb-box {
+	background: #fff;
+	border: 1px solid #ccd0d4;
+	border-radius: 8px;
+	padding: 8px 20px 16px;
+	margin: 20px 0;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.cmb-box h2 {
+	margin-top: 12px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid #f0f0f1;
+}
+
+.cmb-check {
+	display: inline-block;
+	margin-inline-end: 14px;
+	white-space: nowrap;
+}
+
+.cmb-poster-preview img {
+	max-width: 260px;
+	height: auto;
+	display: block;
+	margin-bottom: 8px;
+	border: 1px solid #ddd;
+	border-radius: 6px;
+}
+
+.cmb-cards {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 14px;
+	margin: 16px 0;
+}
+
+.cmb-card {
+	flex: 1 1 280px;
+	background: #fff;
+	border: 1px solid #ccd0d4;
+	border-radius: 8px;
+	padding: 12px 16px;
+}
+
+.cmb-card h3 {
+	margin: 0 0 8px;
+	font-size: 14px;
+}
+
+.cmb-card ul {
+	margin: 0;
+	list-style: none;
+}
+
+.cmb-pill {
+	display: inline-block;
+	border-radius: 999px;
+	padding: 1px 10px;
+	font-size: 12px;
+	background: #f0f0f1;
+	border: 1px solid #dcdcde;
+}
+
+.cmb-pill--confirmed {
+	background: #edfaef;
+	border-color: #6fbf7a;
+	color: #1b7f4b;
+}
+
+.cmb-pill--done {
+	background: #eef4ff;
+	border-color: #7aa5e8;
+	color: #1d4ed8;
+}
+
+.cmb-pill--cancelled,
+.cmb-pill--no_show,
+.cmb-pill--closed {
+	background: #fdeceb;
+	border-color: #e5a3a0;
+	color: #b32d2e;
+}
+
+.cmb-row-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.cmb-admin .cmb-danger {
+	color: #b32d2e;
+	border-color: #e5a3a0;
+}
+
+.cmb-admin table.widefat td,
+.cmb-admin table.widefat th {
+	text-align: right;
+}

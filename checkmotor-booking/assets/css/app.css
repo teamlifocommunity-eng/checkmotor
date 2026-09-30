@@ -1,0 +1,970 @@
+/* ═══════════════════════════════════════════════════════
+   چک موتور — دیزاین‌سیستم اپ رزرو نوبت
+   شبکه ۴pt · هدف لمس ۴۴pt · راست‌چین
+
+   رنگ برند از فضای تعمیرگاه گرفته شده: خاکستریِ فولاد و
+   آبیِ عمیقِ روغن‌سوخته برای بستر، و نارنجیِ هشدار برای
+   کنش‌ها — همان نارنجی که روی چراغ چک موتور می‌بینید.
+   ═══════════════════════════════════════════════════════ */
+
+/* ── IRANYekanX — همراه افزونه ───────────────────────────
+   هر پنج وزن ارقام فارسی (U+06F0–06F9) را کامل دارند، پس
+   دیگر به‌جای عدد لوزی خالی کشیده نمی‌شود.
+   مسیرها نسبت به این فایل CSS هستند. */
+
+@font-face{font-family:'IRANYekanX';font-style:normal;font-weight:400;font-display:swap;
+  src:url('../fonts/IRANYekanX-Regular.woff2') format('woff2'),
+      url('../fonts/IRANYekanX-Regular.woff') format('woff')}
+@font-face{font-family:'IRANYekanX';font-style:normal;font-weight:500;font-display:swap;
+  src:url('../fonts/IRANYekanX-Medium.woff2') format('woff2'),
+      url('../fonts/IRANYekanX-Medium.woff') format('woff')}
+@font-face{font-family:'IRANYekanX';font-style:normal;font-weight:600;font-display:swap;
+  src:url('../fonts/IRANYekanX-Bold.woff2') format('woff2'),
+      url('../fonts/IRANYekanX-Bold.woff') format('woff')}
+@font-face{font-family:'IRANYekanX';font-style:normal;font-weight:700;font-display:swap;
+  src:url('../fonts/IRANYekanX-ExtraBold.woff2') format('woff2'),
+      url('../fonts/IRANYekanX-ExtraBold.woff') format('woff')}
+@font-face{font-family:'IRANYekanX';font-style:normal;font-weight:800;font-display:swap;
+  src:url('../fonts/IRANYekanX-Black.woff2') format('woff2'),
+      url('../fonts/IRANYekanX-Black.woff') format('woff')}
+
+:root {
+  /* ── فولاد: رنگ اصلی ── */
+  --steel-950: #0B1219;
+  --steel-900: #13202B;
+  --steel-800: #1C2E3D;
+  --steel-700: #264055;
+  --steel-600: #35566F;
+  --steel-500: #4E7391;
+  --steel-100: #DCE6EE;
+  --steel-50:  #F1F5F9;
+
+  /* ── چراغ چک: نارنجی کنش ── */
+  --flame:     #FF6B2C;
+  --flame-600: #E85A1C;
+  --flame-400: #FF8B57;
+  --flame-100: #FFE0D0;
+  --flame-50:  #FFF4EE;
+
+  /* ── خاکستری ── */
+  --g1: #8B96A1;
+  --g2: #A8B2BC;
+  --g3: #C4CBD3;
+  --g4: #D8DEE4;
+  --g5: #E7EBEF;
+  --g6: #F3F5F7;
+
+  /* ── بستر ── */
+  --bg:   #F4F6F8;
+  --bg-2: #EAEEF2;
+  --card: #FFFFFF;
+
+  /* ── متن ── */
+  --ink:   #0F1720;
+  --ink-2: #5B6772;
+  --ink-3: #8B96A1;
+
+  /* ── معنایی ── */
+  --ok:      #0E8A4F;
+  --ok-bg:   #E6F6ED;
+  --warn:    #C87F0A;
+  --warn-bg: #FDF3E2;
+  --bad:     #D33A2C;
+  --bad-bg:  #FDEDEB;
+
+  /* ── شعاع ── */
+  --r-xs: 8px; --r-sm: 10px; --r: 14px;
+  --r-md: 18px; --r-lg: 22px; --r-xl: 28px;
+
+  /* ── سایه ── */
+  --sh-1: 0 1px 2px rgba(15,23,32,.05);
+  --sh-2: 0 2px 6px rgba(15,23,32,.07), 0 1px 2px rgba(15,23,32,.04);
+  --sh-3: 0 6px 18px rgba(15,23,32,.10), 0 2px 6px rgba(15,23,32,.05);
+  --sh-4: 0 14px 40px rgba(15,23,32,.16);
+  --sh-flame: 0 6px 18px rgba(255,107,44,.30);
+
+  /* ── تایپ ── */
+  --t-xl: 26px; --t-lg: 21px; --t-hd: 17px; --t-bd: 15px;
+  --t-cl: 14px; --t-sb: 13px; --t-ft: 12px; --t-cp: 11px;
+
+  /* ── فاصله (۴pt) ── */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
+  --s5: 20px; --s6: 24px; --s7: 32px; --s8: 40px;
+
+  /* فونت همراه افزونه است، پس دیگر روی «شاید نصب باشد» حساب نمی‌کنیم. */
+  --font: var(--cmb-font, 'IRANYekanX', Tahoma, -apple-system,
+          BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
+
+  --max-w: 460px;
+  --tap: 44px;
+  --nav-h: 66px;
+  --bar-h: 78px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --pad: 20px;
+}
+
+/* ═══ بازنشانی و جداسازی ═══ */
+
+html.cmb-html, body.cmb-body {
+  margin: 0 !important; padding: 0 !important; border: 0 !important;
+  font-family: var(--font) !important;
+  font-size: 16px !important; line-height: 1.6 !important;
+  color: var(--ink) !important; background: var(--bg) !important;
+  direction: rtl !important; text-align: right !important;
+  width: auto !important; max-width: none !important; min-width: 0 !important;
+  overflow-x: hidden !important;
+  -webkit-text-size-adjust: 100% !important; text-size-adjust: 100% !important;
+  -webkit-font-smoothing: antialiased !important;
+}
+
+/* هرچه قالب سایت بیرون از ریشه‌ی اپ گذاشته، پنهان شود */
+body.cmb-body > *:not(#cmb-app):not(#cmb-panel):not(script):not(style):not(noscript):not(link) {
+  display: none !important;
+}
+
+#cmb-app *, #cmb-app *::before, #cmb-app *::after { box-sizing: border-box; }
+
+/* ریست‌ها داخل :where() هستند تا وزنشان صفر شود.
+   قبلاً به شکل «#cmb-app button» نوشته شده بودند؛ وزن یک شناسه
+   (1,0,1) از هر کلاسی (0,1,0) بیشتر است، پس «background: none»
+   روی .cmb-btn--pri هم برنده می‌شد و همه‌ی دکمه‌ها بی‌رنگ و تخت
+   دیده می‌شدند. */
+:where(#cmb-app button, #cmb-app input, #cmb-app select, #cmb-app textarea) {
+  font-family: inherit; font-size: inherit; color: inherit;
+}
+:where(#cmb-app button) {
+  cursor: pointer; border: 0; background: none; padding: 0;
+  -webkit-appearance: none; appearance: none;
+}
+:where(#cmb-app a) { color: inherit; text-decoration: none; }
+:where(#cmb-app ul, #cmb-app ol) { list-style: none; margin: 0; padding: 0; }
+:where(#cmb-app p, #cmb-app h1, #cmb-app h2, #cmb-app h3, #cmb-app h4) { margin: 0; }
+:where(#cmb-app img) { max-width: 100%; display: block; }
+/* آیکون‌ها هم‌اندازه‌ی متنِ کنارشان می‌شوند و در فلکس جمع نمی‌شوند. */
+#cmb-app svg { width: 1em; height: 1em; display: block; flex: 0 0 auto; }
+
+/* ═══ پوسته ═══ */
+
+.cmb-shell {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  min-height: 100svh;
+  background: var(--bg);
+  position: relative;
+  /* پیش‌فرض: جا برای نوار ناوبری پایین */
+  padding: 0 0 calc(var(--nav-h) + var(--safe-b) + var(--s6));
+}
+
+/* صفحه‌ی ویزارد: نوار ناوبری ندارد ولی نوار کنش ثابت دارد.
+   نوار کنش حدود ۷۶px است؛ قبلاً فقط ۴۴px فاصله می‌گذاشتیم و
+   آخرین فیلد فرم زیر آن گم می‌شد. */
+.cmb-shell--bar { padding-bottom: calc(var(--bar-h) + var(--safe-b) + var(--s5)); }
+
+/* صفحه‌ای که نه نوار ناوبری دارد نه نوار کنش (رسید، ورود) */
+.cmb-shell--bare { padding-bottom: calc(var(--safe-b) + var(--s7)); }
+
+.cmb-page { padding: 0 var(--pad); }
+
+/* ═══ سربرگ ═══ */
+
+.cmb-top {
+  position: sticky; top: 0; z-index: 40;
+  background: rgba(244,246,248,.86);
+  backdrop-filter: saturate(180%) blur(18px);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  border-bottom: 1px solid var(--g5);
+  padding: calc(var(--safe-t) + var(--s3)) var(--pad) var(--s3);
+  display: flex; align-items: center; gap: var(--s3);
+}
+.cmb-top__back {
+  width: 36px; height: 36px; flex: 0 0 36px;
+  display: grid; place-items: center;
+  border-radius: 50%; background: var(--card);
+  box-shadow: var(--sh-1); color: var(--steel-800); font-size: 17px;
+}
+.cmb-top__back:active { transform: scale(.94); }
+.cmb-top__t { font-size: var(--t-hd); font-weight: 700; letter-spacing: -.2px; }
+.cmb-top__s { font-size: var(--t-ft); color: var(--ink-3); margin-top: 1px; }
+.cmb-top__grow { flex: 1; min-width: 0; }
+
+/* ═══ سربرگ بزرگ (خانه) ═══ */
+
+.cmb-hero {
+  background: linear-gradient(155deg, var(--steel-900) 0%, var(--steel-700) 100%);
+  color: #fff;
+  padding: calc(var(--safe-t) + var(--s6)) var(--pad) var(--s7);
+  border-radius: 0 0 var(--r-xl) var(--r-xl);
+  position: relative; overflow: hidden;
+}
+.cmb-hero::after {
+  content: ''; position: absolute;
+  left: -40px; top: -60px; width: 220px; height: 220px;
+  background: radial-gradient(circle, rgba(255,107,44,.22), transparent 70%);
+  pointer-events: none;
+}
+.cmb-hero__row { display: flex; align-items: center; gap: var(--s3); }
+.cmb-hero__logo {
+  width: 44px; height: 44px; border-radius: var(--r-sm);
+  background: rgba(255,255,255,.12); display: grid; place-items: center;
+  font-size: 22px; color: var(--flame-400); flex: 0 0 44px;
+}
+.cmb-hero__name { font-size: var(--t-lg); font-weight: 800; letter-spacing: -.4px; }
+.cmb-hero__sub { font-size: var(--t-sb); color: rgba(255,255,255,.66); margin-top: 2px; }
+.cmb-hero__msg { margin-top: var(--s5); font-size: var(--t-bd); color: rgba(255,255,255,.86); line-height: 1.8; }
+
+.cmb-hero__cta {
+  margin-top: var(--s5);
+  width: 100%; min-height: 52px;
+  border-radius: var(--r-md);
+  background: var(--flame); color: #fff;
+  font-size: var(--t-hd); font-weight: 700;
+  display: flex; align-items: center; justify-content: center; gap: var(--s2);
+  box-shadow: var(--sh-flame);
+  transition: transform .12s;
+}
+.cmb-hero__cta:active { transform: scale(.98); }
+
+.cmb-hero__alt {
+  margin-top: var(--s2);
+  width: 100%; min-height: 46px;
+  border-radius: var(--r-md);
+  background: rgba(255,255,255,.10);
+  border: 1px solid rgba(255,255,255,.18);
+  color: rgba(255,255,255,.9);
+  font-size: var(--t-cl); font-weight: 600;
+  display: flex; align-items: center; justify-content: center; gap: var(--s2);
+}
+.cmb-hero__alt:active { transform: scale(.98); }
+
+/* ═══ کارت ═══ */
+
+.cmb-card {
+  background: var(--card);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+  padding: var(--s4);
+  margin-top: var(--s4);
+}
+.cmb-card--tight { padding: var(--s3); }
+.cmb-card--flat { box-shadow: none; border: 1px solid var(--g5); }
+
+.cmb-sec {
+  margin-top: var(--s6);
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3);
+}
+.cmb-sec__t { font-size: var(--t-hd); font-weight: 700; letter-spacing: -.2px; }
+.cmb-sec__a { font-size: var(--t-sb); color: var(--flame-600); font-weight: 600; }
+
+/* ═══ کارت خدمت ═══ */
+
+.cmb-svc {
+  background: var(--card); border-radius: var(--r-md);
+  box-shadow: var(--sh-2); overflow: hidden;
+  margin-top: var(--s3);
+  border: 2px solid transparent;
+  transition: border-color .15s, transform .12s;
+  display: block; width: 100%; text-align: right;
+}
+.cmb-svc:active { transform: scale(.99); }
+.cmb-svc.is-on { border-color: var(--flame); }
+/* پوسترهای چک موتور پرتره‌ی بلندند (تقریباً ۲:۳). با بریدن ۱۶:۹
+   عملاً فقط لوگو دیده می‌شد و قیمت و فهرست خدمات حذف می‌شد.
+   پس نسبت را آزاد می‌گذاریم و فقط سقف ارتفاع می‌دهیم. */
+.cmb-svc__poster {
+  width: 100%; height: auto; display: block;
+  background: var(--steel-950);
+}
+
+/* کارت فقط-پوستر: تصویر تا لبه، بدون حاشیه‌ی اضافه */
+.cmb-svc--poster { padding: 0; line-height: 0; position: relative; }
+.cmb-svc--poster.is-on { border-color: var(--flame); }
+
+.cmb-svc__tick {
+  position: absolute; inset-block-start: 10px; inset-inline-start: 10px;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--flame); color: #fff;
+  display: grid; place-items: center; font-size: 15px;
+  box-shadow: var(--sh-flame);
+}
+
+/* دکمه‌ی بزرگ‌نمایی روی پوستر */
+.cmb-svc__shot { position: relative; }
+.cmb-svc__zoom {
+  position: absolute; inset-block-start: 10px; inset-inline-end: 10px;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(11,18,25,.55); color: #fff;
+  display: grid; place-items: center; font-size: 15px;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+
+/* نمای تمام‌صفحه‌ی پوستر */
+.cmb-lightbox {
+  position: fixed; inset: 0; z-index: 95;
+  background: rgba(11,18,25,.94);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s4);
+  animation: cmbfade .18s ease;
+}
+.cmb-lightbox img {
+  max-width: 100%; max-height: 92svh;
+  object-fit: contain; border-radius: var(--r-sm);
+}
+.cmb-lightbox__x {
+  position: absolute; top: calc(var(--safe-t) + 12px);
+  inset-inline-end: 14px;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(255,255,255,.14); color: #fff;
+  display: grid; place-items: center; font-size: 20px;
+}
+.cmb-svc__body { padding: var(--s4); }
+.cmb-svc__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s3); }
+.cmb-svc__t { font-size: var(--t-hd); font-weight: 700; line-height: 1.4; }
+.cmb-svc__price {
+  flex: 0 0 auto; font-size: var(--t-sb); font-weight: 700;
+  color: var(--steel-800); background: var(--steel-50);
+  padding: 5px 10px; border-radius: var(--r-xs); white-space: nowrap;
+}
+.cmb-svc__desc {
+  font-size: var(--t-sb); color: var(--ink-2); line-height: 1.85;
+  margin-top: var(--s2);
+}
+.cmb-svc__meta {
+  margin-top: var(--s3); padding-top: var(--s3);
+  border-top: 1px solid var(--g5);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.cmb-svc__line {
+  display: flex; align-items: center; gap: 7px;
+  font-size: var(--t-ft); color: var(--ink-2);
+}
+.cmb-svc__line svg { color: var(--g1); font-size: 14px; flex: 0 0 auto; }
+
+/* ═══ تقویم ═══ */
+
+.cmb-days {
+  display: flex; gap: var(--s2); overflow-x: auto;
+  padding: var(--s1) var(--pad) var(--s3);
+  margin: 0 calc(var(--pad) * -1);
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.cmb-days::-webkit-scrollbar { display: none; }
+
+.cmb-day {
+  flex: 0 0 auto; min-width: 68px;
+  background: var(--card); border-radius: var(--r);
+  border: 2px solid transparent; box-shadow: var(--sh-1);
+  padding: var(--s3) var(--s2);
+  text-align: center; transition: transform .12s;
+}
+.cmb-day:active { transform: scale(.96); }
+.cmb-day.is-on { border-color: var(--flame); background: var(--flame-50); }
+.cmb-day.is-off { opacity: .42; }
+.cmb-day__w { font-size: var(--t-cp); color: var(--ink-3); font-weight: 600; }
+.cmb-day__d { font-size: var(--t-hd); font-weight: 800; margin-top: 3px; letter-spacing: -.3px; }
+.cmb-day__m { font-size: var(--t-cp); color: var(--ink-3); margin-top: 1px; }
+.cmb-day__dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ok); margin: 6px auto 0;
+}
+.cmb-day__dot.is-full { background: var(--g3); }
+
+/* ═══ بلوک زمانی ═══ */
+
+.cmb-block {
+  width: 100%; display: flex; align-items: center; gap: var(--s3);
+  background: var(--card); border-radius: var(--r-md);
+  border: 2px solid transparent; box-shadow: var(--sh-2);
+  padding: var(--s4); margin-top: var(--s3);
+  text-align: right; transition: transform .12s;
+}
+.cmb-block:active { transform: scale(.99); }
+.cmb-block.is-on { border-color: var(--flame); background: var(--flame-50); }
+.cmb-block:disabled { opacity: .5; }
+.cmb-block__ic {
+  width: 42px; height: 42px; flex: 0 0 42px;
+  border-radius: var(--r-sm); background: var(--steel-50);
+  display: grid; place-items: center; color: var(--steel-700); font-size: 20px;
+}
+.cmb-block.is-on .cmb-block__ic { background: var(--flame-100); color: var(--flame-600); }
+.cmb-block__grow { flex: 1; min-width: 0; }
+.cmb-block__t { font-size: var(--t-bd); font-weight: 700; }
+.cmb-block__s { font-size: var(--t-ft); color: var(--ink-2); margin-top: 2px; }
+.cmb-block__tag {
+  flex: 0 0 auto; font-size: var(--t-cp); font-weight: 700;
+  padding: 4px 9px; border-radius: 999px;
+}
+.cmb-block__tag.ok { background: var(--ok-bg); color: var(--ok); }
+.cmb-block__tag.low { background: var(--warn-bg); color: var(--warn); }
+.cmb-block__tag.no { background: var(--g6); color: var(--ink-3); }
+
+/* ═══ فرم ═══ */
+
+.cmb-field { display: block; margin-top: var(--s4); }
+.cmb-field__l {
+  display: block; font-size: var(--t-sb); font-weight: 600;
+  color: var(--ink-2); margin-bottom: var(--s2);
+}
+.cmb-field__l i { color: var(--bad); font-style: normal; }
+
+.cmb-in {
+  width: 100%; min-height: var(--tap);
+  background: var(--card); border: 1.5px solid var(--g4);
+  border-radius: var(--r-sm); padding: 10px var(--s3);
+  font-size: var(--t-bd); transition: border-color .15s, box-shadow .15s;
+  -webkit-appearance: none; appearance: none;
+}
+.cmb-in:focus {
+  outline: none; border-color: var(--flame);
+  box-shadow: 0 0 0 3px var(--flame-100);
+}
+.cmb-in::placeholder { color: var(--g2); }
+textarea.cmb-in { min-height: 88px; resize: vertical; line-height: 1.8; padding-top: var(--s3); }
+select.cmb-in {
+  background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238B96A1' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: left 12px center; background-size: 16px;
+  padding-left: 36px;
+}
+.cmb-in.is-bad { border-color: var(--bad); }
+
+.cmb-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.cmb-grid2 .cmb-field { margin-top: var(--s4); }
+
+.cmb-hint { font-size: var(--t-ft); color: var(--ink-3); margin-top: 6px; line-height: 1.7; }
+
+/* ═══ ورودی کد تایید ═══ */
+
+.cmb-otp {
+  display: flex; gap: var(--s2); direction: ltr;
+  justify-content: center; margin-top: var(--s4);
+}
+.cmb-otp input {
+  width: 52px; height: 60px; text-align: center;
+  font-size: 24px; font-weight: 800; letter-spacing: 0;
+  border: 1.5px solid var(--g4); border-radius: var(--r-sm);
+  background: var(--card); transition: border-color .15s, box-shadow .15s;
+  -webkit-appearance: none; appearance: none;
+}
+.cmb-otp input:focus {
+  outline: none; border-color: var(--flame);
+  box-shadow: 0 0 0 3px var(--flame-100);
+}
+.cmb-otp input.is-full { border-color: var(--steel-600); }
+
+/* ═══ دکمه ═══ */
+
+.cmb-btn {
+  width: 100%; min-height: 50px; line-height: 1.7;
+  border-radius: var(--r-md);
+  font-size: var(--t-hd); font-weight: 700;
+  display: flex; align-items: center; justify-content: center; gap: var(--s2);
+  transition: transform .12s, opacity .15s;
+}
+.cmb-btn:active { transform: scale(.98); }
+.cmb-btn:disabled { opacity: .5; }
+.cmb-btn--pri { background: var(--flame); color: #fff; box-shadow: var(--sh-flame); }
+.cmb-btn--dark { background: var(--steel-900); color: #fff; box-shadow: var(--sh-2); }
+.cmb-btn--soft { background: var(--card); color: var(--steel-800); box-shadow: var(--sh-1); border: 1px solid var(--g4); }
+.cmb-btn--ghost { background: transparent; color: var(--ink-2); font-weight: 600; min-height: 44px; }
+.cmb-btn--sm { min-height: 40px; font-size: var(--t-cl); border-radius: var(--r-sm); }
+
+.cmb-link {
+  background: none; color: var(--flame-600);
+  font-size: var(--t-sb); font-weight: 600;
+  padding: 6px 2px;
+}
+.cmb-link:disabled { color: var(--ink-3); }
+
+/* نوار کنش چسبیده به پایین */
+.cmb-actionbar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 45;
+  background: rgba(255,255,255,.92);
+  backdrop-filter: saturate(180%) blur(18px);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  border-top: 1px solid var(--g5);
+  padding: var(--s3) var(--pad) calc(var(--s3) + var(--safe-b));
+}
+.cmb-actionbar__in { max-width: var(--max-w); margin: 0 auto; display: flex; gap: var(--s3); align-items: center; }
+.cmb-actionbar__sum { flex: 1; min-width: 0; }
+.cmb-actionbar__k { font-size: var(--t-cp); color: var(--ink-3); }
+.cmb-actionbar__v { font-size: var(--t-cl); font-weight: 700; margin-top: 1px; }
+.cmb-actionbar .cmb-btn { width: auto; flex: 0 0 auto; padding: 0 var(--s6); }
+
+/* ═══ گام‌ها ═══ */
+
+.cmb-steps {
+  display: flex; align-items: center; gap: 6px;
+  padding: var(--s3) var(--pad) 0;
+}
+.cmb-steps__i {
+  flex: 1; height: 4px; border-radius: 999px; background: var(--g4);
+  transition: background .25s;
+}
+.cmb-steps__i.is-done { background: var(--flame); }
+.cmb-steps__lbl {
+  padding: var(--s2) var(--pad) 0;
+  font-size: var(--t-ft); color: var(--ink-3); font-weight: 600;
+}
+
+/* ═══ نوار پایین ═══ */
+
+.cmb-nav {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+  background: rgba(255,255,255,.92);
+  backdrop-filter: saturate(180%) blur(18px);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  border-top: 1px solid var(--g5);
+  padding-bottom: var(--safe-b);
+}
+.cmb-nav__in {
+  max-width: var(--max-w); margin: 0 auto;
+  height: var(--nav-h); display: flex;
+}
+.cmb-nav__b {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 3px;
+  color: var(--ink-3); position: relative;
+}
+.cmb-nav__b svg { font-size: 22px; }
+.cmb-nav__b span {
+  font-size: var(--t-cp); font-weight: 600;
+  /* فارسی زیرِ خطِ کرسی دنباله دارد؛ با line-height پیش‌فرض بریده می‌شد */
+  line-height: 1.7; padding-bottom: 1px;
+}
+.cmb-nav__b.is-on { color: var(--flame-600); }
+.cmb-nav__dot {
+  position: absolute; top: 8px;
+  inset-inline-end: 50%; margin-inline-end: -18px;
+  min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 999px; background: var(--flame); color: #fff;
+  font-size: 10px; font-weight: 700;
+  display: grid; place-items: center;
+}
+
+/* ═══ نوبت ═══ */
+
+.cmb-bk {
+  background: var(--card); border-radius: var(--r-md);
+  box-shadow: var(--sh-2); overflow: hidden; margin-top: var(--s3);
+}
+.cmb-bk__top {
+  padding: var(--s4);
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s3);
+  border-bottom: 1px solid var(--g5);
+}
+.cmb-bk__t { font-size: var(--t-bd); font-weight: 700; }
+.cmb-bk__c {
+  font-size: var(--t-cp); color: var(--ink-3);
+  margin-top: 3px; font-variant-numeric: tabular-nums;
+}
+.cmb-bk__body { padding: var(--s3) var(--s4) var(--s4); display: flex; flex-direction: column; gap: 9px; }
+.cmb-bk__row { display: flex; align-items: center; gap: 9px; font-size: var(--t-sb); color: var(--ink-2); }
+.cmb-bk__row svg { color: var(--g1); font-size: 15px; flex: 0 0 auto; }
+.cmb-bk__row b { color: var(--ink); font-weight: 600; }
+
+.cmb-badge {
+  flex: 0 0 auto; font-size: var(--t-cp); font-weight: 700;
+  padding: 5px 10px; border-radius: 999px; white-space: nowrap;
+}
+.cmb-badge--confirmed { background: var(--ok-bg); color: var(--ok); }
+
+/* نوبتی که تاییدشده ولی زمانش گذشته: نه سبزِ «همه‌چیز رو به راه»،
+   نه قرمزِ «مشکل» — خاکستری، چون فقط تمام شده. */
+.cmb-badge--past { background: var(--g6); color: var(--ink-2); }
+.cmb-badge--done      { background: var(--steel-50); color: var(--steel-700); }
+.cmb-badge--no_show   { background: var(--warn-bg); color: var(--warn); }
+.cmb-badge--cancelled { background: var(--bad-bg); color: var(--bad); }
+
+/* ═══ رسید ═══ */
+
+.cmb-receipt {
+  background: var(--card); border-radius: var(--r-lg);
+  box-shadow: var(--sh-3); overflow: hidden; margin-top: var(--s5);
+}
+.cmb-receipt__hd {
+  background: linear-gradient(150deg, var(--ok) 0%, #0a6d3e 100%);
+  color: #fff; padding: var(--s6) var(--s5) var(--s5); text-align: center;
+}
+.cmb-receipt__ic {
+  width: 58px; height: 58px; margin: 0 auto var(--s3);
+  border-radius: 50%; background: rgba(255,255,255,.18);
+  display: grid; place-items: center; font-size: 30px;
+}
+.cmb-receipt__t { font-size: var(--t-lg); font-weight: 800; letter-spacing: -.3px; }
+.cmb-receipt__s { font-size: var(--t-sb); color: rgba(255,255,255,.8); margin-top: 5px; }
+.cmb-receipt__code {
+  margin-top: var(--s4); display: inline-block;
+  background: rgba(255,255,255,.16); border-radius: var(--r-sm);
+  padding: 9px 18px; font-size: var(--t-hd); font-weight: 800;
+  letter-spacing: 1.5px; font-variant-numeric: tabular-nums;
+  direction: ltr; unicode-bidi: isolate;
+}
+.cmb-receipt__body { padding: var(--s5); }
+.cmb-kv {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s3); padding: var(--s3) 0;
+  border-bottom: 1px dashed var(--g5); font-size: var(--t-sb);
+}
+.cmb-kv:last-child { border-bottom: 0; }
+.cmb-kv__k { color: var(--ink-3); flex: 0 0 auto; }
+.cmb-kv__v { font-weight: 600; text-align: left; }
+
+/* ═══ اعلان ═══ */
+
+.cmb-note {
+  display: flex; gap: 10px; align-items: flex-start;
+  border-radius: var(--r); padding: var(--s3) var(--s4);
+  font-size: var(--t-sb); line-height: 1.8; margin-top: var(--s3);
+}
+.cmb-note svg { flex: 0 0 auto; font-size: 17px; margin-top: 2px; }
+.cmb-note--info { background: var(--steel-50); color: var(--steel-800); }
+.cmb-note--warn { background: var(--warn-bg); color: #8a5a08; }
+.cmb-note--bad  { background: var(--bad-bg); color: #a02a1f; }
+.cmb-note--ok   { background: var(--ok-bg); color: #0a6d3e; }
+
+/* ═══ حالت خالی ═══ */
+
+.cmb-empty { text-align: center; padding: var(--s8) var(--s5); }
+.cmb-empty__ic {
+  width: 70px; height: 70px; margin: 0 auto var(--s4);
+  border-radius: 50%; background: var(--g6);
+  display: grid; place-items: center; font-size: 32px; color: var(--g2);
+}
+.cmb-empty__t { font-size: var(--t-hd); font-weight: 700; }
+.cmb-empty__s { font-size: var(--t-sb); color: var(--ink-3); margin-top: 7px; line-height: 1.85; }
+
+/* ═══ اسکلت بارگذاری ═══ */
+
+.cmb-sk {
+  background: linear-gradient(90deg, var(--g6) 25%, var(--g5) 37%, var(--g6) 63%);
+  background-size: 400% 100%;
+  animation: cmbsk 1.3s ease-in-out infinite;
+  border-radius: var(--r-sm);
+}
+@keyframes cmbsk { 0% { background-position: 100% 50% } 100% { background-position: 0 50% } }
+.cmb-sk--card { height: 128px; margin-top: var(--s3); border-radius: var(--r-md); }
+.cmb-sk--line { height: 13px; margin-top: 9px; }
+
+.cmb-spin {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 2.5px solid rgba(255,255,255,.35); border-top-color: #fff;
+  animation: cmbspin .62s linear infinite;
+}
+.cmb-spin--dark { border-color: var(--g4); border-top-color: var(--steel-700); }
+@keyframes cmbspin { to { transform: rotate(360deg) } }
+
+/* ═══ توست ═══ */
+
+.cmb-toasts {
+  position: fixed; z-index: 90;
+  left: 0; right: 0; bottom: calc(var(--bar-h) + var(--safe-b) + 12px);
+  display: flex; flex-direction: column; align-items: center; gap: var(--s2);
+  pointer-events: none; padding: 0 var(--pad);
+}
+.cmb-toast {
+  max-width: var(--max-w); width: 100%;
+  background: var(--steel-950); color: #fff;
+  border-radius: var(--r); padding: var(--s3) var(--s4);
+  font-size: var(--t-sb); line-height: 1.7;
+  box-shadow: var(--sh-4);
+  display: flex; align-items: flex-start; gap: 9px;
+  animation: cmbup .24s cubic-bezier(.2,.8,.2,1);
+}
+.cmb-toast svg { flex: 0 0 auto; font-size: 17px; margin-top: 1px; }
+.cmb-toast--bad svg { color: #FF8A7C; }
+.cmb-toast--ok svg { color: #5DD69A; }
+@keyframes cmbup { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
+
+/* ═══ شیت ═══ */
+
+.cmb-scrim {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(11,18,25,.44);
+  animation: cmbfade .2s ease;
+}
+@keyframes cmbfade { from { opacity: 0 } to { opacity: 1 } }
+
+.cmb-sheet {
+  position: fixed; z-index: 81; left: 0; right: 0; bottom: 0;
+  max-width: var(--max-w); margin: 0 auto;
+  background: var(--card);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  max-height: 88svh; overflow-y: auto;
+  padding: var(--s3) var(--pad) calc(var(--s6) + var(--safe-b));
+  box-shadow: var(--sh-4);
+  animation: cmbsheet .28s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes cmbsheet { from { transform: translateY(100%) } to { transform: none } }
+.cmb-sheet__grip {
+  width: 38px; height: 4px; border-radius: 999px;
+  background: var(--g4); margin: 0 auto var(--s4);
+}
+.cmb-sheet__t { font-size: var(--t-hd); font-weight: 700; margin-bottom: var(--s2); }
+
+/* ═══ ردیف منو ═══ */
+
+.cmb-rows { background: var(--card); border-radius: var(--r-md); box-shadow: var(--sh-2); overflow: hidden; margin-top: var(--s4); }
+.cmb-row {
+  width: 100%; display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s4); text-align: right;
+  border-bottom: 1px solid var(--g6);
+}
+.cmb-row:last-child { border-bottom: 0; }
+.cmb-row:active { background: var(--g6); }
+.cmb-row__ic {
+  width: 34px; height: 34px; flex: 0 0 34px; border-radius: var(--r-xs);
+  background: var(--steel-50); color: var(--steel-700);
+  display: grid; place-items: center; font-size: 17px;
+}
+.cmb-row__t { flex: 1; font-size: var(--t-bd); font-weight: 600; min-width: 0; }
+.cmb-row__v {
+  font-size: var(--t-sb); color: var(--ink-3);
+  flex: 0 0 auto; margin-inline-end: var(--s2);
+}
+.cmb-row__ch { color: var(--g3); font-size: 17px; }
+.cmb-row--bad .cmb-row__ic { background: var(--bad-bg); color: var(--bad); }
+.cmb-row--bad .cmb-row__t { color: var(--bad); }
+
+/* ═══ ریز ═══ */
+
+.cmb-mute { color: var(--ink-3); }
+.cmb-num { font-variant-numeric: tabular-nums; }
+
+/* کد پیگیری با ارقام لاتین است (دقیقاً همان چیزی که در پیامک رفته).
+   بدون isolate، مرورگر آن را داخل جمله‌ی راست‌چین جابه‌جا می‌کند و
+   «کد پیگیری: CM123456» به شکل «CM123456 :کد پیگیری» دیده می‌شود. */
+.cmb-code {
+  direction: ltr; unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .4px;
+}
+.cmb-center { text-align: center; }
+.cmb-mt3 { margin-top: var(--s3); }
+.cmb-mt4 { margin-top: var(--s4); }
+.cmb-mt5 { margin-top: var(--s5); }
+.cmb-mt6 { margin-top: var(--s6); }
+
+/* ═══════════════════════════════════════
+   دسکتاپ
+
+   اپ روی موبایل طراحی شده و عرضش محدود است. روی نمایشگر بزرگ،
+   یک ستون باریک روی پس‌زمینه‌ی تخت شبیه صفحه‌ی خراب دیده می‌شد.
+   اینجا ستون را قاب می‌گیریم تا عمدی به نظر برسد: پس‌زمینه‌ی
+   تیره‌تر، لبه‌ی مشخص و سایه — و نوارهای پایین هم داخل همان قاب
+   می‌مانند نه چسبیده به لبه‌ی پنجره.
+   ═══════════════════════════════════════ */
+
+@media (min-width: 520px) {
+  :root { --pad: 24px; }
+}
+
+@media (min-width: 760px) {
+  body.cmb-body {
+    background:
+      radial-gradient(1100px 520px at 50% -8%, #E3E9EF 0%, transparent 62%),
+      var(--bg-2) !important;
+  }
+
+  .cmb-shell {
+    border-inline: 1px solid var(--g5);
+    box-shadow: 0 0 0 1px rgba(15,23,32,.02), 0 18px 60px rgba(15,23,32,.10);
+    min-height: 100svh;
+  }
+
+  /* نوارهای پایین باید هم‌عرض ستون باشند، نه تمام‌عرض پنجره */
+  .cmb-nav, .cmb-actionbar {
+    left: 50%; right: auto;
+    transform: translateX(-50%);
+    width: 100%; max-width: var(--max-w);
+    border-inline: 1px solid var(--g5);
+  }
+  .cmb-nav { border-radius: var(--r-md) var(--r-md) 0 0; }
+
+  .cmb-toasts { inset-inline: auto; left: 50%; transform: translateX(-50%); }
+}
+
+/* ═══════════════════════════════════════
+   شبکه‌ی خدمات
+
+   یک یا دو ستون، از تنظیمات. دو ستون فضای کمتری می‌گیرد و
+   همه‌ی خدمات یک‌جا دیده می‌شوند.
+   ═══════════════════════════════════════ */
+
+.cmb-grid { display: grid; gap: var(--s3); }
+.cmb-grid--1 { grid-template-columns: 1fr; }
+.cmb-grid--2 { grid-template-columns: repeat(2, 1fr); }
+
+/* در دو ستون، کارت‌ها فشرده‌تر می‌شوند */
+.cmb-grid--2 .cmb-svc { margin-top: 0; border-radius: var(--r); }
+.cmb-grid--2 .cmb-svc__body { padding: var(--s3); }
+.cmb-grid--2 .cmb-svc__t { font-size: var(--t-cl); }
+.cmb-grid--2 .cmb-svc__price { font-size: var(--t-cp); padding: 4px 8px; }
+.cmb-grid--2 .cmb-svc__desc { font-size: var(--t-ft); }
+.cmb-grid--2 .cmb-svc__zoom { width: 28px; height: 28px; font-size: 13px; }
+.cmb-grid--1 .cmb-svc { margin-top: 0; }
+
+/* ═══════════════════════════════════════
+   خلاصه‌ی خدمت انتخاب‌شده
+   ═══════════════════════════════════════ */
+
+.cmb-chosen {
+  background: var(--card);
+  border: 2px solid var(--flame);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+  overflow: hidden;
+}
+
+.cmb-chosen__hd {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s4);
+  background: var(--flame-50);
+}
+.cmb-chosen__tick {
+  width: 32px; height: 32px; flex: 0 0 32px;
+  border-radius: 50%; background: var(--flame); color: #fff;
+  display: grid; place-items: center; font-size: 16px;
+}
+.cmb-chosen__grow { flex: 1; min-width: 0; }
+.cmb-chosen__k { font-size: var(--t-cp); color: var(--flame-600); font-weight: 700; }
+.cmb-chosen__t { font-size: var(--t-hd); font-weight: 800; letter-spacing: -.2px; margin-top: 2px; }
+.cmb-chosen__edit {
+  flex: 0 0 auto; font-size: var(--t-sb); font-weight: 700;
+  color: var(--flame-600); background: var(--card);
+  border: 1px solid var(--flame-100);
+  border-radius: var(--r-xs); padding: 7px 13px;
+}
+.cmb-chosen__edit:active { transform: scale(.96); }
+
+.cmb-chosen__meta {
+  padding: var(--s3) var(--s4);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.cmb-chosen__row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--t-sb); color: var(--ink-2);
+}
+.cmb-chosen__row svg { color: var(--g1); font-size: 15px; }
+
+@media (max-width: 360px) {
+  .cmb-grid--2 { grid-template-columns: 1fr; }
+}
+
+/* ═══════════════════════════════════════
+   باکس انتخاب خدمت (ویزارد رزرو)
+
+   در ویزارد، انتخاب بین باکس‌هاست نه پوسترها: کاربر آمده نوبت
+   بگیرد، پس باید سریع بین گزینه‌ها مقایسه کند.
+   ═══════════════════════════════════════ */
+
+.cmb-box {
+  display: block; width: 100%; text-align: right;
+  background: var(--card);
+  border: 1.5px solid var(--g4);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-1);
+  padding: var(--s4);
+  margin-top: var(--s3);
+  transition: border-color .15s, transform .12s, box-shadow .15s;
+}
+.cmb-box:active { transform: scale(.99); }
+.cmb-box:hover { border-color: var(--flame-400); box-shadow: var(--sh-2); }
+
+.cmb-box__hd {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--s3);
+}
+.cmb-box__t { font-size: var(--t-hd); font-weight: 800; letter-spacing: -.2px; line-height: 1.5; }
+.cmb-box__price {
+  flex: 0 0 auto; font-size: var(--t-sb); font-weight: 800;
+  color: var(--flame-600); background: var(--flame-50);
+  padding: 6px 11px; border-radius: var(--r-xs); white-space: nowrap;
+}
+
+.cmb-box__desc {
+  font-size: var(--t-sb); color: var(--ink-2);
+  line-height: 1.85; margin-top: var(--s2);
+}
+
+.cmb-box__meta {
+  margin-top: var(--s3); padding-top: var(--s3);
+  border-top: 1px solid var(--g5);
+  display: flex; flex-direction: column; gap: 7px;
+}
+.cmb-box__row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--t-ft); color: var(--ink-2);
+}
+.cmb-box__row svg { color: var(--g1); font-size: 14px; }
+
+.cmb-box__go {
+  margin-top: var(--s4);
+  min-height: 42px; border-radius: var(--r-sm);
+  background: var(--steel-900); color: #fff;
+  font-size: var(--t-cl); font-weight: 700;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+}
+.cmb-box:hover .cmb-box__go { background: var(--flame); }
+
+/* ═══ باکس انتخاب روی موبایل ═══ */
+
+@media (max-width: 400px) {
+  /* عنوان بلند + قیمت در یک ردیف، عنوان را له می‌کرد */
+  .cmb-box__hd { flex-wrap: wrap; gap: var(--s2); }
+  .cmb-box__t { font-size: var(--t-bd); flex: 1 1 100%; }
+  .cmb-box__price { font-size: var(--t-ft); padding: 5px 9px; }
+  .cmb-box { padding: var(--s3); }
+  .cmb-box__desc { font-size: var(--t-ft); }
+
+  /* خلاصه‌ی انتخاب‌شده */
+  .cmb-chosen__hd { padding: var(--s3); gap: var(--s2); }
+  .cmb-chosen__t { font-size: var(--t-bd); }
+  .cmb-chosen__edit { padding: 6px 10px; font-size: var(--t-ft); }
+  .cmb-chosen__meta { padding: var(--s3); }
+}
+
+/* لمس روی موبایل: hover گیر نکند */
+@media (hover: none) {
+  .cmb-box:hover { border-color: var(--g4); box-shadow: var(--sh-1); }
+  .cmb-box:hover .cmb-box__go { background: var(--steel-900); }
+  .cmb-box:active { border-color: var(--flame); }
+  .cmb-box:active .cmb-box__go { background: var(--flame); }
+}
+
+/* ─── لغو نوبت توسط مشتری ───
+   پای کارت نوبت عمداً ستونی است، نه دو ستونه: متن مهلت حدود ۴۰
+   نویسه است و کنار دکمه روی عرض موبایل به یک کلمه در هر خط تقسیم
+   می‌شد. همه‌ی دکمه‌های این اپ هم تمام‌عرض‌اند، پس این هم هست. */
+.cmb-bk__foot {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4) var(--s4);
+  border-top: 1px solid var(--g4);
+}
+
+.cmb-bk__hint,
+.cmb-bk__ask {
+  font-size: var(--t-cl);
+  line-height: 1.8;
+}
+
+.cmb-bk__hint { color: var(--ink-2); }
+.cmb-bk__ask  { color: var(--ink); }
+
+.cmb-bk__acts { display: flex; gap: var(--s2); }
+
+/* دکمه‌ی لغو ذاتاً تمام‌عرض است (‎.cmb-btn‎ روی width:100%‎)؛ فقط
+   داخل «مطمئنید؟» باید دو دکمه عرض را نصف کنند. */
+.cmb-bk__acts .cmb-btn { flex: 1 1 0; min-width: 0; }
+
+.cmb-btn--danger { background: var(--bad); color: #fff; }
+
+.cmb-btn--ghostdanger {
+  background: transparent;
+  color: var(--bad);
+  border: 1px solid var(--g4);
+  font-weight: 700;
+}
+.cmb-btn--ghostdanger:hover { background: var(--bad-bg); border-color: var(--bad-bg); }
