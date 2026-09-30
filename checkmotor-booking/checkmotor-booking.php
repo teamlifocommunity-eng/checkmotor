@@ -3,7 +3,7 @@
  * Plugin Name: چک موتور — سیستم رزرو نوبت
  * Plugin URI:  https://checkmotor.ir
  * Description: سیستم رزرو نوبت آنلاین چک موتور (MVP) — ورود با کد تایید پیامکی ملی‌پیامک، تقویم ۷ روزه، شیفت صبح/بعدازظهر، پنل مدیریت نوبت‌ها.
- * Version:     1.29.0
+ * Version:     1.30.0
  * Author:      رضا امام‌حسنی
  * Text Domain: checkmotor-booking
  * Domain Path: /languages
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMB_VERSION', '1.29.0' );
+define( 'CMB_VERSION', '1.30.0' );
 define( 'CMB_FILE', __FILE__ );
 define( 'CMB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMB_URL', plugin_dir_url( __FILE__ ) );
@@ -119,6 +119,7 @@ function cmb_load_files() {
 		'includes/class-cmb-health.php',
 		'includes/class-cmb-panel-api.php',
 		'includes/class-cmb-panel-pwa.php',
+		'includes/class-cmb-panel-otp.php',
 		'includes/class-cmb-shortcodes.php',
 		'includes/class-cmb-cron.php',
 		'includes/class-cmb-isolate.php',
@@ -195,6 +196,7 @@ final class CMB_Plugin {
 		CMB_Rest::instance();
 		CMB_Panel_Api::instance();
 		CMB_Panel_Pwa::instance();
+		CMB_Panel_Otp::instance();
 		CMB_Shortcodes::instance();
 		CMB_Cron::instance();
 		CMB_Isolate::instance();
@@ -678,6 +680,11 @@ function cmb_enqueue_panel() {
 			'wpSettings' => esc_url_raw( admin_url( 'admin.php?page=cmb-settings' ) ),
 			/* دکمه‌ی «نصب روی گوشی»؛ null یعنی قابلیت خاموش است. */
 			'pwa'      => CMB_Panel_Pwa::js_config(),
+			/* ورود مسئول رزرو با کد پیامکی؛ فقط وقتی پیامک واقعاً ارسال می‌شود. */
+			'otp'      => array(
+				'on'     => CMB_Panel_Otp::enabled(),
+				'length' => CMB_OTP::CODE_LENGTH,
+			),
 			/* نام شیفت‌ها برای فرم سهمیه‌ی جداگانه. از خود cmb_blocks()
 			   می‌آید تا اگر شیفتی با فیلتر اضافه شد، فرم هم آن را داشته باشد. */
 			'blocks'   => array_values(

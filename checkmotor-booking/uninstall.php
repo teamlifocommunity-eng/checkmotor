@@ -45,6 +45,7 @@ $cmb_options = array(
 	'cmb_new_user_role',
 	'cmb_panel_pwa',
 	'cmb_panel_app_name',
+	'cmb_panel_otp',
 );
 
 foreach ( $cmb_options as $cmb_option ) {

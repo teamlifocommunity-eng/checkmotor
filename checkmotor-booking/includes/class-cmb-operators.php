@@ -4,7 +4,8 @@
  *
  * اینجا برای مسئول رزرو یک نام کاربری و رمز می‌سازیم. آن حساب فقط
  * دسترسی cmb_manage_bookings می‌گیرد — نه پیشخوان وردپرس، نه تنظیمات،
- * نه کاربران. با همان نام کاربری و رمز از خودِ صفحه‌ی پنل وارد می‌شود.
+ * نه کاربران. با همان نام کاربری و رمز از خودِ صفحه‌ی پنل وارد می‌شود،
+ * یا اگر شماره‌ی موبایلش ثبت شده باشد، با کد تایید پیامکی.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -31,6 +32,41 @@ class CMB_Operators {
 		add_action( 'admin_post_cmb_revoke_operator', array( $this, 'handle_revoke' ) );
 		add_action( 'admin_post_cmb_save_roles', array( $this, 'handle_save_roles' ) );
 		add_action( 'admin_post_cmb_grant_user', array( $this, 'handle_grant_user' ) );
+		add_action( 'admin_post_cmb_operator_phone', array( $this, 'handle_phone' ) );
+	}
+
+	/**
+	 * بررسی شماره‌ی موبایل مسئول رزرو.
+	 *
+	 * یک شماره فقط باید مال یک حساب باشد؛ وگرنه ورود با کد (هم در پنل،
+	 * هم در اپ مشتری) معلوم نیست کدام حساب را باز کند.
+	 *
+	 * @param string $raw     شماره‌ی واردشده.
+	 * @param int    $user_id حسابی که شماره برایش ثبت می‌شود (صفر برای حساب تازه).
+	 *
+	 * @return string|WP_Error شماره‌ی نرمال‌شده.
+	 */
+	protected static function check_phone( $raw, $user_id = 0 ) {
+		$phone = cmb_normalize_phone( (string) $raw );
+
+		if ( ! $phone ) {
+			return new WP_Error( 'cmb_phone', 'شماره موبایل معتبر نیست. نمونه: ۰۹۱۲۳۴۵۶۷۸۹' );
+		}
+
+		foreach ( CMB_OTP::users_with_phone( $phone ) as $other ) {
+			if ( (int) $other->ID !== (int) $user_id ) {
+				return new WP_Error(
+					'cmb_phone_taken',
+					sprintf(
+						'شماره‌ی %1$s مال حساب «%2$s» است و یک شماره فقط می‌تواند به یک حساب وصل باشد. اگر همان شخص است، به‌جای حساب تازه، در بخش «دادن دسترسی به یک کاربر موجود» همین شماره را وارد کنید.',
+						$phone,
+						$other->user_login
+					)
+				);
+			}
+		}
+
+		return $phone;
 	}
 
 	/**
@@ -134,12 +170,22 @@ class CMB_Operators {
 		$pass  = (string) ( $_POST['cmb_pass'] ?? '' );
 		$name  = sanitize_text_field( wp_unslash( $_POST['cmb_name'] ?? '' ) );
 		$email = sanitize_email( wp_unslash( $_POST['cmb_email'] ?? '' ) );
+		$raw   = trim( (string) wp_unslash( $_POST['cmb_phone'] ?? '' ) );
 
 		if ( '' === $login ) {
 			$this->back( 'نام کاربری را وارد کنید.', 'error' );
 		}
 
 		$existing = get_user_by( 'login', $login );
+		$phone    = '';
+
+		if ( '' !== $raw ) {
+			$phone = self::check_phone( $raw, $existing ? $existing->ID : 0 );
+
+			if ( is_wp_error( $phone ) ) {
+				$this->back( $phone->get_error_message(), 'error' );
+			}
+		}
 
 		if ( $existing ) {
 			// حساب هست: فقط دسترسی بده (و اگر رمز داده شده، عوضش کن).
@@ -147,6 +193,10 @@ class CMB_Operators {
 
 			if ( '' !== $pass ) {
 				wp_set_password( $pass, $existing->ID );
+			}
+
+			if ( '' !== $phone ) {
+				update_user_meta( $existing->ID, 'cmb_phone', $phone );
 			}
 
 			$this->back( sprintf( 'به حساب «%s» دسترسی پنل رزرو داده شد.', $login ) );
@@ -175,7 +225,46 @@ class CMB_Operators {
 			$this->back( 'ساخت حساب ناموفق بود: ' . $user_id->get_error_message(), 'error' );
 		}
 
+		if ( '' !== $phone ) {
+			update_user_meta( $user_id, 'cmb_phone', $phone );
+		}
+
 		$this->back( sprintf( 'حساب «%s» ساخته شد و به پنل رزرو دسترسی دارد.', $login ) );
+	}
+
+	/**
+	 * ثبت یا پاک کردن شماره‌ی موبایلِ ورود با کد.
+	 */
+	public function handle_phone() {
+		$this->guard( 'cmb_operator_phone' );
+
+		$user_id = (int) ( $_POST['cmb_user_id'] ?? 0 );
+		$user    = $user_id ? get_userdata( $user_id ) : null;
+
+		if ( ! $user ) {
+			$this->back( 'کاربر پیدا نشد.', 'error' );
+		}
+
+		if ( user_can( $user_id, 'manage_options' ) ) {
+			$this->back( 'شماره‌ی مدیران کل از این صفحه قابل تغییر نیست.', 'error' );
+		}
+
+		$raw = trim( (string) wp_unslash( $_POST['cmb_phone'] ?? '' ) );
+
+		if ( '' === $raw ) {
+			delete_user_meta( $user_id, 'cmb_phone' );
+			$this->back( sprintf( 'شماره‌ی «%s» پاک شد؛ فقط با نام کاربری و رمز وارد می‌شود.', $user->user_login ) );
+		}
+
+		$phone = self::check_phone( $raw, $user_id );
+
+		if ( is_wp_error( $phone ) ) {
+			$this->back( $phone->get_error_message(), 'error' );
+		}
+
+		update_user_meta( $user_id, 'cmb_phone', $phone );
+
+		$this->back( sprintf( 'شماره‌ی %1$s برای «%2$s» ثبت شد و می‌تواند با کد تایید وارد پنل شود.', $phone, $user->user_login ) );
 	}
 
 	/**
@@ -322,6 +411,8 @@ class CMB_Operators {
 			<p style="font-size:14px;line-height:2;max-width:760px">
 				برای مسئول رزرو اینجا نام کاربری و رمز بسازید. آن حساب فقط به
 				<b>پنل رزرو</b> دسترسی دارد — نه پیشخوان وردپرس، نه تنظیمات، نه کاربران.
+				<br>اگر شماره‌ی موبایلش را هم ثبت کنید، می‌تواند به‌جای رمز با <b>کد تایید پیامکی</b> وارد شود.
+				مدیران کل سایت هم اگر شماره‌شان در حسابشان ثبت باشد (مثلاً از ورود پیامکی سایت) همین‌طور.
 				<?php if ( $panel_url ) : ?>
 					<br>نشانی ورود: <code><?php echo esc_html( $panel_url ); ?></code>
 				<?php endif; ?>
@@ -411,6 +502,13 @@ class CMB_Operators {
 						<td><input name="cmb_name" id="cmb_name" class="regular-text"></td>
 					</tr>
 					<tr>
+						<th><label for="cmb_phone">شماره موبایل (اختیاری)</label></th>
+						<td>
+							<input name="cmb_phone" id="cmb_phone" class="regular-text" dir="ltr" inputmode="numeric" placeholder="09123456789">
+							<p class="description">برای ورود به پنل با کد تایید پیامکی.</p>
+						</td>
+					</tr>
+					<tr>
 						<th><label for="cmb_email">ایمیل (اختیاری)</label></th>
 						<td><input name="cmb_email" id="cmb_email" type="email" class="regular-text" dir="ltr"></td>
 					</tr>
@@ -429,6 +527,7 @@ class CMB_Operators {
 						<tr>
 							<th>نام کاربری</th>
 							<th>نام نمایشی</th>
+							<th>موبایل (ورود با کد)</th>
 							<th>رمز تازه</th>
 							<th>عملیات</th>
 						</tr>
@@ -438,6 +537,16 @@ class CMB_Operators {
 						<tr>
 							<td><code><?php echo esc_html( $op->user_login ); ?></code></td>
 							<td><?php echo esc_html( $op->display_name ); ?></td>
+							<td>
+								<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:flex;gap:6px">
+									<input type="hidden" name="action" value="cmb_operator_phone">
+									<input type="hidden" name="cmb_user_id" value="<?php echo esc_attr( $op->ID ); ?>">
+									<?php wp_nonce_field( 'cmb_operator_phone' ); ?>
+									<input name="cmb_phone" dir="ltr" inputmode="numeric" placeholder="09123456789" style="width:140px"
+										value="<?php echo esc_attr( cmb_get_user_phone( $op->ID ) ); ?>">
+									<button class="button">ذخیره</button>
+								</form>
+							</td>
 							<td>
 								<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:flex;gap:6px">
 									<input type="hidden" name="action" value="cmb_reset_operator">

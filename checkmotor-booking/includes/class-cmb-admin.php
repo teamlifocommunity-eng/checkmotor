@@ -823,6 +823,22 @@ class CMB_Admin {
 						</td>
 					</tr>
 					<tr>
+						<th><label>ورود پنل با کد تایید</label></th>
+						<td>
+							<label class="cmb-check">
+								<input type="checkbox" name="cmb_panel_otp" value="1" <?php checked( (int) get_option( 'cmb_panel_otp', 1 ), 1 ); ?> /> مسئول رزرو بتواند با شماره موبایل و کد پیامکی وارد پنل شود
+							</label>
+							<p class="description">
+								کد با همان پترن «کد تایید (ورود)» فرستاده می‌شود و فقط برای حسابی که به پنل دسترسی دارد. شماره‌ی هر مسئول رزرو را در
+								<a href="<?php echo esc_url( admin_url( 'admin.php?page=cmb-operators' ) ); ?>">کاربران پنل</a> ثبت کنید.
+								ورود با نام کاربری و رمز هم سر جایش می‌ماند.
+								<?php if ( class_exists( 'CMB_Panel_Otp' ) && get_option( 'cmb_panel_otp', 1 ) && ! CMB_Panel_Otp::enabled() ) : ?>
+									<br><b style="color:#b32d2e">فعلاً نمایش داده نمی‌شود:</b> حساب ملی‌پیامک یا پترن کد ورود تنظیم نشده است.
+								<?php endif; ?>
+							</p>
+						</td>
+					</tr>
+					<tr>
 						<th><label>نصب پنل روی گوشی</label></th>
 						<td>
 							<label class="cmb-check">
@@ -1087,6 +1103,7 @@ class CMB_Admin {
 		}
 
 		update_option( 'cmb_panel_pwa', isset( $_POST['cmb_panel_pwa'] ) ? 1 : 0 );
+		update_option( 'cmb_panel_otp', isset( $_POST['cmb_panel_otp'] ) ? 1 : 0 );
 
 		if ( isset( $_POST['cmb_panel_app_name'] ) ) {
 			update_option( 'cmb_panel_app_name', sanitize_text_field( wp_unslash( $_POST['cmb_panel_app_name'] ) ) );

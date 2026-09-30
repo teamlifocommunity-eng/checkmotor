@@ -968,3 +968,9 @@ select.cmb-in {
   font-weight: 700;
 }
 .cmb-btn--ghostdanger:hover { background: var(--bad-bg); border-color: var(--bad-bg); }
+
+/* سافاری آیفون روی هر کادر زیر ۱۶ پیکسل زوم می‌کند و زوم بعد از بستن
+   صفحه‌کلید باقی می‌ماند؛ فرم رزرو بزرگ و بیرون‌زده دیده می‌شد. */
+@media (hover: none) and (pointer: coarse) {
+  .cmb-in { font-size: 16px; }
+}

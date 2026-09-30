@@ -14,11 +14,13 @@ class CMB_OTP {
 	/**
 	 * ساخت و ارسال کد تایید.
 	 *
-	 * @param string $phone شماره‌ی موبایل خام.
+	 * @param string $phone   شماره‌ی موبایل خام.
+	 * @param string $purpose login (اپ مشتری) یا panel (ورود مسئول رزرو). کدِ
+	 *                        یکی در دیگری پذیرفته نمی‌شود.
 	 *
 	 * @return array|WP_Error آرایه‌ی نتیجه شامل expires_in و resend_after.
 	 */
-	public static function request_code( $phone ) {
+	public static function request_code( $phone, $purpose = 'login' ) {
 		global $wpdb;
 
 		$phone = cmb_normalize_phone( $phone );
@@ -67,7 +69,7 @@ class CMB_OTP {
 			array(
 				'phone'      => $phone,
 				'code_hash'  => wp_hash_password( $code ),
-				'purpose'    => 'login',
+				'purpose'    => $purpose,
 				'attempts'   => 0,
 				'is_used'    => 0,
 				'ip'         => cmb_get_ip(),
@@ -86,7 +88,7 @@ class CMB_OTP {
 			$phone,
 			'pattern_otp',
 			array( $code ),
-			sprintf( 'کد ورود شما به چک موتور: %s', $code )
+			sprintf( 'panel' === $purpose ? 'کد ورود به پنل مدیریت چک موتور: %s' : 'کد ورود شما به چک موتور: %s', $code )
 		);
 
 		if ( is_wp_error( $sent ) ) {
@@ -108,7 +110,8 @@ class CMB_OTP {
 			'is_new_user'  => ! self::find_user( $phone ),
 		);
 
-		if ( self::dev_mode() && ! self::is_privileged_phone( $phone ) ) {
+		/* کد ورود پنل هرگز در پاسخ برنمی‌گردد، حتی در حالت توسعه. */
+		if ( 'login' === $purpose && self::dev_mode() && ! self::is_privileged_phone( $phone ) ) {
 			$result['dev_code'] = $code;
 		}
 
@@ -121,14 +124,50 @@ class CMB_OTP {
 	 * @return array|WP_Error
 	 */
 	public static function verify_code( $phone, $code, $name = '' ) {
-		global $wpdb;
-
 		$phone = cmb_normalize_phone( $phone );
-		$code  = preg_replace( '/\D/', '', cmb_en_num( $code ) );
 
 		if ( ! $phone ) {
 			return new WP_Error( 'cmb_invalid_phone', 'شماره موبایل معتبر نیست.', array( 'status' => 400 ) );
 		}
+
+		$ok = self::consume_code( $phone, $code, 'login' );
+
+		if ( is_wp_error( $ok ) ) {
+			return $ok;
+		}
+
+		$user_id = self::login_or_register( $phone, $name );
+
+		if ( is_wp_error( $user_id ) ) {
+			return $user_id;
+		}
+
+		$user = get_userdata( $user_id );
+
+		return array(
+			'user_id'      => (int) $user_id,
+			'display_name' => $user ? $user->display_name : '',
+			'phone'        => $phone,
+		);
+	}
+
+	/**
+	 * بررسی و مصرف کد، بدون ورود کاربر.
+	 *
+	 * ورود پنل هم از همین استفاده می‌کند ولی نباید مثل اپ مشتری کاربر
+	 * تازه بسازد؛ پس بررسی کد از ورود/ثبت‌نام جدا شده است.
+	 *
+	 * @param string $phone        شماره‌ی نرمال‌شده.
+	 * @param string $code         کد واردشده (ارقام فارسی هم پذیرفته می‌شود).
+	 * @param string $purpose      همان purpose هنگام ساخت کد.
+	 * @param int    $max_attempts سقف تلاش برای یک کد؛ صفر یعنی تنظیمات.
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function consume_code( $phone, $code, $purpose = 'login', $max_attempts = 0 ) {
+		global $wpdb;
+
+		$code = preg_replace( '/\D/', '', cmb_en_num( $code ) );
 
 		if ( strlen( $code ) !== self::CODE_LENGTH ) {
 			return new WP_Error( 'cmb_invalid_code', 'کد تایید را کامل وارد کنید.', array( 'status' => 400 ) );
@@ -139,8 +178,9 @@ class CMB_OTP {
 
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
-				"SELECT * FROM {$table} WHERE phone = %s AND is_used = 0 ORDER BY id DESC LIMIT 1", // phpcs:ignore
-				$phone
+				"SELECT * FROM {$table} WHERE phone = %s AND purpose = %s AND is_used = 0 ORDER BY id DESC LIMIT 1", // phpcs:ignore
+				$phone,
+				$purpose
 			)
 		);
 
@@ -153,7 +193,9 @@ class CMB_OTP {
 			return new WP_Error( 'cmb_otp_expired', 'کد تایید منقضی شده است. کد جدید درخواست کنید.', array( 'status' => 400 ) );
 		}
 
-		$max_attempts = (int) CMB_Settings::get( 'otp_max_attempts', 5 );
+		if ( $max_attempts < 1 ) {
+			$max_attempts = (int) CMB_Settings::get( 'otp_max_attempts', 5 );
+		}
 
 		if ( (int) $row->attempts >= $max_attempts ) {
 			$wpdb->update( $table, array( 'is_used' => 1 ), array( 'id' => $row->id ) );
@@ -176,19 +218,7 @@ class CMB_OTP {
 
 		$wpdb->update( $table, array( 'is_used' => 1 ), array( 'id' => $row->id ) );
 
-		$user_id = self::login_or_register( $phone, $name );
-
-		if ( is_wp_error( $user_id ) ) {
-			return $user_id;
-		}
-
-		$user = get_userdata( $user_id );
-
-		return array(
-			'user_id'      => (int) $user_id,
-			'display_name' => $user ? $user->display_name : '',
-			'phone'        => $phone,
-		);
+		return true;
 	}
 
 	/**
@@ -404,6 +434,53 @@ class CMB_OTP {
 	}
 
 	/**
+	 * همه‌ی حساب‌هایی که این شماره را دارند، نه فقط اولی.
+	 *
+	 * find_user() برای ورود مشتری اولین حساب را کافی می‌داند. ورود پنل
+	 * و ثبت شماره‌ی مسئول رزرو باید همه را ببینند: اولی ممکن است حساب
+	 * مشتری همان شخص باشد و حساب پنلش دومی.
+	 *
+	 * @return WP_User[]
+	 */
+	public static function users_with_phone( $phone ) {
+		global $wpdb;
+
+		$phone = (string) $phone;
+		$keys  = self::phone_meta_keys();
+		$found = array();
+
+		/* یک کوئری مستقیم، نه meta_query با OR: وردپرس برای هر کلید یک
+		   join جدا روی usermeta می‌سازد و روی سایتی با کاربران زیاد کند
+		   می‌شود. */
+		$ids = $keys ? $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT DISTINCT user_id FROM {$wpdb->usermeta} WHERE meta_value = %s AND meta_key IN (" . implode( ',', array_fill( 0, count( $keys ), '%s' ) ) . ') LIMIT 20', // phpcs:ignore
+				array_merge( array( $phone ), array_values( $keys ) )
+			)
+		) : array();
+
+		foreach ( $ids as $id ) {
+			$user = get_userdata( (int) $id );
+
+			if ( $user ) {
+				$found[ $user->ID ] = $user;
+			}
+		}
+
+		$bare = ltrim( $phone, '0' );
+
+		foreach ( array_unique( array( $phone, $bare, '98' . $bare, '+98' . $bare, 'cm_' . $phone ) ) as $login ) {
+			$user = get_user_by( 'login', $login );
+
+			if ( $user ) {
+				$found[ $user->ID ] = $user;
+			}
+		}
+
+		return array_values( $found );
+	}
+
+	/**
 	 * محدودسازی نرخ درخواست کد.
 	 *
 	 * @return true|WP_Error
@@ -478,7 +555,9 @@ class CMB_OTP {
 			}
 		}
 
-		return false;
+		/* مسئول رزرو هیچ‌کدام از دسترسی‌های بالا را ندارد ولی به پنل
+		   دسترسی دارد؛ بدون این، حالت توسعه کد او را لو می‌داد. */
+		return class_exists( 'CMB_Panel_Api' ) && CMB_Panel_Api::user_can_manage( $user );
 	}
 
 	protected static function dev_mode() {

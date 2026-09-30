@@ -50,6 +50,50 @@ class CMB_Panel_Api {
 	}
 
 	/**
+	 * همان can() برای هر کاربر دلخواه، نه فقط کاربر جاری.
+	 *
+	 * ورود با کد پیش از ورود کاربر باید بداند صاحب این شماره اجازه‌ی
+	 * پنل دارد یا نه.
+	 *
+	 * @param WP_User|int $user
+	 */
+	public static function user_can_manage( $user ) {
+		$user = $user instanceof WP_User ? $user : get_userdata( (int) $user );
+
+		if ( ! $user || ! $user->exists() ) {
+			return false;
+		}
+
+		$allowed = user_can( $user, 'manage_options' ) || user_can( $user, self::cap() );
+
+		if ( ! $allowed ) {
+			$roles = (array) get_option( 'cmb_panel_roles', array() );
+
+			if ( $roles && array_intersect( (array) $user->roles, $roles ) ) {
+				$allowed = true;
+			}
+		}
+
+		return (bool) apply_filters( 'cmb_can_manage', $allowed, (int) $user->ID );
+	}
+
+	/**
+	 * کوکی ورودی که همین حالا ساخته می‌شود، در همین درخواست هم دیده شود.
+	 *
+	 * nonce به توکن نشست داخل کوکی ورود بسته است. بدون این، nonce ای که
+	 * همراه پاسخ ورود برمی‌گشت با توکن خالی ساخته می‌شد و اولین درخواست
+	 * پنل بعد از ورود با ۴۰۳ رد و دوباره فرستاده می‌شد.
+	 */
+	public static function sync_login_cookie() {
+		add_action(
+			'set_logged_in_cookie',
+			function ( $logged_in_cookie ) {
+				$_COOKIE[ LOGGED_IN_COOKIE ] = $logged_in_cookie;
+			}
+		);
+	}
+
+	/**
 	 * نام دسترسی — برای اینکه یک جا تعریف شده باشد.
 	 */
 	public static function cap() {
@@ -156,6 +200,8 @@ class CMB_Panel_Api {
 				array( 'status' => 429 )
 			);
 		}
+
+		self::sync_login_cookie();
 
 		$user = wp_signon(
 			array(

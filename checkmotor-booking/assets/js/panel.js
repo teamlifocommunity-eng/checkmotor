@@ -39,7 +39,7 @@ var S = {
   fetching: false,
   sched: null, schedFull: '', health: null, sweeping: false,
   closures: null, closeForm: { date: '', block: '', reason: '' },
-  login: { user: '', pass: '', err: '', busy: false },
+  login: freshLogin(),
   menu: false
 };
 
@@ -259,7 +259,7 @@ function viewSummary() {
   var s = S.summary;
   var c = s.counts;
 
-  var html = head('خلاصه وضعیت', s.today ? s.today.jalali : '',
+  var html = head('خلاصه وضعیت', s.today ? fa(s.today.jalali) : '',
     '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>');
 
   if (s.setup && !s.setup.ready) {
@@ -1087,7 +1087,7 @@ function bookingModal() {
     '<div class="pn-kv"><span class="pn-kv__k">سال ساخت</span><span class="pn-kv__v num">' + fa(esc(b.carYear)) + '</span></div>' +
     (b.carMileage ? '<div class="pn-kv"><span class="pn-kv__k">کارکرد</span><span class="pn-kv__v num">' + money(b.carMileage) + ' کیلومتر</span></div>' : '') +
     (b.note ? '<div class="pn-kv"><span class="pn-kv__k">توضیحات</span><span class="pn-kv__v">' + esc(b.note) + '</span></div>' : '') +
-    '<div class="pn-kv"><span class="pn-kv__k">زمان ثبت</span><span class="pn-kv__v num">' + fa(esc(b.createdAt)) + '</span></div>' +
+    '<div class="pn-kv"><span class="pn-kv__k">زمان ثبت</span><span class="pn-kv__v num">' + esc(J.formatTime(b.createdAt, FA_DIGITS) || fa(b.createdAt)) + '</span></div>' +
 
     (b.status !== 'cancelled' ? '' :
       note('warn', I.alert, 'این نوبت لغو شده و ظرفیتش آزاد شده است.')) +
@@ -1163,36 +1163,17 @@ function render() {
   if (!root) { return; }
 
   if (!S.can) {
-    var L = S.login;
+    keepLogin();
 
-    root.innerHTML = '<div class="pn-login"><div class="pn-login__box">' +
-      '<div class="pn-login__ic">' + I.engine + '</div>' +
-      '<h2 style="font-size:19px;font-weight:800">پنل رزرو نوبت</h2>' +
-      '<p style="font-size:13px;color:var(--ink-3);margin-top:8px">با نام کاربری و رمزی که برایتان تعریف شده وارد شوید.</p>' +
-
-      '<div style="text-align:right;margin-top:22px">' +
-        '<label class="pn-field"><span class="pn-field__l">نام کاربری</span>' +
-        '<input class="pn-in" id="lg-user" dir="ltr" autocomplete="username" value="' + esc(L.user) + '"></label>' +
-        '<label class="pn-field"><span class="pn-field__l">رمز عبور</span>' +
-        '<input class="pn-in" id="lg-pass" type="password" dir="ltr" autocomplete="current-password"></label>' +
-        '<label class="pn-check" style="margin-bottom:16px">' +
-        '<input type="checkbox" id="lg-remember" checked> مرا به خاطر بسپار</label>' +
-      '</div>' +
-
-      (L.err ? '<div class="pn-note pn-note--bad" style="text-align:right">' + I.alert + '<div>' + esc(L.err) + '</div></div>' : '') +
-
-      '<button class="pn-btn pn-btn--pri pn-btn--block" data-login' + (L.busy ? ' disabled' : '') + '>' +
-        (L.busy ? '<span class="pn-spin"></span> در حال ورود…' : 'ورود به پنل') + '</button>' +
-      '<a class="pn-btn pn-btn--soft pn-btn--block" style="margin-top:8px" href="' + esc(C.app || '/') + '">بازگشت به اپ</a>' +
-      installBtn('pn-btn pn-btn--block pn-login__inst', 'نصب پنل روی گوشی') +
-      '</div></div><div id="pn-toasts" class="pn-toasts"></div><div id="pn-modal"></div>';
+    root.innerHTML = loginView() + '<div id="pn-toasts" class="pn-toasts"></div><div id="pn-modal"></div>';
 
     shellKey = 'login';
     paintToasts();
     paintModal();
 
-    var lf = document.getElementById('lg-user');
-    if (lf && !L.user) { setTimeout(function () { try { lf.focus(); } catch (e) {} }, 60); }
+    // اولین کادر خالی؛ روی گوشی بدون لمس کاربر صفحه‌کلید باز نمی‌شود
+    var lf = $('#lg-user') || $('#lg-phone') || $('#lg-code');
+    if (lf && !lf.value) { setTimeout(function () { try { lf.focus(); } catch (e) {} }, 60); }
     return;
   }
 
@@ -1666,6 +1647,182 @@ function addClosure() {
   });
 }
 
+/* ═══ ورود ═══
+
+   دو روش: کد پیامکی (اگر پیامک سایت تنظیم شده باشد) و نام کاربری/رمز.
+   کد با autocomplete=one-time-code روی آیفون و اندروید از خود پیامک
+   پیشنهاد می‌شود و با کامل شدن رقم‌ها خودکار فرستاده می‌شود. */
+
+var otpTimer = 0;
+
+function freshLogin() {
+  return {
+    mode: (C.otp && C.otp.on) ? 'otp' : 'pass',
+    user: '', err: '', busy: false,
+    phone: '', step: 'phone', masked: '', code: '', wait: 0
+  };
+}
+
+function otpLen() { return (C.otp && C.otp.length) || 5; }
+
+/* صفحه‌ی ورود با هر paint از نو ساخته می‌شود؛ آنچه تایپ شده نباید
+   بپرد. رمز عمداً نگه داشته نمی‌شود. */
+function keepLogin() {
+  var u = $('#lg-user'), p = $('#lg-phone'), c = $('#lg-code');
+  if (u) { S.login.user = u.value; }
+  if (p) { S.login.phone = p.value; }
+  if (c) { S.login.code = c.value; }
+}
+
+function clock(sec) {
+  var m = Math.floor(sec / 60), r = sec % 60;
+  return fa(m + ':' + (r < 10 ? '0' : '') + r);
+}
+
+function loginView() {
+  var L = S.login;
+  var otpOn = !!(C.otp && C.otp.on);
+  var mode = otpOn ? L.mode : 'pass';
+  var busy = L.busy ? ' disabled' : '';
+  var form, btn;
+
+  if (mode === 'pass') {
+    form = '<p class="pn-login__p">با نام کاربری و رمزی که برایتان تعریف شده وارد شوید.</p>' +
+      '<label class="pn-field"><span class="pn-field__l">نام کاربری</span>' +
+      '<input class="pn-in" id="lg-user" dir="ltr" autocomplete="username" autocapitalize="none" value="' + esc(L.user) + '"></label>' +
+      '<label class="pn-field"><span class="pn-field__l">رمز عبور</span>' +
+      '<input class="pn-in" id="lg-pass" type="password" dir="ltr" autocomplete="current-password"></label>' +
+      '<label class="pn-check" style="margin-bottom:16px">' +
+      '<input type="checkbox" id="lg-remember" checked> مرا به خاطر بسپار</label>';
+    btn = '<button class="pn-btn pn-btn--pri pn-btn--block" data-login' + busy + '>' +
+      (L.busy ? '<span class="pn-spin"></span> در حال ورود…' : 'ورود به پنل') + '</button>';
+  } else if (L.step === 'phone') {
+    form = '<p class="pn-login__p">شماره موبایلی را که برای حساب پنل ثبت شده وارد کنید تا کد تایید پیامک شود.</p>' +
+      '<label class="pn-field"><span class="pn-field__l">شماره موبایل</span>' +
+      '<input class="pn-in" id="lg-phone" type="tel" dir="ltr" inputmode="tel" autocomplete="tel" placeholder="09123456789" value="' + esc(L.phone) + '"></label>';
+    btn = '<button class="pn-btn pn-btn--pri pn-btn--block" data-otp-send' + busy + '>' +
+      (L.busy ? '<span class="pn-spin"></span> در حال ارسال…' : 'ارسال کد تایید') + '</button>';
+  } else {
+    form = '<p class="pn-login__p">کد ' + fa(otpLen()) + ' رقمی به <bdi dir="ltr">' + esc(fa(L.masked)) + '</bdi> پیامک شد.</p>' +
+      '<label class="pn-field"><span class="pn-field__l">کد تایید</span>' +
+      '<input class="pn-in pn-otp" id="lg-code" type="text" dir="ltr" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code"' +
+      ' maxlength="' + otpLen() + '" value="' + esc(L.code) + '"></label>';
+    btn = '<button class="pn-btn pn-btn--pri pn-btn--block" data-otp-verify' + busy + '>' +
+      (L.busy ? '<span class="pn-spin"></span> در حال ورود…' : 'ورود به پنل') + '</button>' +
+      '<div class="pn-login__again">' +
+        '<button class="pn-link" data-otp-edit>ویرایش شماره</button>' +
+        (L.wait > 0
+          ? '<span id="lg-wait">ارسال دوباره تا ' + clock(L.wait) + '</span>'
+          : '<button class="pn-link" data-otp-send>ارسال دوباره‌ی کد</button>') +
+      '</div>';
+  }
+
+  return '<div class="pn-login"><div class="pn-login__box">' +
+    '<div class="pn-login__ic">' + I.engine + '</div>' +
+    '<h2 class="pn-login__t">پنل رزرو نوبت</h2>' +
+    (otpOn
+      ? '<div class="pn-tabs pn-login__tabs">' +
+          '<button class="pn-tabs__b' + (mode === 'otp' ? ' is-on' : '') + '" data-login-mode="otp">کد پیامکی</button>' +
+          '<button class="pn-tabs__b' + (mode === 'pass' ? ' is-on' : '') + '" data-login-mode="pass">نام کاربری و رمز</button>' +
+        '</div>'
+      : '') +
+    '<div class="pn-login__form">' + form +
+      (L.err ? '<div class="pn-note pn-note--bad">' + I.alert + '<div>' + esc(L.err) + '</div></div>' : '') +
+    '</div>' +
+    btn +
+    '<a class="pn-btn pn-btn--soft pn-btn--block" style="margin-top:8px" href="' + esc(C.app || '/') + '">بازگشت به اپ</a>' +
+    installBtn('pn-btn pn-btn--block pn-login__inst', 'نصب پنل روی گوشی') +
+    '</div></div>';
+}
+
+/* شمارش معکوس فقط متن خودش را عوض می‌کند؛ paint هر ثانیه کد نیمه‌تایپ‌شده
+   را جابه‌جا می‌کرد و روی آیفون صفحه‌کلید را می‌بست. */
+function startWait(sec) {
+  clearInterval(otpTimer);
+  S.login.wait = sec;
+
+  otpTimer = setInterval(function () {
+    S.login.wait = Math.max(0, S.login.wait - 1);
+
+    if (S.login.wait <= 0) {
+      clearInterval(otpTimer);
+      otpTimer = 0;
+      // دکمه‌ی «ارسال دوباره» ظاهر شود؛ اگر کاربر رفته سراغ تب رمز،
+      // فرم را از نو نمی‌سازیم که رمزِ نیمه‌تایپ‌شده نپرد.
+      if (!S.can && S.login.mode === 'otp' && S.login.step === 'code') { paint(); }
+      return;
+    }
+
+    var el = document.getElementById('lg-wait');
+    if (el) { el.textContent = 'ارسال دوباره تا ' + clock(S.login.wait); }
+  }, 1000);
+}
+
+function otpSend() {
+  var L = S.login;
+  keepLogin();
+
+  var phone = en(L.phone).replace(/\D/g, '');
+  L.err = '';
+
+  if (phone.length < 10) {
+    L.err = 'شماره موبایل را کامل وارد کنید.';
+    paint();
+    return;
+  }
+
+  L.busy = true;
+  paint();
+
+  post('panel/otp/send', { phone: phone }).then(function (r) {
+    L.busy = false;
+
+    if (r.success === false) {
+      L.err = r.message || 'ارسال کد ناموفق بود.';
+      paint();
+      return;
+    }
+
+    L.step = 'code';
+    L.masked = r.masked || '';
+    L.code = '';
+    startWait(Number(r.resendAfter) || 120);
+    paint();
+  });
+}
+
+function otpVerify() {
+  var L = S.login;
+  keepLogin();
+
+  var code = en(L.code).replace(/\D/g, '');
+  L.err = '';
+
+  if (code.length !== otpLen()) {
+    L.err = 'کد تایید را کامل وارد کنید.';
+    paint();
+    return;
+  }
+
+  L.busy = true;
+  paint();
+
+  post('panel/otp/verify', { phone: en(L.phone).replace(/\D/g, ''), code: code }).then(function (r) {
+    L.busy = false;
+
+    if (r.success === false) {
+      L.err = r.message || 'ورود ناموفق بود.';
+      L.code = '';
+      var c = $('#lg-code');
+      if (c) { c.value = ''; }
+      paint();
+      return;
+    }
+
+    loggedIn(r);
+  });
+}
+
 function doLogin() {
   S.login.user = val('#lg-user').trim();
   var pass = val('#lg-pass');
@@ -1691,15 +1848,22 @@ function doLogin() {
       return;
     }
 
-    // بعد از ورود شناسه‌ی کاربر عوض شده، پس nonce تازه لازم است
-    if (r.nonce) { NONCE = r.nonce; }
-
-    S.can = true;
-    S.login = { user: '', pass: '', err: '', busy: false };
-
-    toast('خوش آمدید' + (r.name ? '، ' + r.name : '') + '.', 'ok');
-    load(S.view);
+    loggedIn(r);
   });
+}
+
+function loggedIn(r) {
+  // بعد از ورود شناسه‌ی کاربر عوض شده، پس nonce تازه لازم است
+  if (r.nonce) { NONCE = r.nonce; }
+
+  clearInterval(otpTimer);
+  otpTimer = 0;
+
+  S.can = true;
+  S.login = freshLogin();
+
+  toast('خوش آمدید' + (r.name ? '، ' + r.name : '') + '.', 'ok');
+  load(S.view);
 }
 
 function shiftBoard(days) {
@@ -1740,6 +1904,35 @@ function bind() {
     if (up('[data-menu-close]')) { e.preventDefault(); S.menu = false; paint(); return; }
 
     if (up('[data-login]')) { e.preventDefault(); doLogin(); return; }
+
+    if ((el = up('[data-login-mode]'))) {
+      e.preventDefault();
+      /* زدن تب فعلی نباید فرم را از نو بسازد؛ رمزی که پر شده (مثلاً با
+         پرکردن خودکار Keychain آیفون) عمداً نگه داشته نمی‌شود و می‌پرید. */
+      if (el.getAttribute('data-login-mode') === S.login.mode) { return; }
+      keepLogin();
+      S.login.mode = el.getAttribute('data-login-mode');
+      S.login.err = '';
+      paint();
+      return;
+    }
+
+    if (up('[data-otp-send]')) { e.preventDefault(); otpSend(); return; }
+    if (up('[data-otp-verify]')) { e.preventDefault(); otpVerify(); return; }
+
+    if (up('[data-otp-edit]')) {
+      e.preventDefault();
+      clearInterval(otpTimer);
+      otpTimer = 0;
+      S.login.step = 'phone';
+      S.login.code = '';
+      S.login.wait = 0;
+      S.login.err = '';
+      var cd = $('#lg-code');
+      if (cd) { cd.value = ''; }
+      paint();
+      return;
+    }
 
     if (up('[data-install]')) {
       e.preventDefault();
@@ -1991,6 +2184,15 @@ function bind() {
   document.addEventListener('input', function (e) {
     var id = e.target && e.target.id;
 
+    /* کد: ارقام فارسی به لاتین، و با کامل شدن خودکار فرستاده می‌شود
+       (پیشنهاد کد از پیامک، همه‌ی رقم‌ها را یک‌جا می‌گذارد). */
+    if (id === 'lg-code') {
+      var v = en(e.target.value).replace(/\D/g, '').slice(0, otpLen());
+      if (v !== e.target.value) { e.target.value = v; }
+      if (v.length === otpLen() && !S.login.busy) { otpVerify(); }
+      return;
+    }
+
     if (id !== 'pn-q' && id !== 'cu-q') { return; }
 
     clearTimeout(typeTimer);
@@ -2042,6 +2244,8 @@ function bind() {
     }
 
     if (e.key === 'Enter' && $('#lg-pass')) { e.preventDefault(); doLogin(); return; }
+    if (e.key === 'Enter' && $('#lg-phone')) { e.preventDefault(); otpSend(); return; }
+    if (e.key === 'Enter' && $('#lg-code')) { e.preventDefault(); otpVerify(); return; }
 
     if (e.key === 'Enter' && $('#pn-q') && document.activeElement === $('#pn-q')) {
       e.preventDefault();

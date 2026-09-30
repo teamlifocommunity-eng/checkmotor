@@ -80,10 +80,13 @@ html.cmb-html, body.cmb-body {
   direction: rtl !important; text-align: right !important;
   -webkit-font-smoothing: antialiased !important;
   overflow-x: hidden !important;
+  /* سافاری آیفون در حالت افقی متن را خودسرانه درشت می‌کرد */
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
 }
 body.cmb-body > *:not(#cmb-panel):not(script):not(style):not(noscript):not(link) { display: none !important; }
 
 #cmb-panel *, #cmb-panel *::before, #cmb-panel *::after { box-sizing: border-box; }
+#cmb-panel { -webkit-tap-highlight-color: transparent; }
 
 /* همان دلیل app.css: ریست با وزن شناسه، رنگ دکمه‌ها را می‌خورد. */
 :where(#cmb-panel button, #cmb-panel input, #cmb-panel select, #cmb-panel textarea) {
@@ -318,6 +321,21 @@ td.pn-code { text-align: right; }
 }
 .pn-in:focus { outline: none; border-color: var(--flame); box-shadow: 0 0 0 3px var(--flame-100); }
 textarea.pn-in { min-height: 76px; resize: vertical; line-height: 1.8; }
+
+/* سافاری آیفون روی select و time ظاهر خودش را می‌کشد (پس‌زمینه‌ی خاکستری،
+   فلش سیستمی، متن وسط‌چین) و به ارتفاع و حاشیه‌ی ما اعتنا نمی‌کند. */
+select.pn-in {
+  -webkit-appearance: none; appearance: none;
+  padding-left: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235B6772' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: left 12px center; background-size: 14px;
+}
+input[type="time"].pn-in, input[type="date"].pn-in {
+  -webkit-appearance: none; appearance: none;
+  display: block; min-height: 40px; line-height: 1.4;
+}
+input[type="time"].pn-in::-webkit-date-and-time-value,
+input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
 .pn-hint { font-size: var(--t-cp); color: var(--ink-3); margin-top: 5px; line-height: 1.7; }
 
 .pn-grid { display: grid; gap: var(--s4); grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
@@ -506,6 +524,7 @@ textarea.pn-in { min-height: 76px; resize: vertical; line-height: 1.8; }
 @keyframes pnfade { from { opacity: 0 } to { opacity: 1 } }
 
 .pn-modal {
+  overscroll-behavior: contain;
   background: var(--card); border-radius: var(--r-lg);
   box-shadow: var(--sh-4); width: 100%; max-width: 540px;
   max-height: 88svh; overflow-y: auto; padding: var(--s5);
@@ -563,14 +582,21 @@ textarea.pn-in { min-height: 76px; resize: vertical; line-height: 1.8; }
   .pn { display: block; }
 
   .pn-main { padding: 0 0 calc(var(--s6) + var(--safe-b)); }
-  .pn-main__in { padding: var(--s4); }
+  /* آیفون افقی: جزیره‌ی پویا و گوشه‌های گرد در چپ و راست */
+  .pn-main__in {
+    padding: var(--s4);
+    padding-left: calc(var(--s4) + env(safe-area-inset-left, 0px));
+    padding-right: calc(var(--s4) + env(safe-area-inset-right, 0px));
+  }
 
   /* ── نوار بالا ── */
   .pn-topbar {
     display: flex; align-items: center; gap: var(--s3);
     position: sticky; top: 0; z-index: 50;
     background: var(--steel-900); color: #fff;
-    padding: calc(env(safe-area-inset-top, 0px) + 10px) var(--s4) 10px;
+    padding: calc(env(safe-area-inset-top, 0px) + 10px)
+             calc(var(--s4) + env(safe-area-inset-right, 0px)) 10px
+             calc(var(--s4) + env(safe-area-inset-left, 0px));
   }
   .pn-topbar__burger, .pn-topbar__app {
     width: 38px; height: 38px; flex: 0 0 38px;
@@ -585,18 +611,27 @@ textarea.pn-in { min-height: 76px; resize: vertical; line-height: 1.8; }
   }
 
   /* ── منوی کشویی ── */
+  /* جای منو صریح و فیزیکی: سمت راست. پیش‌تر inset-inline-end با
+     left:auto خنثی می‌شد و جای منو به «موقعیت ایستا» سپرده بود.
+     وقتی بسته است پنهان هم می‌شود؛ وگرنه سایه‌اش نواری خاکستری کنار
+     راست همه‌ی صفحه‌ها می‌انداخت. */
   .pn-side {
-    position: fixed; inset-block: 0; inset-inline-end: 0; left: auto;
-    width: 264px; max-width: 84vw; height: 100svh;
+    position: fixed; top: 0; bottom: 0; right: 0; left: auto;
+    width: calc(264px + env(safe-area-inset-right, 0px)); max-width: 86vw; height: auto;
     z-index: 80; flex-direction: column;
-    padding: calc(env(safe-area-inset-top, 0px) + var(--s4)) var(--s3)
-             calc(var(--safe-b) + var(--s4));
+    padding: calc(env(safe-area-inset-top, 0px) + var(--s4))
+             calc(var(--s3) + env(safe-area-inset-right, 0px))
+             calc(var(--safe-b) + var(--s4)) var(--s3);
     transform: translateX(100%);
-    transition: transform .26s cubic-bezier(.2,.8,.2,1);
-    box-shadow: -14px 0 40px rgba(11,18,25,.28);
-    overflow-y: auto;
+    visibility: hidden;
+    transition: transform .26s cubic-bezier(.2,.8,.2,1), visibility 0s linear .26s;
+    box-shadow: none;
+    overflow-y: auto; overscroll-behavior: contain;
   }
-  .pn.is-menu .pn-side { transform: none; }
+  .pn.is-menu .pn-side {
+    transform: none; visibility: visible; transition-delay: 0s;
+    box-shadow: -14px 0 40px rgba(11,18,25,.28);
+  }
 
   .pn-side__brand { display: flex; padding-inline-end: 44px; }
   .pn-side__foot { display: block; }
@@ -619,15 +654,17 @@ textarea.pn-in { min-height: 76px; resize: vertical; line-height: 1.8; }
 
   .pn-side__x {
     display: grid; place-items: center;
+    /* سمت چپ، همان‌جا که padding سربرگ منو برایش خالی مانده؛ پیش‌تر
+       سمت راست روی لوگو می‌افتاد. */
     position: absolute; top: calc(env(safe-area-inset-top, 0px) + var(--s4));
-    inset-inline-start: var(--s3);
+    left: var(--s3);
     width: 34px; height: 34px; border-radius: 50%;
     background: rgba(255,255,255,.1); color: #fff; font-size: 15px;
   }
 
   .pn-drawerscrim {
     display: block; position: fixed; inset: 0; z-index: 79;
-    background: rgba(11,18,25,.5);
+    background: rgba(11,18,25,.5); touch-action: none;
     opacity: 0; pointer-events: none; transition: opacity .22s;
   }
   .pn.is-menu .pn-drawerscrim { opacity: 1; pointer-events: auto; }
@@ -698,7 +735,9 @@ textarea.pn-in { min-height: 76px; resize: vertical; line-height: 1.8; }
   .pn-scrim { align-items: flex-end; padding: 0; }
   .pn-modal {
     max-width: none; border-radius: var(--r-lg) var(--r-lg) 0 0;
-    max-height: 92svh; padding: var(--s5) var(--s4) calc(var(--s5) + var(--safe-b));
+    max-height: 92svh;
+    padding: var(--s5) calc(var(--s4) + env(safe-area-inset-right, 0px))
+             calc(var(--s5) + var(--safe-b)) calc(var(--s4) + env(safe-area-inset-left, 0px));
   }
   .pn-modal__ft { flex-wrap: wrap; }
   .pn-modal__ft .pn-btn { flex: 1 1 auto; }
@@ -706,7 +745,11 @@ textarea.pn-in { min-height: 76px; resize: vertical; line-height: 1.8; }
   /* ── انتخابگر تاریخ ── */
   .jd__pop { inset-inline-start: auto; inset-inline-end: 0; width: min(280px, 88vw); }
 
-  .pn-toasts { inset-inline: 16px; bottom: 16px; }
+  .pn-toasts {
+    left: calc(16px + env(safe-area-inset-left, 0px));
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    bottom: calc(16px + var(--safe-b));
+  }
   .pn-toast { max-width: none; }
 }
 
@@ -845,4 +888,35 @@ textarea.pn-in { min-height: 76px; resize: vertical; line-height: 1.8; }
 #cmb-panel .pn-steps svg {
   display: inline-block; vertical-align: -3px;
   font-size: 18px; color: var(--flame);
+}
+
+/* ═══ صفحه‌ی ورود ═══ */
+
+.pn-login__t { font-size: 19px; font-weight: 800; }
+.pn-login__tabs { margin-top: var(--s5); }
+.pn-login__tabs .pn-tabs__b { flex: 1 1 0; padding: 9px 8px; font-size: var(--t-sb); }
+.pn-login__form { text-align: right; margin-top: var(--s4); }
+.pn-login__p { font-size: var(--t-sb); color: var(--ink-3); line-height: 1.9; margin-bottom: var(--s4); }
+.pn-login__form .pn-note { margin-bottom: var(--s4); }
+.pn-otp { text-align: center; font-size: 22px; font-weight: 700; letter-spacing: .45em; }
+.pn-login__again {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: var(--s3); font-size: var(--t-ft); color: var(--ink-3);
+}
+.pn-link { color: var(--flame-600); font-weight: 700; font-size: var(--t-ft); padding: 6px 0; }
+
+/* ═══ صفحه‌ی لمسی (آیفون و اندروید) ═══ */
+
+@media (hover: none) and (pointer: coarse) {
+  /* سافاری آیفون روی هر کادر زیر ۱۶ پیکسل زوم می‌کند و بعد از بستن
+     صفحه‌کلید زوم باقی می‌ماند؛ در اپ نصب‌شده کل پنل و منو بزرگ و
+     بیرون‌زده دیده می‌شد. */
+  #cmb-panel input:not([type="checkbox"]):not([type="radio"]):not(.pn-otp),
+  #cmb-panel select, #cmb-panel textarea { font-size: 16px; }
+
+  /* روی صفحه‌ی لمسی hover بعد از لمس می‌چسبد؛ دکمه‌ی آخرین لمس
+     هایلایت می‌ماند و دو گزینه‌ی منو با هم روشن دیده می‌شدند. */
+  .pn-side__b:not(.is-on):hover { background: none; color: rgba(255,255,255,.66); }
+  .pn-btn--soft:hover { background: var(--card); }
+  .pn-modal__x:hover { background: var(--g6); }
 }
