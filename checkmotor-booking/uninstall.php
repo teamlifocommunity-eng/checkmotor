@@ -43,6 +43,8 @@ $cmb_options = array(
 	'cmb_last_tick',
 	'cmb_autocomplete_day',
 	'cmb_new_user_role',
+	'cmb_panel_pwa',
+	'cmb_panel_app_name',
 );
 
 foreach ( $cmb_options as $cmb_option ) {

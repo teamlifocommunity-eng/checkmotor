@@ -109,6 +109,8 @@ body.cmb-body > *:not(#cmb-panel):not(script):not(style):not(noscript):not(link)
   position: sticky; top: 0; height: 100svh;
   display: flex; flex-direction: column;
   padding: var(--s5) var(--s3);
+  /* داخل اپ نصب‌شده‌ی آیفون/آیپد نوار وضعیت روی صفحه می‌افتد */
+  padding-top: calc(env(safe-area-inset-top, 0px) + var(--s5));
 }
 .pn-side__brand {
   display: flex; align-items: center; gap: var(--s3);
@@ -141,7 +143,7 @@ body.cmb-body > *:not(#cmb-panel):not(script):not(style):not(noscript):not(link)
 .pn-side__foot { padding-top: var(--s4); border-top: 1px solid rgba(255,255,255,.1); }
 .pn-side__me { font-size: var(--t-ft); color: rgba(255,255,255,.5); padding: 0 var(--s3) var(--s2); }
 
-.pn-main { flex: 1; min-width: 0; padding: var(--s6); }
+.pn-main { flex: 1; min-width: 0; padding: var(--s6); padding-top: calc(env(safe-area-inset-top, 0px) + var(--s6)); }
 .pn-main__in { max-width: 1120px; margin: 0 auto; }
 
 .pn-head {
@@ -797,3 +799,50 @@ textarea.pn-in { min-height: 76px; resize: vertical; line-height: 1.8; }
 .pn-hl--ok   { background: var(--ok-bg);    color: var(--ok);    border-color: var(--ok); }
 .pn-hl--warn { background: var(--warn-bg);  color: var(--warn);  border-color: var(--warn); }
 .pn-hl--bad  { background: var(--bad-bg);   color: var(--bad);   border-color: var(--bad); }
+
+/* ═══ نصب روی گوشی ═══ */
+
+/* اپ نصب‌شده روی آیفون نوار وضعیت شفاف دارد (black-translucent) و
+   متنش سفید است؛ روی صفحه‌ی ورود و چیدمان آیپد که پس‌زمینه روشن است
+   ساعت و باتری دیده نمی‌شد. این نوار تیره دقیقاً هم‌قد نوار وضعیت
+   است و بیرون از اپ نصب‌شده ارتفاعش صفر است. */
+.cmb-panel-body::before {
+  content: ''; position: fixed; top: 0; left: 0; right: 0; z-index: 90;
+  height: env(safe-area-inset-top, 0px);
+  background: var(--steel-900); pointer-events: none;
+}
+
+/* دکمه‌ها همیشه ساخته می‌شوند و با hidden پنهان می‌مانند تا وقتی
+   نصب ممکن شود؛ display کلاس‌های دکمه، hidden مرورگر را خنثی می‌کند. */
+#cmb-panel [data-install][hidden] { display: none !important; }
+
+.pn-login__inst { margin-top: 6px; background: none; color: var(--flame-600); }
+
+.pn-install {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s3); margin-bottom: var(--s4);
+  background: var(--g6); border-radius: var(--r);
+}
+.pn-install__ic {
+  width: 56px; height: 56px; flex: 0 0 56px;
+  border-radius: 14px; box-shadow: var(--sh-2);
+}
+.pn-install__n { font-size: var(--t-hd); font-weight: 800; letter-spacing: -.3px; }
+.pn-install__s { font-size: var(--t-cp); color: var(--ink-3); margin-top: 2px; line-height: 1.8; }
+
+.pn-steps { list-style: none; margin: 0 0 var(--s4); padding: 0; }
+.pn-steps li {
+  display: flex; align-items: flex-start; gap: var(--s3);
+  padding: 10px 0; border-bottom: 1px dashed var(--g5);
+  font-size: var(--t-sb); line-height: 1.9;
+}
+.pn-steps li:last-child { border-bottom: 0; }
+.pn-steps__n {
+  width: 26px; height: 26px; flex: 0 0 26px; margin-top: 1px;
+  border-radius: 50%; background: var(--flame-50); color: var(--flame-600);
+  display: grid; place-items: center; font-size: var(--t-cp); font-weight: 800;
+}
+#cmb-panel .pn-steps svg {
+  display: inline-block; vertical-align: -3px;
+  font-size: 18px; color: var(--flame);
+}

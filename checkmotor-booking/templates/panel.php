@@ -28,12 +28,19 @@ nocache_headers();
 <meta name="robots" content="noindex,nofollow">
 <title>پنل مدیریت — چک موتور</title>
 
+<?php
+/* manifest و آیکون خود پنل، پیش از هر چیز دیگری. بدون این، «Add to
+   Home Screen» روی آیفون manifest افزونه‌ی PWA سایت را برمی‌داشت و
+   آیکون ساخته‌شده صفحه‌ی اپ اصلی را باز می‌کرد نه پنل را. */
+CMB_Panel_Pwa::head_tags();
+?>
+
 <link rel="preload" as="font" type="font/woff2" crossorigin
       href="<?php echo esc_url( CMB_URL . 'assets/fonts/IRANYekanX-Regular.woff2' ); ?>">
 <link rel="preload" as="font" type="font/woff2" crossorigin
       href="<?php echo esc_url( CMB_URL . 'assets/fonts/IRANYekanX-Bold.woff2' ); ?>">
 
-<?php wp_head(); ?>
+<?php CMB_Panel_Pwa::wp_head(); /* همان wp_head، بدون manifest و تگ‌های نصب دیگران */ ?>
 
 <style>
 	html, body { margin: 0; padding: 0; background: #F4F6F8; }

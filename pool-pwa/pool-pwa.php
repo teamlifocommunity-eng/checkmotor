@@ -3,7 +3,7 @@
  * Plugin Name:        TeamLIFO PWA — نصب وب‌اپلیکیشن
  * Plugin URI:        https://teamlifo.ir
  * Description:        TeamLIFO PWA is a standalone and fully local plugin for converting a website into a installable web application (PWA). It includes manifest, Service Worker, icon, offline support, Persian install prompt and shortcode [pool_pwa_install]. It is available for any website.
- * Version:           1.0.0
+ * Version:           2.4.0
  * Author:            TeamLIFO
  * Text Domain:       teamlifo-pwa
  * License:           GPL-2.0+
@@ -11,7 +11,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'POOL_PWA_VER', '2.3.0' );
+define( 'POOL_PWA_VER', '2.4.0' );
 define( 'POOL_PWA_FILE', __FILE__ );
 define( 'POOL_PWA_URL', plugin_dir_url( __FILE__ ) );
 define( 'POOL_PWA_DIR', plugin_dir_path( __FILE__ ) );
@@ -44,6 +44,23 @@ function pool_pwa_get( $key ) {
 }
 function pool_pwa_url( $what ) {
 	return home_url( '/?pool_pwa=' . $what );
+}
+/**
+ * آیا این صفحه وب‌اپ جداگانه‌ی خودش را دارد؟
+ *
+ * بعضی صفحه‌ها باید جدا روی گوشی نصب شوند، با manifest و start_url
+ * خودشان (مثلاً پنل مدیریت رزرو چک موتور). اگر این افزونه روی آن‌ها هم
+ * manifest سراسری را چاپ کند، «Add to Home Screen» start_url اپ اصلی
+ * را برمی‌دارد و آیکون ساخته‌شده صفحه‌ی اشتباهی را باز می‌کند.
+ *
+ * افزونه‌ی صاحب صفحه این فیلتر را true می‌کند؛ آن‌وقت این‌جا نه
+ * manifest و متاتگ چاپ می‌شود، نه بنر و دکمه‌ی نصب. فقط Service Worker
+ * ثبت می‌شود تا صفحه‌ی آفلاین سایت همچنان کار کند.
+ *
+ *     add_filter( 'pool_pwa_skip_page', '__return_true' );
+ */
+function pool_pwa_skip_page() {
+	return (bool) apply_filters( 'pool_pwa_skip_page', false );
 }
 function pool_pwa_icon( $size ) {
 	$custom = pool_pwa_get( $size === 512 ? 'icon_512' : 'icon_192' );
@@ -204,7 +221,7 @@ add_action( 'init', function () {
 }, 5 );
 
 add_action( 'wp_head', function () {
-	if ( ! pool_pwa_get( 'enabled' ) || is_admin() ) { return; }
+	if ( ! pool_pwa_get( 'enabled' ) || is_admin() || pool_pwa_skip_page() ) { return; }
 	$theme = esc_attr( pool_pwa_get( 'theme_color' ) );
 	echo "\n<!-- Pool PWA " . esc_html( POOL_PWA_VER ) . " -->\n";
 	echo '<link rel="manifest" href="' . esc_url( pool_pwa_url( 'manifest' ) ) . '">' . "\n";
@@ -217,8 +234,10 @@ add_action( 'wp_head', function () {
 
 add_action( 'wp_footer', function () {
 	if ( ! pool_pwa_get( 'enabled' ) || is_admin() ) { return; }
-	$cfg = array(
+	$skip = pool_pwa_skip_page();
+	$cfg  = array(
 		'swUrl'       => pool_pwa_url( 'sw' ),
+		'swOnly'      => $skip,
 		'showPrompt'  => (bool) pool_pwa_get( 'show_prompt' ),
 		'promptText'  => pool_pwa_get( 'prompt_text' ),
 		'promptPages' => pool_pwa_get( 'prompt_pages' ),
@@ -309,6 +328,9 @@ function pool_pwa_front_js() {
       reg.update();
     }).catch(function(err){ try{console.error('[Pool PWA] خطای ثبت SW:', err);}catch(e){} });
   }
+
+  // صفحه‌ای که اپ جداگانه‌ی خودش را دارد: نه بنر، نه دکمه‌ی نصب، نه مدیریت back
+  if (cfg.swOnly) return;
 
   function dismissed(){ try{ var t=parseInt(localStorage.getItem('poolpwa_x'),10); return t && (Date.now()-t<7*864e5);}catch(e){return false;} }
   function setDismiss(){ try{localStorage.setItem('poolpwa_x',String(Date.now()));}catch(e){}}

@@ -174,6 +174,8 @@ var I = {
   out: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 21H5.5A2 2 0 0 1 3.5 19V5a2 2 0 0 1 2-2h4"/><path d="M16 16.5L20.5 12 16 7.5"/><path d="M20.5 12H9.5"/></svg>',
   chevL: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 18.5L8 12l6.5-6.5"/></svg>',
   chevR: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 18.5L16 12 9.5 5.5"/></svg>',
+  phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.6"/><path d="M11 18.5h2"/></svg>',
+  share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11"/><path d="M8 7.2l4-3.7 4 3.7"/><path d="M8.5 10.5h-2A1.5 1.5 0 0 0 5 12v7a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-7a1.5 1.5 0 0 0-1.5-1.5h-2"/></svg>',
   empty: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="2.6"/><path d="M3.5 9.5h17M8 2.8v3.4M16 2.8v3.4M9 14.5h6"/></svg>'
 };
 
@@ -216,6 +218,7 @@ function side() {
     '</nav>' +
     '<div class="pn-side__foot">' +
       '<div class="pn-side__me">' + esc(C.me || '') + '</div>' +
+      installBtn('pn-side__b', 'نصب روی گوشی') +
       '<a class="pn-side__b" href="' + esc(C.app || '/') + '">' + I.out + '<span>دیدن اپ مشتری</span></a>' +
     '</div></aside>';
 }
@@ -306,6 +309,7 @@ function viewSummary() {
       '<button class="pn-btn pn-btn--soft" data-view="bookings">' + I.list + ' فهرست نوبت‌ها</button>' +
       '<button class="pn-btn pn-btn--soft" data-view="closures">' + I.lock + ' بستن یک روز</button>' +
       '<a class="pn-btn pn-btn--soft" href="' + esc(C.app || '/') + '" target="_blank">' + I.car + ' دیدن اپ مشتری</a>' +
+      installBtn('pn-btn pn-btn--soft', 'نصب پنل روی گوشی') +
       (C.wpAdmin ? '<a class="pn-btn pn-btn--soft" href="' + esc(C.wpAdmin) + '" target="_blank">' + I.gear + ' تنظیمات (پیشخوان وردپرس)</a>' : '') +
     '</div></div>';
 
@@ -1180,10 +1184,12 @@ function render() {
       '<button class="pn-btn pn-btn--pri pn-btn--block" data-login' + (L.busy ? ' disabled' : '') + '>' +
         (L.busy ? '<span class="pn-spin"></span> در حال ورود…' : 'ورود به پنل') + '</button>' +
       '<a class="pn-btn pn-btn--soft pn-btn--block" style="margin-top:8px" href="' + esc(C.app || '/') + '">بازگشت به اپ</a>' +
-      '</div></div><div id="pn-toasts" class="pn-toasts"></div>';
+      installBtn('pn-btn pn-btn--block pn-login__inst', 'نصب پنل روی گوشی') +
+      '</div></div><div id="pn-toasts" class="pn-toasts"></div><div id="pn-modal"></div>';
 
     shellKey = 'login';
     paintToasts();
+    paintModal();
 
     var lf = document.getElementById('lg-user');
     if (lf && !L.user) { setTimeout(function () { try { lf.focus(); } catch (e) {} }, 60); }
@@ -1259,7 +1265,7 @@ function paintModal() {
 
   if (!S.modal && !S.svcEdit) { host.innerHTML = ''; return; }
 
-  var inner = S.svcEdit ? svcModal() : bookingModal();
+  var inner = S.svcEdit ? svcModal() : (S.modal.install ? installModal() : bookingModal());
   host.innerHTML = '<div class="pn-scrim" data-scrim><div class="pn-modal">' + inner + '</div></div>';
 }
 
@@ -1735,6 +1741,13 @@ function bind() {
 
     if (up('[data-login]')) { e.preventDefault(); doLogin(); return; }
 
+    if (up('[data-install]')) {
+      e.preventDefault();
+      if (S.menu) { S.menu = false; paint(); }
+      install();
+      return;
+    }
+
     if (up('[data-reload]')) { e.preventDefault(); S[S.view] = null; S.summary = null; load(S.view); return; }
 
     if ((el = up('[data-open]'))) {
@@ -2056,6 +2069,105 @@ function findBooking(id) {
   });
 
   return hit;
+}
+
+/* ═══ نصب روی گوشی ═══
+
+   پنل manifest خودش را دارد (CMB_Panel_Pwa) و جدا از اپ اصلی سایت نصب
+   می‌شود. اندروید و کروم دسکتاپ پنجره‌ی نصب بومی دارند؛ آیفون ندارد و
+   فقط از منوی اشتراک‌گذاری می‌شود، پس آن‌جا راهنما نشان داده می‌شود. */
+
+var PWA = C.pwa || null;
+var installEvt = null;
+var UA = navigator.userAgent || '';
+var IS_IOS = /iphone|ipad|ipod/i.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+var IS_MOBILE = IS_IOS || /android|mobile/i.test(UA);
+
+function standalone() {
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+    window.navigator.standalone === true;
+}
+
+/** دکمه فقط وقتی معنی دارد که واقعاً کاری از دستش بربیاید. */
+function canInstall() {
+  return !!PWA && !standalone() && (!!installEvt || IS_MOBILE);
+}
+
+/* دکمه همیشه ساخته می‌شود (مگر داخل خود اپ نصب‌شده) و فقط پنهان/پیدا
+   می‌شود. رویداد نصب کروم ممکن است بعد از رندر برسد؛ بازسازی صفحه در
+   آن لحظه نام کاربری نیمه‌تایپ‌شده‌ی فرم ورود را پاک می‌کرد. */
+function installBtn(cls, label) {
+  if (!PWA || standalone()) { return ''; }
+
+  return '<button class="' + cls + '" data-install' + (canInstall() ? '' : ' hidden') + '>' +
+    I.phone + '<span>' + label + '</span></button>';
+}
+
+function syncInstall() {
+  var show = canInstall();
+  $$('[data-install]').forEach(function (el) { el.hidden = !show; });
+}
+
+function install() {
+  if (installEvt) {
+    var ev = installEvt;
+    installEvt = null; // هر رویداد فقط یک بار prompt می‌شود
+
+    try {
+      ev.prompt();
+      Promise.resolve(ev.userChoice).then(function (c) {
+        if (c && c.outcome === 'accepted') { toast('پنل نصب شد.', 'ok'); }
+        syncInstall();
+      }, syncInstall);
+      return;
+    } catch (err) { /* می‌رسیم به راهنما */ }
+  }
+
+  S.modal = { install: true };
+  paintModal();
+}
+
+function installModal() {
+  var name = esc((PWA && PWA.name) || 'مدیریت رزرو');
+
+  var steps = IS_IOS ? [
+    'این صفحه را در <b>Safari</b> باز کنید.',
+    'دکمه‌ی <b>اشتراک‌گذاری</b> ' + I.share + ' را بزنید (پایین یا بالای صفحه).',
+    'گزینه‌ی <b><bdi>Add to Home Screen</bdi></b> یا «افزودن به صفحه‌ی اصلی» را انتخاب کنید و <b><bdi>Add</bdi></b> را بزنید.'
+  ] : [
+    'منوی مرورگر <b><bdi>⋮</bdi></b> را باز کنید.',
+    'گزینه‌ی <b><bdi>Install app</bdi></b> یا <b><bdi>Add to Home screen</bdi></b> («نصب برنامه» یا «افزودن به صفحه‌ی اصلی») را بزنید.'
+  ];
+
+  return '<div class="pn-modal__hd"><div class="pn-modal__t">نصب پنل روی گوشی</div>' +
+      '<button class="pn-modal__x" data-close>' + I.x + '</button></div>' +
+
+    '<div class="pn-install">' +
+      (PWA && PWA.icon ? '<img class="pn-install__ic" src="' + esc(PWA.icon) + '" alt="">' : '') +
+      '<div><div class="pn-install__n">' + name + '</div>' +
+      '<div class="pn-install__s">آیکونی جدا از اپ اصلی سایت که مستقیم همین پنل را باز می‌کند.</div></div>' +
+    '</div>' +
+
+    '<ol class="pn-steps">' + steps.map(function (s, i) {
+      return '<li><span class="pn-steps__n">' + fa(i + 1) + '</span><div>' + s + '</div></li>';
+    }).join('') + '</ol>' +
+
+    note('info', I.info, 'اگر بار اول با باز کردن آیکون صفحه‌ی ورود دیدید، یک بار با همین نام کاربری و رمز وارد شوید.') +
+
+    '<div class="pn-modal__ft"><button class="pn-btn pn-btn--pri pn-btn--block" data-close>متوجه شدم</button></div>';
+}
+
+if (PWA) {
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault(); // پنجره‌ی خودکار کروم نه؛ با دکمه‌ی پنل نشان داده می‌شود
+    installEvt = e;
+    syncInstall();
+  });
+
+  window.addEventListener('appinstalled', function () {
+    installEvt = null;
+    syncInstall();
+  });
 }
 
 /* ═══ راه‌اندازی ═══ */

@@ -823,6 +823,26 @@ class CMB_Admin {
 						</td>
 					</tr>
 					<tr>
+						<th><label>نصب پنل روی گوشی</label></th>
+						<td>
+							<label class="cmb-check">
+								<input type="checkbox" name="cmb_panel_pwa" value="1" <?php checked( (int) get_option( 'cmb_panel_pwa', 1 ), 1 ); ?> /> پنل مدیریت جدا از اپ اصلی سایت به صفحه‌ی اصلی گوشی اضافه شود
+							</label>
+							<p class="description">
+								روی <code><?php echo esc_html( cmb_app_url( 'panel' ) ); ?></code> گزینه‌ی «Add to Home Screen» آیکونی می‌سازد که مستقیم همین پنل را باز می‌کند،
+								نه صفحه‌ای که افزونه‌ی PWA سایت برای اپ اصلی تعیین کرده. اپ اصلی سایت تغییری نمی‌کند.
+								در خود پنل هم دکمه‌ی «نصب روی گوشی» با راهنمای آیفون و اندروید هست.
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th><label>نام اپ پنل</label></th>
+						<td>
+							<input type="text" name="cmb_panel_app_name" class="regular-text" value="<?php echo esc_attr( get_option( 'cmb_panel_app_name', '' ) ); ?>" placeholder="مدیریت رزرو" />
+							<p class="description">زیر آیکون روی صفحه‌ی اصلی گوشی نوشته می‌شود. کوتاه باشد (حدود ۱۲ حرف) تا بریده نشود. خالی یعنی «مدیریت رزرو».</p>
+						</td>
+					</tr>
+					<tr>
 						<th><label>فایل فونت (اختیاری)</label></th>
 						<td>
 							<input type="text" name="cmb_font_url" class="regular-text" dir="ltr" value="<?php echo esc_attr( get_option( 'cmb_font_url', '' ) ); ?>" placeholder="https://example.com/font.woff2" />
@@ -1064,6 +1084,12 @@ class CMB_Admin {
 
 		if ( isset( $_POST['cmb_font_url'] ) ) {
 			update_option( 'cmb_font_url', esc_url_raw( wp_unslash( $_POST['cmb_font_url'] ) ) );
+		}
+
+		update_option( 'cmb_panel_pwa', isset( $_POST['cmb_panel_pwa'] ) ? 1 : 0 );
+
+		if ( isset( $_POST['cmb_panel_app_name'] ) ) {
+			update_option( 'cmb_panel_app_name', sanitize_text_field( wp_unslash( $_POST['cmb_panel_app_name'] ) ) );
 		}
 
 		/* عوض شدن نشانی اپ یعنی قواعد بازنویسی باید دوباره نوشته شوند،
