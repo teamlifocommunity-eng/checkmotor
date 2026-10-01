@@ -406,25 +406,11 @@ class CMB_Bookings {
 	 * @return DateTime|null
 	 */
 	public static function slot_datetime( $booking ) {
-		if ( ! $booking || ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $booking->booking_date ) ) {
+		if ( ! $booking ) {
 			return null;
 		}
 
-		$start = (string) cmb_block_start( $booking->block_key );
-
-		if ( ! preg_match( '/^\d{1,2}:\d{2}$/', $start ) ) {
-			$start = '00:00';
-		}
-
-		/* علامت «!» یعنی ثانیه و بقیه‌ی اجزای پارس‌نشده صفر شوند؛
-		   بدون آن، ثانیه‌ی همین لحظه داخل تاریخ می‌نشیند. */
-		$dt = DateTime::createFromFormat(
-			'!Y-m-d H:i',
-			$booking->booking_date . ' ' . $start,
-			cmb_timezone()
-		);
-
-		return $dt ? $dt : null;
+		return cmb_slot_start( (string) $booking->booking_date, $booking->block_key );
 	}
 
 	/**

@@ -142,6 +142,9 @@ body.cmb-body > *:not(#cmb-panel):not(script):not(style):not(noscript):not(link)
   background: rgba(255,255,255,.16); border-radius: 999px; padding: 2px 7px;
 }
 .pn-side__b.is-on .pn-count { background: rgba(0,0,0,.2); }
+/* خروج: قرمز ملایم، تا با دکمه‌های رفتن به بخش‌ها اشتباه نشود */
+.pn-side__b--out { color: #ff9d8c; }
+.pn-side__b--out:hover { background: rgba(255,94,72,.12); color: #ffb9ad; }
 
 .pn-side__foot { padding-top: var(--s4); border-top: 1px solid rgba(255,255,255,.1); }
 .pn-side__me { font-size: var(--t-ft); color: rgba(255,255,255,.5); padding: 0 var(--s3) var(--s2); }
@@ -917,6 +920,7 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
   /* روی صفحه‌ی لمسی hover بعد از لمس می‌چسبد؛ دکمه‌ی آخرین لمس
      هایلایت می‌ماند و دو گزینه‌ی منو با هم روشن دیده می‌شدند. */
   .pn-side__b:not(.is-on):hover { background: none; color: rgba(255,255,255,.66); }
+  .pn-side__b--out:not(.is-on):hover { color: #ff9d8c; }
   .pn-btn--soft:hover { background: var(--card); }
   .pn-modal__x:hover { background: var(--g6); }
 }

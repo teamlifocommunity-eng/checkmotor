@@ -596,6 +596,12 @@ class CMB_Admin {
 						</td>
 					</tr>
 					<tr>
+						<th><label>حداقل زمان تا شروع شیفت</label></th>
+						<td><input type="number" name="min_hours_ahead" min="0" max="336" value="<?php echo esc_attr( $s['min_hours_ahead'] ); ?>" class="small-text" /> ساعت
+							<p class="description">برای همه‌ی خدمات. با ۲۴، ساعت ۶ عصر امروز شیفت ۱۰ صبح فردا قابل رزرو نیست ولی شیفت عصر فردا هست. ۰ یعنی فقط «حداقل فاصله» بالا اعمال شود.</p>
+						</td>
+					</tr>
+					<tr>
 						<th><label>طول پنجره‌ی رزرو</label></th>
 						<td><input type="number" name="window_days" min="1" max="60" value="<?php echo esc_attr( $s['window_days'] ); ?>" class="small-text" /> روز</td>
 					</tr>
@@ -1125,6 +1131,7 @@ class CMB_Admin {
 			'morning_capacity',
 			'afternoon_capacity',
 			'min_days_ahead',
+			'min_hours_ahead',
 			'window_days',
 			'max_active_per_user',
 			'cancel_deadline_hours',

@@ -22,6 +22,7 @@ class CMB_Settings {
 			'afternoon_start'       => '17:00',
 			'afternoon_capacity'    => 3,
 			'min_days_ahead'        => 1,   // رزرو برای همان روز مجاز نیست
+			'min_hours_ahead'       => 24,  // شروع شیفت دست‌کم این‌قدر بعد از لحظه‌ی رزرو
 			'window_days'           => 7,   // پنجره‌ی چرخشی ۷ روزه
 			'max_active_per_user'   => 1,   // حداکثر نوبت فعال هم‌زمان برای هر کاربر
 			'one_per_service'       => 1,   // از هر خدمت هم‌زمان فقط یک نوبت
@@ -134,6 +135,7 @@ class CMB_Settings {
 			'morning_capacity'      => array( 'int', 0, 50 ),
 			'afternoon_capacity'    => array( 'int', 0, 50 ),
 			'min_days_ahead'        => array( 'int', 0, 30 ),
+			'min_hours_ahead'       => array( 'int', 0, 336 ),
 			'window_days'           => array( 'int', 1, 60 ),
 			'max_active_per_user'   => array( 'int', 0, 10 ),
 			'one_per_service'       => array( 'bool' ),

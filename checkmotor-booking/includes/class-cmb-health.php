@@ -33,6 +33,7 @@ class CMB_Health {
 		$checks = array_merge(
 			self::check_schema(),
 			self::check_schedule(),
+			self::check_timezone(),
 			self::check_services(),
 			self::check_stale_bookings(),
 			self::check_orphans(),
@@ -141,6 +142,50 @@ class CMB_Health {
 		}
 
 		return $out;
+	}
+
+	/**
+	 * منطقه‌ی زمانی سایت.
+	 *
+	 * ساعت شروع شیفت‌ها، «حداقل ۲۴ ساعت تا نوبت»، مهلت لغو و یادآوری‌ها
+	 * همه با ساعت سایت حساب می‌شوند. ایران از ۱۴۰۱ ساعت تابستانی ندارد و
+	 * اختلافش با UTC همیشه ۳:۳۰ است؛ ولی داده‌ی منطقه‌ی زمانیِ PHP روی
+	 * سرورهای به‌روزنشده هنوز «Asia/Tehran» را در تابستان ۴:۳۰ حساب
+	 * می‌کند و همه‌چیز یک ساعت جابه‌جا می‌شود.
+	 */
+	protected static function check_timezone() {
+		$tz     = cmb_timezone();
+		$name   = $tz->getName();
+		$year   = (int) cmb_now()->format( 'Y' );
+		$summer = $tz->getOffset( new DateTime( $year . '-07-01 12:00:00', new DateTimeZone( 'UTC' ) ) );
+		$winter = $tz->getOffset( new DateTime( $year . '-01-01 12:00:00', new DateTimeZone( 'UTC' ) ) );
+		$iran   = 12600; // ۳:۳۰ ساعت
+		$fix    = 'در «تنظیمات ← عمومی» وردپرس، منطقه‌ی زمانی را «UTC+3:30» بگذارید. این گزینه به داده‌ی منطقه‌ی زمانی سرور وابسته نیست.';
+		$title  = 'منطقه‌ی زمانی سایت';
+
+		if ( $iran === $summer && $iran === $winter ) {
+			return array( self::item( self::OK, $title, sprintf( 'ساعت سایت با ساعت ایران یکی است (%s).', $name ) ) );
+		}
+
+		if ( $iran === $winter && $summer !== $iran ) {
+			return array(
+				self::item(
+					self::BAD,
+					$title,
+					'سرور هنوز برای ایران ساعت تابستانی حساب می‌کند (ایران از ۱۴۰۱ ساعت تابستانی ندارد). در نیمه‌ی اول سال ساعت شیفت‌ها، مهلت لغو و قانون ۲۴ ساعت یک ساعت جابه‌جا حساب می‌شوند.',
+					$fix
+				),
+			);
+		}
+
+		return array(
+			self::item(
+				self::WARN,
+				$title,
+				sprintf( 'منطقه‌ی زمانی سایت «%s» است، نه ایران؛ ساعت شیفت‌ها، مهلت لغو و قانون ۲۴ ساعت با این ساعت حساب می‌شوند.', $name ),
+				$fix
+			),
+		);
 	}
 
 	/**

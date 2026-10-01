@@ -1015,7 +1015,7 @@ class CMB_Panel_Api {
 				MAX(user_id) AS user_id,
 				SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS done,
 				SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
-				SUM(CASE WHEN status = 'noshow' THEN 1 ELSE 0 END) AS noshow
+				SUM(CASE WHEN status = 'no_show' THEN 1 ELSE 0 END) AS noshow
 			FROM {$table}
 			WHERE {$where_sql}
 			GROUP BY phone

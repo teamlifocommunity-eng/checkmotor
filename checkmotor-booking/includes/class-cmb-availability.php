@@ -30,8 +30,10 @@ class CMB_Availability {
 		$min_days = (int) CMB_Settings::get( 'min_days_ahead', 1 );
 		$window   = (int) CMB_Settings::get( 'window_days', 7 );
 
-		$days   = array();
-		$blocks = cmb_blocks();
+		$days     = array();
+		$blocks   = cmb_blocks();
+		$earliest = cmb_earliest_slot();
+		$hours    = max( 0, (int) CMB_Settings::get( 'min_hours_ahead', 24 ) );
 
 		$start = new DateTime( cmb_today(), cmb_timezone() );
 		$start->modify( '+' . $min_days . ' day' );
@@ -68,6 +70,8 @@ class CMB_Availability {
 				continue;
 			}
 
+			$soon_blocks = 0;
+
 			foreach ( $blocks as $key => $block ) {
 				/* ظرفیت و شمارش از استخرِ همین خدمت: اشتراکی یا سهمیه‌ی
 				   جداگانه‌ی خودش. */
@@ -81,24 +85,37 @@ class CMB_Availability {
 					continue;
 				}
 
+				// کمتر از «حداقل زمان تا نوبت» به شروع این شیفت مانده
+				$slot = cmb_slot_start( $ymd, $key );
+				$soon = $earliest && $slot && $slot < $earliest;
+
+				if ( $soon ) {
+					$soon_blocks++;
+				}
+
+				$open = ! $closed && ! $soon && $free > 0;
+
 				$day['blocks'][] = array(
 					'key'       => $key,
 					'label'     => $block['label'],
 					'start'     => $block['start'],
 					'startFa'   => cmb_fa_num( $block['start'] ),
 					'capacity'  => $capacity,
-					'remaining' => $closed ? 0 : $free,
-					'available' => ( ! $closed && $free > 0 ),
-					'reason'    => $closed ? 'بسته شده' : ( $free > 0 ? '' : 'تکمیل' ),
+					'remaining' => ( $closed || $soon ) ? 0 : $free,
+					'available' => $open,
+					'soon'      => $soon,
+					'reason'    => $closed ? 'بسته شده' : ( $soon ? sprintf( 'کمتر از %s ساعت', cmb_fa_num( $hours ) ) : ( $free > 0 ? '' : 'تکمیل' ) ),
 				);
 
-				if ( ! $closed && $free > 0 ) {
+				if ( $open ) {
 					$day['available'] = true;
 				}
 			}
 
 			if ( ! $day['available'] && '' === $day['reason'] ) {
-				$day['reason'] = 'ظرفیت تکمیل است';
+				$day['reason'] = ( $soon_blocks && $soon_blocks === count( $day['blocks'] ) )
+					? sprintf( 'نوبت باید دست‌کم %s ساعت پیش از شروع شیفت گرفته شود؛ برای این روز دیگر دیر است.', cmb_fa_num( $hours ) )
+					: 'ظرفیت تکمیل است';
 			}
 
 			$days[] = $day;
@@ -109,7 +126,9 @@ class CMB_Availability {
 			'days'     => $days,
 			'window'   => $window,
 			'minDays'  => $min_days,
+			'minHours' => $hours,
 			'notes'    => array(
+				'minHours'    => $hours > 0 ? sprintf( 'نوبت را دست‌کم %s ساعت پیش از شروع شیفت بگیرید؛ شیفت‌هایی که زودتر شروع می‌شوند قابل انتخاب نیستند.', cmb_fa_num( $hours ) ) : '',
 				'ecu'         => CMB_Settings::get( 'ecu_note', '' ),
 				'outOfWindow' => CMB_Settings::get( 'out_of_window_note', '' ),
 				'lateRule'    => CMB_Settings::get( 'late_rule_note', '' ),
@@ -393,6 +412,19 @@ class CMB_Availability {
 
 		if ( $diff > ( $min_days + $window - 1 ) ) {
 			return new WP_Error( 'cmb_too_far', CMB_Settings::get( 'out_of_window_note', 'این تاریخ خارج از بازه‌ی رزرو آنلاین است.' ), array( 'status' => 400 ) );
+		}
+
+		$earliest = cmb_earliest_slot();
+		$slot     = cmb_slot_start( $date, $block_key );
+
+		if ( $earliest && $slot && $slot < $earliest ) {
+			$hours = max( 0, (int) CMB_Settings::get( 'min_hours_ahead', 24 ) );
+
+			return new WP_Error(
+				'cmb_too_soon',
+				sprintf( 'نوبت باید دست‌کم %s ساعت پیش از شروع شیفت گرفته شود و این شیفت زودتر شروع می‌شود. شیفت دیگری انتخاب کنید.', cmb_fa_num( $hours ) ),
+				array( 'status' => 400 )
+			);
 		}
 
 		$weekday = (int) $then->format( 'w' );

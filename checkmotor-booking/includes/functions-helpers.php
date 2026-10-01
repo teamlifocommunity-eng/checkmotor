@@ -126,13 +126,59 @@ function cmb_city_suggestions() {
  * سراسر افزونه یکی باشد — و بشود در تست جایش را گرفت.
  */
 function cmb_now() {
-	return new DateTime( 'now', cmb_timezone() );
+	/* فیلتر یک برچسب زمانی (ثانیه) می‌گیرد و برمی‌گرداند، نه یک شیء
+	   DateTime: هر فراخواننده نسخه‌ی تازه‌ی خودش را می‌گیرد و modify
+	   روی آن، ساعتِ بقیه را جابه‌جا نمی‌کند. */
+	$ts = (int) apply_filters( 'cmb_now', time() );
+	$dt = new DateTime( '@' . $ts );
+
+	return $dt->setTimezone( cmb_timezone() );
 }
 
 function cmb_today() {
-	$now = new DateTime( 'now', cmb_timezone() );
+	return cmb_now()->format( 'Y-m-d' );
+}
 
-	return $now->format( 'Y-m-d' );
+/**
+ * زودترین لحظه‌ای که یک شیفت می‌تواند شروع شود تا هنوز قابل رزرو باشد.
+ *
+ * «حداقل زمان تا نوبت» (پیش‌فرض ۲۴ ساعت) برای همه‌ی خدمات: ساعت ۶ عصر
+ * امروز، شیفت ۱۰ صبح فردا دیگر قابل رزرو نیست ولی شیفت ۵ عصر فردا هست.
+ * null یعنی این قانون خاموش است (۰ ساعت).
+ *
+ * @return DateTime|null
+ */
+function cmb_earliest_slot() {
+	$hours = max( 0, (int) CMB_Settings::get( 'min_hours_ahead', 24 ) );
+
+	if ( $hours < 1 ) {
+		return null;
+	}
+
+	return cmb_now()->modify( '+' . $hours . ' hour' );
+}
+
+/**
+ * لحظه‌ی شروع یک شیفت در یک روز، به وقت محلی.
+ *
+ * @return DateTime|null
+ */
+function cmb_slot_start( $date, $block_key ) {
+	if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $date ) ) {
+		return null;
+	}
+
+	$start = (string) cmb_block_start( $block_key );
+
+	if ( ! preg_match( '/^\d{1,2}:\d{2}$/', $start ) ) {
+		$start = '00:00';
+	}
+
+	/* علامت «!» یعنی ثانیه و بقیه‌ی اجزای پارس‌نشده صفر شوند؛
+	   بدون آن، ثانیه‌ی همین لحظه داخل تاریخ می‌نشیند. */
+	$dt = DateTime::createFromFormat( '!Y-m-d H:i', $date . ' ' . $start, cmb_timezone() );
+
+	return $dt ? $dt : null;
 }
 
 /**

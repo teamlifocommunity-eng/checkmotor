@@ -545,6 +545,7 @@ function stepSlot() {
     });
   }
 
+  if (S.notes.minHours) { html += note('info', I.clock, S.notes.minHours); }
   if (S.notes.lateRule) { html += note('warn', I.clock, S.notes.lateRule); }
   if (S.notes.outOfWindow) { html += note('info', I.info, S.notes.outOfWindow); }
 
@@ -617,7 +618,13 @@ function stepAuth() {
   // وارد شده ولی حسابش شماره ندارد (مثلاً با فرم ورود سایت آمده)
   html += authCard(S.logged
     ? 'برای ثبت نوبت باید یک شماره موبایل به حسابتان وصل شود.'
-    : '') + '</div>';
+    : '');
+
+  if (S.logged) {
+    html += '<button class="cmb-link cmb-mt3" data-logout>خروج از این حساب</button>';
+  }
+
+  html += '</div>';
   return html;
 }
 
@@ -875,11 +882,22 @@ function viewMe() {
   if (!S.logged || !S.hasPhone) {
     var gPhone = (S.branch && S.branch.phone) || '';
 
-    html += '<div class="cmb-card cmb-center">' +
-      '<div class="cmb-empty__ic" style="margin:0 auto var(--s3)">' + I.user + '</div>' +
-      '<div class="cmb-svc__t">وارد نشده‌اید</div>' +
-      '</div>' +
-      authCard('ورود با کد پیامکی — رمز لازم نیست.');
+    /* واردشده ولی بدون شماره (مثلاً مدیری که با رمز وارد پنل شده):
+       پیش از این «وارد نشده‌اید» می‌دید و راهی برای خروج نداشت. */
+    if (S.logged) {
+      html += '<div class="cmb-card cmb-center">' +
+        '<div class="cmb-empty__ic" style="margin:0 auto var(--s3);background:var(--steel-50);color:var(--steel-700)">' + I.user + '</div>' +
+        '<div class="cmb-svc__t">' + esc(S.me.name || 'حساب کاربری') + '</div>' +
+        '<div class="cmb-hint">به این حساب شماره موبایلی وصل نیست؛ برای رزرو نوبت شماره‌تان را تایید کنید.</div>' +
+        '</div>' +
+        authCard('یک کد ۵ رقمی برایتان پیامک می‌شود.');
+    } else {
+      html += '<div class="cmb-card cmb-center">' +
+        '<div class="cmb-empty__ic" style="margin:0 auto var(--s3)">' + I.user + '</div>' +
+        '<div class="cmb-svc__t">وارد نشده‌اید</div>' +
+        '</div>' +
+        authCard('ورود با کد پیامکی — رمز لازم نیست.');
+    }
 
     // مهمان هم باید بتواند شعبه را پیدا کند و تماس بگیرد
     if (gPhone || (S.branch && S.branch.address)) {
@@ -899,6 +917,21 @@ function viewMe() {
       }
 
       html += '</div>';
+    }
+
+    if (S.logged) {
+      html += '<div class="cmb-rows">';
+
+      if (S.canManage && C.panel) {
+        html += '<a class="cmb-row" href="' + esc(C.panel) + '">' +
+          '<div class="cmb-row__ic">' + I.panel + '</div>' +
+          '<div class="cmb-row__t">پنل مدیریت</div>' +
+          '<div class="cmb-row__ch">' + I.chevL + '</div></a>';
+      }
+
+      html += '<button class="cmb-row cmb-row--bad" data-logout>' +
+        '<div class="cmb-row__ic">' + I.logout + '</div>' +
+        '<div class="cmb-row__t">خروج از حساب</div></button></div>';
     }
 
     html += '</div>';
@@ -1150,8 +1183,10 @@ function load(page) {
 function loadCalendar(quiet) {
   var id = S.service.id;
 
-  // اگر قبلاً گرفته‌ایم، بدون هیچ انتظاری نشان بده
-  if (S.calCache[id]) {
+  /* اگر قبلاً گرفته‌ایم، بدون هیچ انتظاری نشان بده. ولی نه برای همیشه:
+     ظرفیت‌ها عوض می‌شوند و با گذشت زمان شیفت نزدیک «کمتر از ۲۴ ساعت»
+     می‌شود؛ تقویمِ کهنه‌تر از دو دقیقه دوباره گرفته می‌شود. */
+  if (S.calCache[id] && Date.now() - S.calCache[id]._at < 120000) {
     if (!quiet) {
       applyCalendar(S.calCache[id]);
       paint();
@@ -1167,7 +1202,7 @@ function loadCalendar(quiet) {
   }
 
   get('availability?service_id=' + id).then(function (r) {
-    if (r.success !== false) { S.calCache[id] = r; }
+    if (r.success !== false) { r._at = Date.now(); S.calCache[id] = r; }
 
     if (quiet) { return; }
     (function (r) {
@@ -1281,6 +1316,8 @@ function submitBooking() {
 
       // ظرفیت پر شده یا روز بسته شده: کاربر باید دوباره زمان انتخاب کند
       if (['cmb_block_full', 'cmb_block_closed', 'cmb_day_closed', 'cmb_too_soon', 'cmb_too_far'].indexOf(r.code) !== -1) {
+        // تقویم کش‌شده همان است که این انتخاب را نشان داده بود
+        delete S.calCache[S.service.id];
         S.step = 2;
         loadCalendar();
         return;

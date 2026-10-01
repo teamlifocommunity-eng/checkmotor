@@ -234,7 +234,8 @@ function side() {
     '<div class="pn-side__foot">' +
       '<div class="pn-side__me">' + esc(C.me || '') + '</div>' +
       installBtn('pn-side__b', 'نصب روی گوشی') +
-      '<a class="pn-side__b" href="' + esc(C.app || '/') + '">' + I.out + '<span>دیدن اپ مشتری</span></a>' +
+      '<a class="pn-side__b" href="' + esc(C.app || '/') + '">' + I.car + '<span>دیدن اپ مشتری</span></a>' +
+      '<button class="pn-side__b pn-side__b--out" data-logout>' + I.out + '<span>خروج از حساب</span></button>' +
     '</div></aside>';
 }
 
@@ -585,6 +586,7 @@ function viewSettings() {
     '<h3 class="pn-card__t">بازه‌ی رزرو</h3>' +
     '<div class="pn-grid">' +
       num('st-min', 'حداقل فاصله تا مراجعه', st.min_days_ahead, 0, 30, 'روز', '۱ یعنی رزرو برای همان روز مجاز نیست.') +
+      num('st-min-h', 'حداقل زمان تا شروع شیفت', st.min_hours_ahead, 0, 336, 'ساعت', 'برای همه‌ی خدمات. با ۲۴، ساعت ۶ عصر امروز شیفت صبح فردا قابل رزرو نیست ولی شیفت عصر فردا هست.') +
       num('st-win', 'تعداد روزهای قابل رزرو', st.window_days, 1, 60, 'روز', 'چند روز جلوتر در تقویم مشتری نمایش داده شود.') +
       num('st-max', 'حداکثر نوبت فعال هر مشتری', st.max_active_per_user, 0, 10, 'نوبت', '۰ یعنی بدون محدودیت.') +
     '</div>' +
@@ -696,6 +698,7 @@ function saveSchedule() {
     afternoon_start: val('#st-a-start'),
     afternoon_capacity: en(val('#st-a-cap')),
     min_days_ahead: en(val('#st-min')),
+    min_hours_ahead: en(val('#st-min-h')),
     window_days: en(val('#st-win')),
     max_active_per_user: en(val('#st-max')),
     one_per_service: checked('#st-one') ? 1 : 0,
@@ -1925,8 +1928,36 @@ function loggedIn(r) {
   S.can = true;
   S.login = freshLogin();
 
+  // نام زیر منو؛ C.me مال لحظه‌ی بارگذاری صفحه بود که کسی وارد نشده بود
+  if (r.name) { C.me = r.name; }
+  shellKey = '';
+
   toast('خوش آمدید' + (r.name ? '، ' + r.name : '') + '.', 'ok');
   load(S.view);
+}
+
+/* خروج: همان مسیر خروج اپ مشتری (کوکی و نشست را پاک می‌کند). بعد
+   صفحه از نو بارگذاری می‌شود تا هیچ داده‌ای از حساب قبلی در حافظه
+   نماند و فرم ورود پنل بالا بیاید. لینک wp-login.php به کار نمی‌آمد:
+   در اپ نصب‌شده بیرون از محدوده‌ی اپ باز می‌شد و روی بیشتر سایت‌ها
+   صفحه‌ی ورود جابه‌جا شده است. */
+function logout() {
+  if (S.busy) { return; }
+  if (!window.confirm('از حساب خارج می‌شوید. برای ورود دوباره، رمز یا کد تایید لازم است.')) { return; }
+
+  S.busy = true;
+  S.menu = false;
+  paint();
+
+  post('logout').then(function (r) {
+    if (r.success === false) {
+      S.busy = false;
+      toast(r.message || 'خروج انجام نشد. دوباره تلاش کنید.', 'bad');
+      return;
+    }
+
+    location.replace(BASE);
+  });
 }
 
 function shiftBoard(days) {
@@ -1967,6 +1998,7 @@ function bind() {
     if (up('[data-menu-close]')) { e.preventDefault(); S.menu = false; paint(); return; }
 
     if (up('[data-login]')) { e.preventDefault(); doLogin(); return; }
+    if (up('[data-logout]')) { e.preventDefault(); logout(); return; }
 
     if ((el = up('[data-login-mode]'))) {
       e.preventDefault();
