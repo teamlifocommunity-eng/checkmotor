@@ -330,3 +330,75 @@ function cmb_log( $message, $context = array() ) {
 
 	error_log( '[checkmotor-booking] ' . $message ); // phpcs:ignore
 }
+
+/**
+ * بستن پاسخ برای مرورگر، در حالی که PHP به کارش ادامه می‌دهد.
+ *
+ * PHP-FPM تابع fastcgi_finish_request دارد و لایت‌اسپید (رایج‌ترین
+ * وب‌سرور هاست‌های ایرانی) litespeed_finish_request. روی Apache با
+ * mod_php هیچ‌کدام نیست؛ آن‌جا کار مثل قبل پیش از بسته شدن پاسخ انجام
+ * می‌شود.
+ *
+ * @return bool آیا پاسخ واقعاً بسته شد.
+ */
+function cmb_finish_request() {
+	static $done = false;
+
+	if ( $done ) {
+		return true;
+	}
+
+	if ( function_exists( 'fastcgi_finish_request' ) ) {
+		$done = (bool) fastcgi_finish_request();
+	} elseif ( function_exists( 'litespeed_finish_request' ) ) {
+		$done = (bool) litespeed_finish_request();
+	}
+
+	return $done;
+}
+
+/**
+ * انجام یک کار بعد از رسیدن پاسخ به کاربر.
+ *
+ * برای پیامک‌های اطلاع‌رسانی: ثبت یا لغو نوبت نباید منتظر جواب
+ * سرویس پیامک بماند (هر پیامک تا ۲۰ ثانیه مهلت دارد و ثبت نوبت دو یا
+ * چند پیامک می‌فرستد). نتیجه‌ی این پیامک‌ها فقط لاگ می‌شد، پس دیرتر
+ * فرستادنشان چیزی را از کاربر پنهان نمی‌کند.
+ *
+ * @param callable $callback
+ */
+function cmb_after_response( $callback ) {
+	global $cmb_after_response;
+
+	if ( ! is_array( $cmb_after_response ) ) {
+		$cmb_after_response = array();
+
+		add_action(
+			'shutdown',
+			function () {
+				global $cmb_after_response;
+
+				$jobs               = (array) $cmb_after_response;
+				$cmb_after_response = array();
+
+				if ( ! $jobs ) {
+					return;
+				}
+
+				ignore_user_abort( true );
+				cmb_finish_request();
+
+				foreach ( $jobs as $job ) {
+					try {
+						call_user_func( $job );
+					} catch ( Throwable $e ) {
+						cmb_log( 'Deferred task failed: ' . $e->getMessage() );
+					}
+				}
+			},
+			0
+		);
+	}
+
+	$cmb_after_response[] = $callback;
+}

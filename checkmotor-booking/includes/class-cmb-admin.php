@@ -85,6 +85,89 @@ class CMB_Admin {
 	/**
 	 * هشدار پیکربندی اولیه.
 	 */
+	/**
+	 * بخش «سرعت» در تنظیمات.
+	 */
+	protected function render_fast_settings() {
+		if ( ! class_exists( 'CMB_Fast' ) ) {
+			return;
+		}
+
+		$conf    = CMB_Fast::config();
+		$active  = (array) get_option( 'active_plugins', array() );
+		$all     = function_exists( 'get_plugins' ) ? get_plugins() : array();
+		$others  = array_values( array_diff( $active, array( CMB_BASENAME ) ) );
+		$working = ! empty( $conf['on'] ) && CMB_Fast::installed();
+		?>
+		<h2 class="title" id="cmb-fast">سرعت</h2>
+		<table class="form-table">
+			<tr>
+				<th><label>حالت سریع</label></th>
+				<td>
+					<label class="cmb-check">
+						<input type="checkbox" name="cmb_fast_on" value="1" <?php checked( ! empty( $conf['on'] ) ); ?> /> روی درخواست‌های سیستم رزرو فقط افزونه‌های لازم بارگذاری شوند (پیشنهادی)
+					</label>
+					<p class="description" style="max-width:720px">
+						بیشتر زمانِ باز شدن پنل، تغییر بخش‌ها، گرفتن ظرفیت روزها و ثبت نوبت، صرف بالا آمدن همه‌ی افزونه‌های سایت (فروشگاه، صفحه‌ساز، سئو و…) می‌شود،
+						نه کار خود سیستم رزرو. این گزینه فقط روی درخواست‌های همین سیستم آن‌ها را بارگذاری نمی‌کند؛ بقیه‌ی سایت هیچ تغییری نمی‌کند.
+						ورود و خروج (کد تایید و رمز) همیشه با بارگذاری کامل انجام می‌شود.
+					</p>
+					<p class="description">
+						وضعیت:
+						<?php if ( $working ) : ?>
+							<b style="color:#007017">فعال ✓</b> <code dir="ltr"><?php echo esc_html( CMB_Fast::target() ); ?></code>
+						<?php elseif ( ! empty( $conf['on'] ) ) : ?>
+							<b style="color:#b32d2e">نصب نشد</b> — پوشه‌ی <code dir="ltr"><?php echo esc_html( WPMU_PLUGIN_DIR ); ?></code> قابل نوشتن نیست. دسترسی نوشتن آن را از هاست بدهید
+							یا فایل <code dir="ltr">mu/<?php echo esc_html( CMB_Fast::FILE ); ?></code> افزونه را دستی همان‌جا کپی کنید.
+						<?php else : ?>
+							خاموش
+						<?php endif; ?>
+					</p>
+					<?php if ( ! empty( $conf['auto_off'] ) && empty( $conf['on'] ) ) : ?>
+						<div class="notice notice-warning inline" style="max-width:720px"><p>
+							حالت سریع <?php echo esc_html( human_time_diff( (int) $conf['auto_off']['time'] ) ); ?> پیش <b>خودکار خاموش شد</b>، چون یک درخواست در این حالت با خطای مهلک روبه‌رو شد
+							— معمولاً قالب یا افزونه‌ای که بدون بررسی، تابعِ افزونه‌ی دیگری را صدا می‌زند:
+							<br><code dir="ltr" style="display:inline-block;margin-top:6px"><?php echo esc_html( $conf['auto_off']['message'] ); ?></code>
+							<br>افزونه‌ی مربوط را در فهرست زیر تیک بزنید و حالت سریع را دوباره روشن کنید.
+						</p></div>
+					<?php endif; ?>
+				</td>
+			</tr>
+			<tr>
+				<th><label>صفحه‌های اپ و پنل</label></th>
+				<td>
+					<label class="cmb-check">
+						<input type="checkbox" name="cmb_fast_pages" value="1" <?php checked( ! empty( $conf['pages'] ) ); ?> /> خود صفحه‌های <code dir="ltr"><?php echo esc_html( cmb_app_url() ); ?></code> و پنل هم سریع باز شوند
+					</label>
+					<p class="description" style="max-width:720px">
+						این صفحه‌ها از قبل ظاهر و اسکریپت افزونه‌های دیگر را نشان نمی‌دادند. اگر کد آمار یا چت آنلاین سایت را روی اپ رزرو هم می‌خواهید، افزونه‌اش را پایین تیک بزنید.
+					</p>
+				</td>
+			</tr>
+			<?php if ( $others ) : ?>
+				<tr>
+					<th><label>افزونه‌هایی که بارگذاری بمانند</label></th>
+					<td>
+						<fieldset>
+							<?php foreach ( $others as $plugin ) : ?>
+								<label class="cmb-check" style="display:block;margin-bottom:6px">
+									<input type="checkbox" name="cmb_fast_keep[]" value="<?php echo esc_attr( $plugin ); ?>" <?php checked( CMB_Fast::kept( $plugin ) ); ?> />
+									<?php echo esc_html( isset( $all[ $plugin ]['Name'] ) ? $all[ $plugin ]['Name'] : $plugin ); ?>
+									<code style="font-size:11px"><?php echo esc_html( dirname( $plugin ) ); ?></code>
+								</label>
+							<?php endforeach; ?>
+						</fieldset>
+						<p class="description" style="max-width:720px">
+							فقط چیزهایی را تیک بزنید که روی درخواست‌های رزرو کاری دارند: افزونه‌ی PWA (نصب وب‌اپ) و افزونه‌های امنیتی به‌طور پیش‌فرض تیک خورده‌اند.
+							اگر بعد از روشن کردن چیزی درست کار نکرد، حالت سریع را خاموش کنید.
+						</p>
+					</td>
+				</tr>
+			<?php endif; ?>
+		</table>
+		<?php
+	}
+
 	public function setup_notice() {
 		if ( ! current_user_can( self::CAPABILITY ) ) {
 			return;
@@ -867,6 +950,8 @@ class CMB_Admin {
 					</tr>
 				</table>
 
+				<?php $this->render_fast_settings(); ?>
+
 				<p class="submit">
 					<button type="submit" class="button button-primary">ذخیره‌ی تنظیمات</button>
 				</p>
@@ -1104,6 +1189,23 @@ class CMB_Admin {
 
 		update_option( 'cmb_panel_pwa', isset( $_POST['cmb_panel_pwa'] ) ? 1 : 0 );
 		update_option( 'cmb_panel_otp', isset( $_POST['cmb_panel_otp'] ) ? 1 : 0 );
+
+		if ( class_exists( 'CMB_Fast' ) ) {
+			$active = (array) get_option( 'active_plugins', array() );
+			$keep   = isset( $_POST['cmb_fast_keep'] ) ? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['cmb_fast_keep'] ) ) : array();
+
+			$fast = CMB_Fast::save(
+				array(
+					'on'    => isset( $_POST['cmb_fast_on'] ) ? 1 : 0,
+					'pages' => isset( $_POST['cmb_fast_pages'] ) ? 1 : 0,
+					'keep'  => array_values( array_intersect( $keep, $active ) ),
+				)
+			);
+
+			if ( is_wp_error( $fast ) ) {
+				$this->redirect( 'cmb-settings', 'تنظیمات ذخیره شد، ولی حالت سریع نصب نشد: ' . $fast->get_error_message(), 'error' );
+			}
+		}
 
 		if ( isset( $_POST['cmb_panel_app_name'] ) ) {
 			update_option( 'cmb_panel_app_name', sanitize_text_field( wp_unslash( $_POST['cmb_panel_app_name'] ) ) );

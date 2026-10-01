@@ -46,7 +46,16 @@ $cmb_options = array(
 	'cmb_panel_pwa',
 	'cmb_panel_app_name',
 	'cmb_panel_otp',
+	'cmb_fast',
+	'cmb_fast_stamp',
 );
+
+/* فایل حالت سریع در mu-plugins؛ فقط اگر واقعاً مال همین افزونه باشد. */
+$cmb_fast_file = ( defined( 'WPMU_PLUGIN_DIR' ) ? WPMU_PLUGIN_DIR : WP_CONTENT_DIR . '/mu-plugins' ) . '/cmb-fast-requests.php';
+
+if ( file_exists( $cmb_fast_file ) && false !== strpos( (string) file_get_contents( $cmb_fast_file ), 'cmb-fast-version' ) ) { // phpcs:ignore
+	@unlink( $cmb_fast_file ); // phpcs:ignore
+}
 
 foreach ( $cmb_options as $cmb_option ) {
 	delete_option( $cmb_option );

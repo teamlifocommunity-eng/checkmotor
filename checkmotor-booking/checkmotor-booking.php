@@ -3,7 +3,7 @@
  * Plugin Name: چک موتور — سیستم رزرو نوبت
  * Plugin URI:  https://checkmotor.ir
  * Description: سیستم رزرو نوبت آنلاین چک موتور (MVP) — ورود با کد تایید پیامکی ملی‌پیامک، تقویم ۷ روزه، شیفت صبح/بعدازظهر، پنل مدیریت نوبت‌ها.
- * Version:     1.30.0
+ * Version:     1.31.0
  * Author:      رضا امام‌حسنی
  * Text Domain: checkmotor-booking
  * Domain Path: /languages
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMB_VERSION', '1.30.0' );
+define( 'CMB_VERSION', '1.31.0' );
 define( 'CMB_FILE', __FILE__ );
 define( 'CMB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMB_URL', plugin_dir_url( __FILE__ ) );
@@ -120,6 +120,7 @@ function cmb_load_files() {
 		'includes/class-cmb-panel-api.php',
 		'includes/class-cmb-panel-pwa.php',
 		'includes/class-cmb-panel-otp.php',
+		'includes/class-cmb-fast.php',
 		'includes/class-cmb-shortcodes.php',
 		'includes/class-cmb-cron.php',
 		'includes/class-cmb-isolate.php',
@@ -169,6 +170,12 @@ if ( ! empty( $cmb_missing_files ) ) {
 
 register_activation_hook( __FILE__, array( 'CMB_Install', 'activate' ) );
 register_deactivation_hook( __FILE__, array( 'CMB_Install', 'deactivate' ) );
+
+/* حالت سریع: فایل mu با فعال‌سازی نصب و با غیرفعال‌سازی برداشته می‌شود؛
+   بعد از هر به‌روزرسانی هم با اولین بازدید پیشخوان هم‌خوان می‌شود. */
+register_activation_hook( __FILE__, array( 'CMB_Fast', 'sync' ) );
+register_deactivation_hook( __FILE__, array( 'CMB_Fast', 'remove' ) );
+add_action( 'admin_init', array( 'CMB_Fast', 'maybe_sync' ) );
 
 /**
  * بوت‌استرپ افزونه.
@@ -673,6 +680,9 @@ function cmb_enqueue_panel() {
 			'faDigits' => cmb_persian_digits_on(),
 			/* خلاصه از قبل داخل صفحه است تا پنل بدون انتظار باز شود. */
 			'boot'     => CMB_Panel_Api::can() ? CMB_Panel_Api::summary_payload() : null,
+			/* تخته‌ی روزها و نوبت‌های پیش‌رو هم؛ باز کردن این دو دیگر
+			   درخواست جدا نمی‌خواهد. */
+			'preload'  => CMB_Panel_Api::can() ? CMB_Panel_Api::preload_payload() : null,
 			'me'       => $user->ID ? $user->display_name : '',
 			'app'      => cmb_app_url(),
 			'login'    => cmb_login_url( cmb_app_url( 'panel' ) ),

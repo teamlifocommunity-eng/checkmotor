@@ -177,8 +177,14 @@ class CMB_Bookings {
 
 		do_action( 'cmb_booking_created', $booking_id, $booking );
 
-		self::notify_customer( $booking );
-		self::notify_admin( $booking );
+		/* پیامک‌ها بعد از رسیدن پاسخ: مشتری کد پیگیری را همان لحظه
+		   می‌بیند، نه بعد از دو سه رفت‌وبرگشت با سرویس پیامک. */
+		cmb_after_response(
+			function () use ( $booking ) {
+				self::notify_customer( $booking );
+				self::notify_admin( $booking );
+			}
+		);
 
 		return self::to_array( $booking );
 	}
@@ -589,9 +595,13 @@ class CMB_Bookings {
 		 */
 		do_action( 'cmb_booking_cancelled_by_user', (int) $booking->id, $booking, $reason );
 
-		// اطلاع‌رسانی: هم به مشتری (رسید لغو) هم به شعبه.
-		self::notify_cancel( $booking, 'customer' );
-		self::notify_admin_cancel( $booking );
+		// اطلاع‌رسانی: هم به مشتری (رسید لغو) هم به شعبه — بعد از پاسخ.
+		cmb_after_response(
+			function () use ( $booking ) {
+				self::notify_cancel( $booking, 'customer' );
+				self::notify_admin_cancel( $booking );
+			}
+		);
 
 		return self::to_array( $booking );
 	}
@@ -658,7 +668,13 @@ class CMB_Bookings {
 		do_action( 'cmb_booking_status_changed', $booking_id, $status, $booking->status );
 
 		if ( 'cancelled' === $status && 'cancelled' !== $booking->status ) {
-			self::notify_cancel( self::get( $booking_id ), 'branch' );
+			$cancelled = self::get( $booking_id );
+
+			cmb_after_response(
+				function () use ( $cancelled ) {
+					self::notify_cancel( $cancelled, 'branch' );
+				}
+			);
 		}
 
 		return true;

@@ -40,8 +40,16 @@ var S = {
   sched: null, schedFull: '', health: null, sweeping: false,
   closures: null, closeForm: { date: '', block: '', reason: '' },
   login: freshLogin(),
-  menu: false
+  menu: false,
+  got: {}   // نشانی هر درخواستِ موفق ← زمانش؛ برای نمایش فوری هنگام جابه‌جایی
 };
+
+/* داده‌ی تخته و نوبت‌های پیش‌رو همراه صفحه آمده است (CMB_PANEL.preload). */
+(function () {
+  var pre = C.preload || {};
+  if (pre.board && Array.isArray(pre.board.days)) { S.board = pre.board; }
+  if (pre.bookings && Array.isArray(pre.bookings.items)) { S.list = pre.bookings; }
+})();
 
 /* اگر به هر دلیلی jalali.js نرسد (کش، افزونه‌ی بهینه‌سازی، خطای شبکه)
    کل پنل نباید سفید شود. این نسخه‌ی حداقلی تاریخ را خام نشان می‌دهد
@@ -139,7 +147,14 @@ function req(method, path, body, retried) {
     .catch(function () { return { success: false, message: 'ارتباط با سرور برقرار نشد.' }; });
 }
 function get(p) { return req('GET', p); }
-function post(p, b) { return req('POST', p, b); }
+/* هر تغییری (ثبت، لغو، ذخیره…) می‌تواند داده‌ی هر نمایی را عوض کند؛
+   پس بعد از آن، جابه‌جایی بین نماها دوباره از سرور می‌خواند. */
+function post(p, b) {
+  return req('POST', p, b).then(function (r) {
+    if (r && r.success !== false) { S.got = {}; }
+    return r;
+  });
+}
 
 /* ═══ آیکون ═══ */
 
@@ -1252,12 +1267,11 @@ function paintModal() {
 
 /* ═══ بارگذاری ═══ */
 
-function load(view, force) {
-  if (!S.can) { paint(); return; }
-
+/** نشانی و جای داده‌ی هر نما. */
+function jobs() {
   var f = S.filter;
 
-  var jobs = {
+  return {
     summary:  ['panel/summary', function (r) { S.summary = r; }],
     board:    ['panel/board?days=7' + (S.boardFrom ? '&from=' + S.boardFrom : ''), function (r) { S.board = r; }],
     bookings: ['panel/bookings?scope=' + f.scope + '&status=' + encodeURIComponent(f.status) +
@@ -1267,11 +1281,47 @@ function load(view, force) {
                 function (r) { S.customers = r; }],
     services: ['panel/services', function (r) { S.services = r.items || []; }],
     closures: ['panel/closures', function (r) { S.closures = r; }],
-    settings: ['panel/settings', function (r) { S.sched = r.settings; S.schedFull = r.fullUrl || ''; loadHealth(); }]
+    settings: ['panel/settings', function (r) { S.sched = r.settings; S.schedFull = r.fullUrl || ''; }]
   };
+}
 
-  var job = jobs[view];
+function hasData(view) {
+  var m = { summary: S.summary, board: S.board, bookings: S.list, customers: S.customers,
+            services: S.services, closures: S.closures, settings: S.sched };
+  return !!m[view];
+}
+
+/* تا این مدت بعد از گرفتن، نما بدون درخواست تازه نشان داده می‌شود. */
+var FRESH_MS = 15000;
+
+/**
+ * رفتن به یک نما: اگر داده‌اش را داریم همان لحظه نشان بده، و فقط اگر
+ * کهنه شده در پس‌زمینه تازه کن. پیش‌تر هر جابه‌جایی یک رفت‌وبرگشت
+ * کامل با سرور بود، حتی برای داده‌ای که چند ثانیه پیش گرفته شده بود.
+ */
+function show(view) {
+  if (!S.can) { paint(); return; }
+
+  var job = jobs()[view];
+  var at = job ? S.got[job[0]] : 0;
+
+  if (at && hasData(view)) {
+    paint();
+    if (Date.now() - at > FRESH_MS) { load(view); }
+    return;
+  }
+
+  load(view);
+}
+
+function load(view, force) {
+  if (!S.can) { paint(); return; }
+
+  var job = jobs()[view];
   if (!job) { paint(); return; }
+
+  // سلامت سیستم هم‌زمان با تنظیمات، نه بعد از آن
+  if (view === 'settings') { loadHealth(); }
 
   /* داده‌ی قبلی سر جایش می‌ماند و فقط کم‌رنگ می‌شود. اسکلت فقط
      وقتی دیده می‌شود که هنوز هیچ داده‌ای نداریم — وگرنه هر
@@ -1296,6 +1346,7 @@ function load(view, force) {
        اینکه نما با مقدار ناقص بترکد. */
     if (looksValid(view, r)) {
       job[1](r);
+      S.got[job[0]] = Date.now();
     } else {
       toast('پاسخ سرور نامعتبر بود.', 'bad');
     }
@@ -1304,14 +1355,7 @@ function load(view, force) {
   });
 
   // خلاصه همیشه در پس‌زمینه تازه بماند تا شمارنده‌ی کنار منو درست باشد
-  if (view !== 'summary' && !S.summary) {
-    get('panel/summary').then(function (r) {
-      if (r.success !== false && looksValid('summary', r)) {
-        S.summary = r;
-        paint();
-      }
-    });
-  }
+  if (view !== 'summary' && !S.summary) { refreshSummary(); }
 }
 
 /** آیا پاسخ شکل مورد انتظار این نما را دارد؟ */
@@ -1344,7 +1388,7 @@ function go(view) {
   }
 
   window.scrollTo(0, 0);
-  load(view);
+  show(view);
 }
 
 function readRoute() {
@@ -1390,12 +1434,31 @@ function setStatus(id, status) {
 
     toast(r.deleted ? 'نوبت حذف شد.' : 'وضعیت نوبت به‌روز شد.', 'ok');
 
-    S.modal = null;
-    S.list = null;
-    S.board = null;
-    S.summary = null;
+    /* تغییر همین حالا در فهرست دیده شود؛ پیش‌تر فهرست پاک می‌شد و تا
+       رسیدن پاسخ دوم فقط اسکلت خالی دیده می‌شد. */
+    if (S.list && S.list.items) {
+      S.list.items = r.deleted
+        ? S.list.items.filter(function (x) { return x.id !== id; })
+        : S.list.items.map(function (x) { return (x.id === id && r.item) ? r.item : x; });
+    }
 
+    S.modal = null;
+    paint();
+
+    // تازه‌سازی در پس‌زمینه، بدون پاک کردن آنچه روی صفحه است
     load(S.view);
+    if (S.view !== 'summary') { refreshSummary(); }
+  });
+}
+
+/** شمارنده‌های خلاصه (و عدد کنار «نوبت‌ها» در منو) بی‌صدا تازه شوند. */
+function refreshSummary() {
+  get('panel/summary').then(function (r) {
+    if (r.success !== false && looksValid('summary', r)) {
+      S.summary = r;
+      S.got[jobs().summary[0]] = Date.now();
+      paint();
+    }
   });
 }
 
@@ -2256,7 +2319,7 @@ function bind() {
     }
   });
 
-  window.addEventListener('popstate', function () { S.view = readRoute(); load(S.view); });
+  window.addEventListener('popstate', function () { S.view = readRoute(); show(S.view); });
 }
 
 /** پیدا کردن یک نوبت از هر جایی که در حافظه داریم. */
@@ -2378,8 +2441,16 @@ if (PWA) {
 
 function boot() {
   S.view = readRoute();
+
+  /* خلاصه، تخته و نوبت‌های پیش‌رو همین حالا همراه صفحه رسیده‌اند؛
+     درخواست دوباره‌شان فقط یک رفت‌وبرگشت بی‌حاصل بود. */
+  var now = Date.now(), J0 = jobs();
+  if (S.summary) { S.got[J0.summary[0]] = now; }
+  if (C.preload && C.preload.board && S.board) { S.got[J0.board[0]] = now; }
+  if (C.preload && C.preload.bookings && S.list) { S.got[J0.bookings[0]] = now; }
+
   bind();
-  load(S.view);
+  show(S.view);
 }
 
 if (document.readyState === 'loading') {

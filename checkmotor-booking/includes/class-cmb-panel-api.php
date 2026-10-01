@@ -247,6 +247,40 @@ class CMB_Panel_Api {
 	}
 
 	/**
+	 * داده‌ی پرکاربردترین نماها، داخل خود صفحه‌ی پنل.
+	 *
+	 * گران‌ترین بخش هر درخواست، بالا آمدن وردپرس با همه‌ی افزونه‌ها و
+	 * قالب است، نه کوئری‌ها (هرکدام چند میلی‌ثانیه). پس به‌جای اینکه
+	 * باز کردن «تخته‌ی روزها» و «نوبت‌ها» هرکدام یک رفت‌وبرگشت کامل
+	 * بخواهد، همراه همان صفحه فرستاده می‌شوند. همان کد نقاط پایانی REST
+	 * اجرا می‌شود تا شکل داده دقیقاً یکی باشد.
+	 *
+	 * @return array
+	 */
+	public static function preload_payload() {
+		$api = self::instance();
+		$out = array();
+
+		$jobs = array(
+			'board'    => array( 'board', array( 'days' => 7 ) ),
+			'bookings' => array( 'bookings', array( 'scope' => 'upcoming', 'page' => 1 ) ),
+		);
+
+		foreach ( $jobs as $key => $job ) {
+			$request = new WP_REST_Request( 'GET', '/' . self::NS . '/panel/' . $job[0] );
+			$request->set_query_params( $job[1] );
+
+			$response = rest_ensure_response( call_user_func( array( $api, $job[0] ), $request ) );
+
+			if ( ! is_wp_error( $response ) && 200 === $response->get_status() ) {
+				$out[ $key ] = $response->get_data();
+			}
+		}
+
+		return $out;
+	}
+
+	/**
 	 * داده‌ی خلاصه — هم برای REST هم برای تزریق در صفحه.
 	 */
 	public static function summary_payload() {
