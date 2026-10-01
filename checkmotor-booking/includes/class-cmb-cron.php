@@ -171,6 +171,11 @@ class CMB_Cron {
 		CMB_OTP::cleanup();
 		self::auto_complete_past();
 		self::send_reminders();
+
+		// پرداخت‌های بی‌جواب و نوبت‌های پرداخت‌نشده‌ی مانده
+		if ( class_exists( 'CMB_Payments' ) ) {
+			CMB_Payments::reconcile( true );
+		}
 	}
 
 	/**

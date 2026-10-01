@@ -974,3 +974,49 @@ select.cmb-in {
 @media (hover: none) and (pointer: coarse) {
   .cmb-in { font-size: 16px; }
 }
+
+/* ═══ بیعانه و پرداخت ═══ */
+
+.cmb-badge--pending { background: var(--warn-bg); color: var(--warn); }
+.cmb-badge--expired { background: var(--g6); color: var(--ink-3); }
+
+.cmb-deposit { border: 1.5px solid var(--flame-100); }
+.cmb-deposit__amount {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3);
+  padding-bottom: var(--s3); margin-bottom: var(--s1);
+  border-bottom: 1px solid var(--g5);
+}
+.cmb-deposit__amount span { font-size: var(--t-sb); color: var(--ink-2); font-weight: 600; }
+.cmb-deposit__amount b { font-size: var(--t-lg); font-weight: 800; color: var(--flame-600); letter-spacing: -.3px; }
+.cmb-deposit__rows { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s3); }
+.cmb-deposit__row {
+  display: flex; gap: var(--s2); align-items: flex-start;
+  font-size: var(--t-sb); line-height: 1.75; border-radius: var(--r-sm); padding: 10px 12px;
+}
+.cmb-deposit__row svg { flex: 0 0 auto; font-size: 17px; margin-top: 3px; }
+.cmb-deposit__row.ok  { background: var(--ok-bg); color: #0a6d3e; }
+.cmb-deposit__row.bad { background: var(--bad-bg); color: #a02a1f; }
+
+.cmb-terms {
+  margin-top: var(--s3); max-height: 46vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  background: var(--g6); border-radius: var(--r-sm); padding: var(--s3) var(--s4);
+}
+.cmb-terms p { font-size: var(--t-sb); line-height: 1.95; color: var(--ink); margin: 0 0 8px; }
+.cmb-terms p:last-child { margin-bottom: 0; }
+
+.cmb-check {
+  display: flex; align-items: center; gap: var(--s3); cursor: pointer;
+  font-size: var(--t-bd); font-weight: 700; line-height: 1.6;
+  padding: 12px var(--s3); border-radius: var(--r-sm); background: var(--flame-50);
+}
+.cmb-check input { width: 22px; height: 22px; flex: 0 0 22px; margin: 0; accent-color: var(--flame); }
+
+.cmb-paynote { border: 1.5px solid var(--warn-bg); }
+.cmb-paynote .cmb-svc__t { display: flex; align-items: center; gap: 8px; color: var(--warn); }
+
+.cmb-payres__ic {
+  width: 64px; height: 64px; margin: 0 auto var(--s3); border-radius: 50%;
+  display: grid; place-items: center; font-size: 30px;
+}
+.cmb-payres--bad .cmb-payres__ic  { background: var(--bad-bg); color: var(--bad); }
+.cmb-payres--wait .cmb-payres__ic { background: var(--warn-bg); color: var(--warn); }

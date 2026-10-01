@@ -924,3 +924,33 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
   .pn-btn--soft:hover { background: var(--card); }
   .pn-modal__x:hover { background: var(--g6); }
 }
+
+/* ═══ بیعانه و بازگشت وجه ═══ */
+
+.pn-badge--pending { background: var(--warn-bg); color: var(--warn); }
+.pn-badge--expired { background: var(--g6); color: var(--ink-3); }
+.pn-side__b .pn-count--hot { background: var(--flame); color: #fff; }
+
+.pn-guide { padding: 0; }
+.pn-guide > summary { cursor: pointer; padding: var(--s4) var(--s5); margin: 0; list-style: none; }
+.pn-guide > summary::-webkit-details-marker { display: none; }
+.pn-guide[open] > summary { padding-bottom: var(--s2); }
+.pn-guide .pn-steps, .pn-guide .pn-hint { padding: 0 var(--s5) var(--s4); }
+.pn-steps { margin: 0; padding-inline-start: calc(var(--s5) + 18px) !important; line-height: 2; font-size: 14px; }
+
+.pn-refunds { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.pn-refund { margin: 0; }
+.pn-refund.is-late { border: 1.5px solid var(--bad-bg); }
+.pn-refund__hd { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s3); }
+.pn-refund__name { font-weight: 800; font-size: 16px; }
+.pn-refund__sub { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; }
+.pn-refund__amount { font-weight: 800; font-size: 18px; color: var(--flame-600, #E85A1C); white-space: nowrap; }
+.pn-refund__grid .pn-kv { padding: 7px 0; font-size: 13.5px; }
+.pn-refund__acts { display: flex; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s3); }
+.pn-refund__acts .pn-btn { flex: 1 1 auto; }
+.pn-refund__form { margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--g5); }
+.pn-refund .pn-note { margin-top: var(--s3); }
+
+@media (max-width: 400px) {
+  .pn-refunds { grid-template-columns: 1fr; }
+}

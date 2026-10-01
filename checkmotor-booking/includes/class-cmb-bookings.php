@@ -95,8 +95,45 @@ class CMB_Bookings {
 			return $limit;
 		}
 
+		/* بیعانه: مشتری باید همان قوانین و مبلغی را پذیرفته باشد که الان
+		   معتبر است. اگر بین دیدن و زدن دکمه چیزی عوض شده، قوانین تازه
+		   دوباره نشان داده می‌شود. */
+		$deposit = CMB_Payments::service_deposit( $service );
+		$quote   = null;
+
+		if ( $deposit > 0 ) {
+			$quote = CMB_Payments::quote( $service, $date, $block_key );
+
+			if ( empty( $data['accept_terms'] ) ) {
+				return new WP_Error( 'cmb_terms_required', 'برای ثبت نوبت، قوانین رزرو را بخوانید و تیک پذیرش را بزنید.', array( 'status' => 400, 'quote' => $quote ) );
+			}
+
+			if ( ! $quote || empty( $data['terms_hash'] ) || ! hash_equals( $quote['hash'], (string) $data['terms_hash'] )
+				|| (int) ( isset( $data['deposit_seen'] ) ? $data['deposit_seen'] : 0 ) !== $deposit ) {
+				return new WP_Error(
+					'cmb_terms_changed',
+					'مبلغ بیعانه یا قوانین رزرو همین حالا تغییر کرده است. قوانین تازه را ببینید و دوباره تأیید کنید.',
+					array( 'status' => 409, 'quote' => $quote )
+				);
+			}
+
+			$rate = self::deposit_rate_limit( $user_id );
+
+			if ( is_wp_error( $rate ) ) {
+				return $rate;
+			}
+		}
+
 		$lock_name = 'cmb_slot_' . $branch_id . '_' . $date . '_' . $block_key;
-		$locked    = self::acquire_lock( $lock_name );
+		$locked    = cmb_lock( $lock_name, 5 );
+
+		/* قفل گرفته نشد یعنی درخواست دیگری همین حالا روی همین شیفت
+		   است. پیش از این بدون قفل ادامه می‌داد و دو رزرو هم‌زمان
+		   می‌توانستند هر دو آخرین جا را بگیرند. («none» یعنی دیتابیس
+		   قفل نام‌دار ندارد؛ آن‌جا مثل قبل ادامه می‌دهیم.) */
+		if ( 'busy' === $locked ) {
+			return new WP_Error( 'cmb_busy', 'سرور همین حالا مشغول ثبت نوبت دیگری برای همین شیفت است. چند ثانیه‌ی دیگر دوباره «ثبت» را بزنید.', array( 'status' => 503 ) );
+		}
 
 		/* کش ظرفیت درون‌درخواستی است و ممکن است پیش از گرفتن قفل پر
 		   شده باشد. شمارش ظرفیت باید حتماً تازه باشد، وگرنه دو رزرو
@@ -106,11 +143,11 @@ class CMB_Bookings {
 		$valid = CMB_Availability::validate_slot( $service, $date, $block_key, $branch_id );
 
 		if ( is_wp_error( $valid ) ) {
-			self::release_lock( $lock_name, $locked );
+			cmb_unlock( $lock_name, $locked );
 			return $valid;
 		}
 
-		$now   = current_time( 'mysql' );
+		$now   = cmb_now()->format( 'Y-m-d H:i:s' );
 		$table = cmb_table( 'bookings' );
 		$code  = cmb_generate_tracking_code();
 
@@ -128,7 +165,7 @@ class CMB_Bookings {
 				'car_year'      => $car_year,
 				'car_mileage'   => $car_mileage,
 				'note'          => $note,
-				'status'        => 'confirmed',
+				'status'        => $deposit > 0 ? 'pending' : 'confirmed',
 				'reminder_sent' => 0,
 				'ip'            => cmb_get_ip(),
 				'created_at'    => $now,
@@ -140,9 +177,30 @@ class CMB_Bookings {
 			$row['city'] = $city;
 		}
 
+		if ( CMB_Payments::schema_ready() ) {
+			$row['price_at_booking'] = (int) $service->price;
+
+			if ( $deposit > 0 ) {
+				$until = CMB_Payments::cancel_until( $date, $block_key );
+
+				// شرایطی که مشتری پذیرفت؛ تغییر بعدی تنظیمات به این نوبت نمی‌رسد
+				$row['deposit_amount']       = $deposit;
+				$row['cancel_refund_amount'] = (int) $quote['refund'];
+				$row['cancel_until']         = $until ? $until->format( 'Y-m-d H:i:s' ) : null;
+				$row['terms_accepted_at']    = $now;
+				$row['terms_hash']           = $quote['hash'];
+				$row['pay_status']           = 'unpaid';
+				$row['pay_token']            = wp_generate_password( 40, false, false );
+				$row['hold_until_gmt']       = gmdate( 'Y-m-d H:i:s', cmb_now()->getTimestamp() + CMB_Payments::hold_minutes() * MINUTE_IN_SECONDS );
+			}
+		}
+
 		$inserted = $wpdb->insert( $table, $row );
 
-		self::release_lock( $lock_name, $locked );
+		cmb_unlock( $lock_name, $locked );
+
+		// شمارش ظرفیتِ کش‌شده دیگر این نوبت تازه را ندارد
+		CMB_Availability::flush_cache();
 
 		if ( ! $inserted ) {
 			return new WP_Error( 'cmb_db_error', 'ثبت نوبت ناموفق بود. لطفاً دوباره تلاش کنید.', array( 'status' => 500 ) );
@@ -174,6 +232,44 @@ class CMB_Bookings {
 		}
 
 		$booking = self::get( $booking_id );
+
+		/* با بیعانه: نوبت تا پرداخت «در انتظار» است. نه پیامکی می‌رود و
+		   نه هوک ثبت؛ هر دو وقتی پول رسید (CMB_Payments::confirm). */
+		if ( $deposit > 0 ) {
+			$pay = CMB_Payments::start( $booking );
+
+			if ( is_wp_error( $pay ) ) {
+				// درگاه جواب نداد: جا همین حالا آزاد می‌شود
+				$wpdb->update(
+					$table,
+					array(
+						'status'         => 'expired',
+						'expire_reason'  => 'gateway',
+						'hold_until_gmt' => null,
+						'updated_at'     => current_time( 'mysql' ),
+					),
+					array( 'id' => $booking_id )
+				);
+
+				CMB_Availability::flush_cache();
+
+				return new WP_Error(
+					'cmb_pay_gateway',
+					'اتصال به درگاه پرداخت برقرار نشد و نوبت ثبت نشد. چند دقیقه‌ی دیگر دوباره تلاش کنید. (' . $pay->get_error_message() . ')',
+					array( 'status' => 502 )
+				);
+			}
+
+			$out            = self::to_array( $booking );
+			$out['payment'] = array(
+				'url'         => $pay['url'],
+				'id'          => (int) $booking->id,
+				'token'       => (string) $booking->pay_token,
+				'holdMinutes' => CMB_Payments::hold_minutes(),
+			);
+
+			return $out;
+		}
 
 		do_action( 'cmb_booking_created', $booking_id, $booking );
 
@@ -219,9 +315,20 @@ class CMB_Bookings {
 
 		$table = cmb_table( 'bookings' );
 
+		/* تلاش‌های پرداخت‌نشده بعد از دو روز از فهرست مشتری کنار می‌روند؛
+		   وگرنه هر انصراف از درگاه یک ردیف «پرداخت نشد» می‌ماند. */
+		$hide = '';
+
+		if ( CMB_Payments::schema_ready() ) {
+			$hide = $wpdb->prepare(
+				" AND NOT ( status = 'expired' AND pay_status IN ('','unpaid') AND created_at < %s )",
+				cmb_now()->modify( '-2 days' )->format( 'Y-m-d H:i:s' )
+			);
+		}
+
 		return $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$table} WHERE user_id = %d ORDER BY booking_date DESC, id DESC LIMIT %d", // phpcs:ignore
+				"SELECT * FROM {$table} WHERE user_id = %d{$hide} ORDER BY booking_date DESC, id DESC LIMIT %d", // phpcs:ignore
 				(int) $user_id,
 				(int) $limit
 			)
@@ -245,7 +352,7 @@ class CMB_Bookings {
 	 *
 	 * @return array ردیف‌های نوبت، از نزدیک‌ترین به دورترین.
 	 */
-	public static function active_bookings_for_user( $user_id ) {
+	public static function active_bookings_for_user( $user_id, $exclude_id = 0 ) {
 		global $wpdb;
 
 		$user_id = (int) $user_id;
@@ -269,8 +376,14 @@ class CMB_Bookings {
 			}
 		}
 
-		$sql    = "SELECT * FROM {$table} WHERE user_id = %d AND status = 'confirmed' AND ( booking_date > %s";
-		$params = array( $user_id, $today );
+		/* «در انتظار پرداخت» هم تا پایان مهلتش فعال است؛ وگرنه کسی که
+		   هنوز در درگاه است می‌توانست هم‌زمان نوبت دیگری بگیرد. */
+		$active = ( class_exists( 'CMB_Payments' ) && CMB_Payments::schema_ready() )
+			? "( status = 'confirmed' OR ( status = 'pending' AND hold_until_gmt > '" . esc_sql( cmb_now_gmt() ) . "' ) )"
+			: "status = 'confirmed'";
+
+		$sql    = "SELECT * FROM {$table} WHERE user_id = %d AND id <> %d AND {$active} AND ( booking_date > %s";
+		$params = array( $user_id, (int) $exclude_id, $today );
 
 		if ( $upcoming_today ) {
 			$holders = implode( ',', array_fill( 0, count( $upcoming_today ), '%s' ) );
@@ -329,7 +442,7 @@ class CMB_Bookings {
 	 *
 	 * @return true|WP_Error
 	 */
-	public static function check_active_limits( $user_id, $service ) {
+	public static function check_active_limits( $user_id, $service, $exclude_id = 0 ) {
 		$max_active  = (int) CMB_Settings::get( 'max_active_per_user', 1 );
 		$per_service = (bool) CMB_Settings::get( 'one_per_service', 1 );
 
@@ -337,11 +450,52 @@ class CMB_Bookings {
 			return true;
 		}
 
-		$active = self::active_bookings_for_user( $user_id );
+		$active = self::active_bookings_for_user( $user_id, $exclude_id );
 
 		if ( ! $active ) {
 			return true;
 		}
+
+		$error = self::limit_error( $active, $user_id, $service, $max_active, $per_service );
+
+		if ( true === $error ) {
+			return true;
+		}
+
+		/* اگر چیزی که جلوی نوبت تازه را گرفته یک نوبتِ «در انتظار
+		   پرداخت» است، مشتری باید بتواند همان را تمام کند یا رهایش کند —
+		   نه اینکه پیام «با شعبه تماس بگیرید» ببیند. */
+		foreach ( $active as $row ) {
+			if ( 'pending' !== $row->status ) {
+				continue;
+			}
+
+			return new WP_Error(
+				'cmb_pending_exists',
+				sprintf(
+					'یک نوبت در انتظار پرداخت دارید (%s، %s). پرداختش را تمام کنید یا از آن انصراف دهید تا بتوانید نوبت دیگری بگیرید.',
+					cmb_jalali_date( $row->booking_date, 'full' ),
+					cmb_block_label( $row->block_key )
+				),
+				array(
+					'status'  => 409,
+					'pending' => array(
+						'id'       => (int) $row->id,
+						'token'    => (string) $row->pay_token,
+						'code'     => (string) $row->tracking_code,
+						'sameSlot' => $service && (int) $row->service_id === (int) $service->id,
+					),
+				)
+			);
+		}
+
+		return $error;
+	}
+
+	/**
+	 * خطای سقف نوبت‌ها، یا true.
+	 */
+	protected static function limit_error( array $active, $user_id, $service, $max_active, $per_service ) {
 
 		if ( $per_service && $service ) {
 			foreach ( $active as $row ) {
@@ -392,6 +546,34 @@ class CMB_Bookings {
 		return true;
 	}
 
+	/**
+	 * سقف ثبت نوبت بیعانه‌دار: هر نوبتِ در انتظار پرداخت یک جا را تا
+	 * پایان مهلتش نگه می‌دارد، پس بدون سقف می‌شد با چند حساب کل
+	 * شیفت‌ها را بی‌پرداخت قفل کرد.
+	 *
+	 * @return true|WP_Error
+	 */
+	protected static function deposit_rate_limit( $user_id ) {
+		global $wpdb;
+
+		$table = cmb_table( 'bookings' );
+		$since = cmb_now()->modify( '-1 hour' )->format( 'Y-m-d H:i:s' );
+
+		$by_user = (int) $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE user_id = %d AND deposit_amount > 0 AND created_at >= %s", (int) $user_id, $since ) // phpcs:ignore
+		);
+
+		$by_ip = (int) $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE ip = %s AND deposit_amount > 0 AND created_at >= %s", cmb_get_ip(), $since ) // phpcs:ignore
+		);
+
+		if ( $by_user >= 5 || $by_ip >= 20 ) {
+			return new WP_Error( 'cmb_pay_rate', 'در یک ساعت گذشته چند بار نوبت ثبت و پرداخت نشده است. کمی بعد دوباره تلاش کنید یا با شعبه تماس بگیرید.', array( 'status' => 429 ) );
+		}
+
+		return true;
+	}
+
 	public static function count_active_for_user( $user_id ) {
 		return count( self::active_bookings_for_user( $user_id ) );
 	}
@@ -419,6 +601,16 @@ class CMB_Bookings {
 	 * @return DateTime|null
 	 */
 	public static function cancel_deadline( $booking ) {
+		/* نوبت بیعانه‌دار: همان مهلتی که مشتری هنگام پرداخت پذیرفت، حتی
+		   اگر بعداً تنظیمات یا ساعت شیفت عوض شود. */
+		if ( ! empty( $booking->cancel_until ) && ! empty( $booking->deposit_amount ) ) {
+			$fixed = DateTime::createFromFormat( 'Y-m-d H:i:s', (string) $booking->cancel_until, cmb_timezone() );
+
+			if ( $fixed ) {
+				return $fixed;
+			}
+		}
+
 		$slot = self::slot_datetime( $booking );
 
 		if ( ! $slot ) {
@@ -520,11 +712,17 @@ class CMB_Bookings {
 		   نوشته شده — تکرار سال فقط سطر را شلوغ می‌کند.
 		   ارقام را هم دست نمی‌زنیم؛ تبدیل به فارسی در جاوااسکریپت و
 		   بر اساس تنظیم سایت انجام می‌شود. */
-		return sprintf(
+		$hint = sprintf(
 			'مهلت لغو: %s، ساعت %s',
 			cmb_jalali_date( $deadline->format( 'Y-m-d' ), 'short' ),
 			$deadline->format( 'H:i' )
 		);
+
+		if ( isset( $booking->pay_status ) && 'paid' === $booking->pay_status ) {
+			$hint .= ' — با لغو، ' . number_format( (int) $booking->cancel_refund_amount ) . ' تومان بازگردانده می‌شود';
+		}
+
+		return $hint;
 	}
 
 	/**
@@ -565,6 +763,16 @@ class CMB_Bookings {
 		   confirmed و done را حساب می‌کند. کش درون‌درخواستی باید
 		   خالی شود وگرنه همین درخواست عدد قدیمی را می‌بیند. */
 		CMB_Availability::flush_cache();
+
+		/* بیعانه: همان مبلغ بازگشتی که مشتری هنگام پرداخت پذیرفت
+		   (cancel_refund_amount روی خود نوبت)، نه مقدار فعلی تنظیمات. */
+		if ( isset( $booking->pay_status ) && 'paid' === $booking->pay_status ) {
+			$main = CMB_Payments::main_payment( $booking->id );
+
+			if ( $main ) {
+				CMB_Payments::refund_due( $main, (int) $booking->cancel_refund_amount * 10, 'customer', (int) $user_id, true );
+			}
+		}
 
 		$booking = self::get( $booking->id );
 
@@ -621,32 +829,180 @@ class CMB_Bookings {
 	}
 
 	/**
-	 * تغییر وضعیت نوبت.
+	 * آیا مسئول رزرو می‌تواند وضعیت این نوبت را به $to تغییر دهد؟
+	 *
+	 * تنها مرجع این قواعد؛ پنل و پیشخوان هر دو از همین می‌خوانند.
+	 *
+	 * @return true|WP_Error
 	 */
-	public static function set_status( $booking_id, $status ) {
-		global $wpdb;
-
-		if ( ! array_key_exists( $status, cmb_statuses() ) ) {
-			return new WP_Error( 'cmb_bad_status', 'وضعیت معتبر نیست.' );
+	public static function can_transition( $booking, $to ) {
+		if ( ! $booking ) {
+			return new WP_Error( 'cmb_not_found', 'نوبت یافت نشد.', array( 'status' => 404 ) );
 		}
 
-		$booking = self::get( $booking_id );
+		$from = (string) $booking->status;
 
-		if ( ! $booking ) {
-			return new WP_Error( 'cmb_not_found', 'نوبت یافت نشد.' );
+		if ( ! array_key_exists( $to, cmb_manual_statuses() ) ) {
+			return new WP_Error( 'cmb_bad_status', 'وضعیت معتبر نیست.', array( 'status' => 400 ) );
+		}
+
+		if ( $from === $to ) {
+			return new WP_Error( 'cmb_same_status', 'نوبت همین حالا «' . cmb_status_label( $to ) . '» است.', array( 'status' => 409 ) );
+		}
+
+		if ( 'pending' === $from ) {
+			return 'cancelled' === $to
+				? true
+				: new WP_Error( 'cmb_unpaid', 'این نوبت هنوز پرداخت نشده؛ فقط می‌شود لغوش کرد.', array( 'status' => 409 ) );
+		}
+
+		if ( 'expired' === $from ) {
+			return new WP_Error( 'cmb_unpaid', 'بیعانه‌ی این نوبت پرداخت نشد؛ وضعیتش قابل تغییر نیست. اگر مشتری هنوز نوبت می‌خواهد، نوبت تازه بگیرد.', array( 'status' => 409 ) );
+		}
+
+		$pay = isset( $booking->pay_status ) ? (string) $booking->pay_status : '';
+
+		if ( 'cancelled' === $from && in_array( $pay, array( 'refund_due', 'refunding', 'refunded', 'kept' ), true ) ) {
+			if ( in_array( $pay, array( 'refunding', 'refunded' ), true ) ) {
+				return new WP_Error( 'cmb_refund_locked', 'بیعانه‌ی این نوبت به مشتری برگشت داده شده است؛ بازگرداندن نوبت ممکن نیست. نوبت تازه ثبت شود.', array( 'status' => 409 ) );
+			}
+
+			if ( 'confirmed' !== $to ) {
+				return new WP_Error( 'cmb_restore_first', 'نوبت لغوشده‌ی بیعانه‌دار فقط قابل بازگردانی است.', array( 'status' => 409 ) );
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * وضعیت‌هایی که پنل برای این نوبت دکمه نشان می‌دهد.
+	 *
+	 * @return string[]
+	 */
+	public static function actions_for( $booking ) {
+		$out = array();
+
+		foreach ( array_keys( cmb_manual_statuses() ) as $to ) {
+			if ( true === self::can_transition( $booking, $to ) ) {
+				$out[] = $to;
+			}
+		}
+
+		if ( true === self::can_delete( $booking ) ) {
+			$out[] = 'delete';
+		}
+
+		return $out;
+	}
+
+	/**
+	 * تغییر وضعیت نوبت.
+	 *
+	 * @param array $args refund: مبلغ برگشتی (تومان) در لغو نوبت پرداخت‌شده؛
+	 *                    force: بازگردانی حتی وقتی ظرفیت پر است.
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function set_status( $booking_id, $status, array $args = array() ) {
+		global $wpdb;
+
+		$booking = self::get( $booking_id );
+		$allowed = self::can_transition( $booking, $status );
+
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
+		}
+
+		$now = current_time( 'mysql' );
+
+		// لغو نوبتِ پرداخت‌نشده = پایان مهلت پرداخت؛ جا همین حالا آزاد می‌شود
+		if ( 'pending' === $booking->status ) {
+			$wpdb->update(
+				cmb_table( 'bookings' ),
+				array(
+					'status'         => 'expired',
+					'expire_reason'  => 'admin',
+					'pay_status'     => 'unpaid',
+					'hold_until_gmt' => null,
+					'updated_at'     => $now,
+				),
+				array( 'id' => (int) $booking_id )
+			);
+
+			CMB_Availability::flush_cache();
+			do_action( 'cmb_booking_status_changed', (int) $booking_id, 'expired', 'pending' );
+
+			return true;
+		}
+
+		$pay  = isset( $booking->pay_status ) ? (string) $booking->pay_status : '';
+		$main = in_array( $pay, array( 'paid', 'refund_due', 'kept' ), true ) ? CMB_Payments::main_payment( $booking->id ) : null;
+
+		// بازگردانی: جا باید هنوز باشد (مگر مدیر عمداً بخواهد)
+		if ( 'cancelled' === $booking->status && 'confirmed' === $status && empty( $args['force'] ) ) {
+			$service = CMB_Services::get_service( $booking->service_id );
+
+			CMB_Availability::flush_cache();
+
+			if ( $service && CMB_Availability::remaining( (int) $booking->branch_id, $booking->booking_date, $booking->block_key, $service ) < 1 ) {
+				return new WP_Error(
+					'cmb_restore_full',
+					'ظرفیت این شیفت پر است. با بازگرداندن این نوبت، تعداد نوبت‌ها از ظرفیت بیشتر می‌شود.',
+					array(
+						'status'  => 409,
+						'canForce' => true,
+					)
+				);
+			}
+		}
+
+		// مبلغ برگشت در لغو از طرف مجموعه؛ پیش از هر تغییری بررسی می‌شود
+		$refund = null;
+
+		if ( 'cancelled' === $status && $main && 'paid' === $pay ) {
+			$paid   = (int) ( $main->amount_rial / 10 );
+			$refund = ( isset( $args['refund'] ) && '' !== $args['refund'] && null !== $args['refund'] )
+				? (int) cmb_en_num( (string) $args['refund'] )
+				: CMB_Payments::shop_refund_default( $paid );
+
+			$valid = CMB_Payments::validate_refund_amount( $refund, $paid );
+
+			if ( is_wp_error( $valid ) ) {
+				return $valid;
+			}
+		}
+
+		if ( 'cancelled' === $booking->status && 'confirmed' === $status && $main && 'refund_due' === $pay ) {
+			$cleared = CMB_Payments::clear_refund( $main );
+
+			if ( is_wp_error( $cleared ) ) {
+				return $cleared;
+			}
 		}
 
 		$fields = array(
 			'status'     => $status,
-			'updated_at' => current_time( 'mysql' ),
+			'updated_at' => $now,
 		);
 
 		if ( 'cancelled' === $status && self::has_cancel_columns() ) {
 			$fields['cancelled_by'] = 'branch';
-			$fields['cancelled_at'] = current_time( 'mysql' );
+			$fields['cancelled_at'] = $now;
+		}
+
+		// عدم مراجعه: بیعانه نزد مجموعه می‌ماند؛ برگشت از آن، دوباره «پرداخت‌شده»
+		if ( $main && 'no_show' === $status && 'paid' === $pay ) {
+			$fields['pay_status'] = 'kept';
+		} elseif ( $main && 'kept' === $pay && in_array( $status, array( 'confirmed', 'done' ), true ) ) {
+			$fields['pay_status'] = 'paid';
 		}
 
 		$wpdb->update( cmb_table( 'bookings' ), $fields, array( 'id' => (int) $booking_id ) );
+
+		if ( null !== $refund ) {
+			CMB_Payments::refund_due( $main, $refund * 10, 'shop', get_current_user_id(), true );
+		}
 
 		// ظرفیت شیفت با لغو آزاد می‌شود؛ شمارشِ کش‌شده باید کهنه نماند.
 		CMB_Availability::flush_cache();
@@ -667,12 +1023,49 @@ class CMB_Bookings {
 	}
 
 	/**
+	 * نوبتی که پولش آمده یا در راه است حذف نمی‌شود؛ ردیف پرداخت و صف
+	 * برگشت وجه به آن اشاره می‌کنند.
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function can_delete( $booking ) {
+		if ( ! $booking ) {
+			return new WP_Error( 'cmb_not_found', 'نوبت یافت نشد.', array( 'status' => 404 ) );
+		}
+
+		foreach ( CMB_Payments::for_booking( $booking->id ) as $p ) {
+			if ( in_array( $p->status, array( 'paid', 'requested' ), true ) ) {
+				return new WP_Error( 'cmb_has_payment', 'برای این نوبت بیعانه پرداخت شده و حذفش سابقه‌ی پرداخت را بی‌صاحب می‌کند. به‌جای حذف، لغوش کنید.', array( 'status' => 409 ) );
+			}
+		}
+
+		return true;
+	}
+
+	/**
 	 * حذف کامل یک نوبت.
+	 *
+	 * @return true|WP_Error
 	 */
 	public static function delete( $booking_id ) {
 		global $wpdb;
 
-		return $wpdb->delete( cmb_table( 'bookings' ), array( 'id' => (int) $booking_id ) );
+		$booking = self::get( $booking_id );
+		$allowed = self::can_delete( $booking );
+
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
+		}
+
+		$wpdb->delete( cmb_table( 'bookings' ), array( 'id' => (int) $booking_id ) );
+
+		if ( CMB_Payments::schema_ready() ) {
+			$wpdb->delete( cmb_table( 'payments' ), array( 'booking_id' => (int) $booking_id ) );
+		}
+
+		CMB_Availability::flush_cache();
+
+		return true;
 	}
 
 	/**
@@ -719,6 +1112,11 @@ class CMB_Bookings {
 				&& true === self::can_user_cancel( $booking, get_current_user_id() ) ),
 			'cancelHint'   => 'confirmed' === $booking->status ? self::cancel_hint( $booking ) : '',
 			'isPast'       => self::is_past( $booking ),
+			/* بیعانه: مبلغ، وضعیت و برگشت. null برای نوبت بی‌بیعانه. */
+			'pay'          => CMB_Payments::summary( $booking ),
+			'holdLeft'     => ( 'pending' === $booking->status && ! empty( $booking->hold_until_gmt ) )
+				? max( 0, strtotime( $booking->hold_until_gmt . ' UTC' ) - cmb_now()->getTimestamp() )
+				: 0,
 		);
 	}
 
@@ -928,28 +1326,5 @@ class CMB_Bookings {
 		$service = CMB_Services::get_service( $booking->service_id );
 
 		return $service ? $service->title : '';
-	}
-
-	/* --------------------------------------------------------------------
-	 * قفل هم‌زمانی برای جلوگیری از رزرو بیش از ظرفیت
-	 * ----------------------------------------------------------------- */
-
-	protected static function acquire_lock( $name ) {
-		global $wpdb;
-
-		$key = substr( md5( $name ), 0, 40 );
-
-		return (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $key, 5 ) ) === 1;
-	}
-
-	protected static function release_lock( $name, $acquired ) {
-		global $wpdb;
-
-		if ( ! $acquired ) {
-			return;
-		}
-
-		$key = substr( md5( $name ), 0, 40 );
-		$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $key ) ); // phpcs:ignore
 	}
 }

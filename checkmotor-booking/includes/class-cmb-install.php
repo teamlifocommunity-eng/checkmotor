@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CMB_Install {
 
-	const DB_VERSION = '1.3.0';
+	const DB_VERSION = '1.4.0';
 
 	public static function activate() {
 		global $wpdb;
@@ -90,7 +90,7 @@ class CMB_Install {
 
 		$missing = array();
 
-		foreach ( array( 'branches', 'services', 'bookings', 'closures', 'otp' ) as $name ) {
+		foreach ( array( 'branches', 'services', 'bookings', 'closures', 'otp', 'payments' ) as $name ) {
 			$table = cmb_table( $name );
 			$found = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ); // phpcs:ignore
 
@@ -178,6 +178,7 @@ class CMB_Install {
 		$bookings = cmb_table( 'bookings' );
 		$closures = cmb_table( 'closures' );
 		$otp      = cmb_table( 'otp' );
+		$payments = cmb_table( 'payments' );
 
 		$sql = array();
 
@@ -205,6 +206,8 @@ class CMB_Install {
 			duration_note VARCHAR(190) DEFAULT '' NOT NULL,
 			allowed_weekdays VARCHAR(30) DEFAULT '' NOT NULL,
 			own_capacity VARCHAR(190) DEFAULT '' NOT NULL,
+			deposit_amount INT UNSIGNED NULL DEFAULT NULL,
+			cancel_refund_amount INT UNSIGNED NULL DEFAULT NULL,
 			sort_order INT DEFAULT 0 NOT NULL,
 			is_active TINYINT(1) DEFAULT 1 NOT NULL,
 			created_at DATETIME NOT NULL,
@@ -234,13 +237,71 @@ class CMB_Install {
 			cancelled_at DATETIME NULL,
 			reminder_sent TINYINT(1) DEFAULT 0 NOT NULL,
 			ip VARCHAR(45) DEFAULT '' NOT NULL,
+			price_at_booking BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			deposit_amount INT UNSIGNED DEFAULT 0 NOT NULL,
+			cancel_refund_amount INT UNSIGNED DEFAULT 0 NOT NULL,
+			cancel_until DATETIME NULL,
+			terms_accepted_at DATETIME NULL,
+			terms_hash VARCHAR(64) DEFAULT '' NOT NULL,
+			pay_status VARCHAR(20) DEFAULT '' NOT NULL,
+			refund_amount INT UNSIGNED DEFAULT 0 NOT NULL,
+			hold_until_gmt DATETIME NULL,
+			paid_at DATETIME NULL,
+			pay_token VARCHAR(64) DEFAULT '' NOT NULL,
+			expire_reason VARCHAR(20) DEFAULT '' NOT NULL,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL,
 			PRIMARY KEY  (id),
 			UNIQUE KEY tracking_code (tracking_code),
 			KEY slot (branch_id,booking_date,block_key,status),
 			KEY user_id (user_id),
-			KEY phone (phone)
+			KEY phone (phone),
+			KEY hold (status,hold_until_gmt),
+			KEY pay_status (pay_status)
+		) {$charset};";
+
+		/* پرداخت‌های بیعانه: هر تلاش پرداخت (هر authority زرین‌پال) یک
+		   ردیف. مبلغ‌ها به ریال، همان واحدی که به درگاه فرستاده می‌شود.
+		   برگشت وجه روی همان ردیف پرداخت ثبت می‌شود، چون زرین‌پال هم
+		   برای هر تراکنش فقط یک برگشت می‌پذیرد. */
+		$sql[] = "CREATE TABLE {$payments} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			booking_id BIGINT UNSIGNED NOT NULL,
+			user_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			sandbox TINYINT(1) DEFAULT 0 NOT NULL,
+			authority VARCHAR(64) NULL DEFAULT NULL,
+			amount_rial BIGINT UNSIGNED NOT NULL,
+			status VARCHAR(20) DEFAULT 'created' NOT NULL,
+			gw_code INT DEFAULT 0 NOT NULL,
+			gw_message VARCHAR(255) DEFAULT '' NOT NULL,
+			ref_id VARCHAR(40) DEFAULT '' NOT NULL,
+			card_pan VARCHAR(32) DEFAULT '' NOT NULL,
+			card_hash VARCHAR(128) DEFAULT '' NOT NULL,
+			fee_type VARCHAR(20) DEFAULT '' NOT NULL,
+			fee BIGINT DEFAULT 0 NOT NULL,
+			checks SMALLINT UNSIGNED DEFAULT 0 NOT NULL,
+			next_check_gmt DATETIME NULL,
+			paid_at DATETIME NULL,
+			refund_status VARCHAR(20) DEFAULT '' NOT NULL,
+			refund_reason VARCHAR(30) DEFAULT '' NOT NULL,
+			refund_amount_rial BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			refund_method VARCHAR(20) DEFAULT '' NOT NULL,
+			refund_ref VARCHAR(80) DEFAULT '' NOT NULL,
+			zp_session_id VARCHAR(40) DEFAULT '' NOT NULL,
+			refund_error VARCHAR(255) DEFAULT '' NOT NULL,
+			refund_by BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			refund_due_at DATETIME NULL,
+			refund_done_at DATETIME NULL,
+			raw TEXT NULL,
+			ip VARCHAR(45) DEFAULT '' NOT NULL,
+			created_at DATETIME NOT NULL,
+			created_gmt DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY authority (authority),
+			KEY booking_id (booking_id),
+			KEY status_check (status,next_check_gmt),
+			KEY refund_status (refund_status)
 		) {$charset};";
 
 		$sql[] = "CREATE TABLE {$closures} (
@@ -277,6 +338,11 @@ class CMB_Install {
 		delete_transient( 'cmb_has_cancel_cols' );
 		delete_transient( 'cmb_has_owncap_col' );
 		delete_transient( 'cmb_col_bookings_city' );
+
+		foreach ( array( 'deposit_amount', 'pay_status', 'hold_until_gmt' ) as $col ) {
+			delete_transient( 'cmb_col_bookings_' . $col );
+			delete_transient( 'cmb_col_services_' . $col );
+		}
 	}
 
 	/**

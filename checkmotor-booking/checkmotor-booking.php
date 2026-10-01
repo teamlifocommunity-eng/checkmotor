@@ -3,7 +3,7 @@
  * Plugin Name: چک موتور — سیستم رزرو نوبت
  * Plugin URI:  https://checkmotor.ir
  * Description: سیستم رزرو نوبت آنلاین چک موتور (MVP) — ورود با کد تایید پیامکی ملی‌پیامک، تقویم ۷ روزه، شیفت صبح/بعدازظهر، پنل مدیریت نوبت‌ها.
- * Version:     1.32.0
+ * Version:     1.33.0
  * Author:      رضا امام‌حسنی
  * Text Domain: checkmotor-booking
  * Domain Path: /languages
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMB_VERSION', '1.32.0' );
+define( 'CMB_VERSION', '1.33.0' );
 define( 'CMB_FILE', __FILE__ );
 define( 'CMB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMB_URL', plugin_dir_url( __FILE__ ) );
@@ -112,6 +112,8 @@ function cmb_load_files() {
 		'includes/class-cmb-settings.php',
 		'includes/class-cmb-sms.php',
 		'includes/class-cmb-otp.php',
+		'includes/class-cmb-zarinpal.php',
+		'includes/class-cmb-payments.php',
 		'includes/class-cmb-services.php',
 		'includes/class-cmb-availability.php',
 		'includes/class-cmb-bookings.php',
@@ -421,6 +423,11 @@ add_action(
 
 		$route = (string) get_query_var( 'cmb_route' );
 
+		// بازگشت از درگاه و نشانی کرون پرداخت؛ هر دو خودشان پاسخ می‌دهند
+		if ( 0 === strpos( $route, 'pay/' ) && CMB_Payments::route( $route ) ) {
+			exit;
+		}
+
 		status_header( 200 );
 
 		if ( 0 === strpos( $route, 'panel' ) ) {
@@ -611,6 +618,11 @@ function cmb_enqueue_app() {
 	$user = wp_get_current_user();
 	$boot = cmb_boot_payload();
 
+	// پرداخت‌های بی‌جواب، بعد از پاسخ (هر دو دقیقه حداکثر یک بار)
+	CMB_Payments::maybe_reconcile();
+
+	$route = (string) get_query_var( 'cmb_route' );
+
 	wp_localize_script(
 		'cmb-app',
 		'CMB_APP',
@@ -618,7 +630,7 @@ function cmb_enqueue_app() {
 			'boot'      => $boot,
 			'root'      => esc_url_raw( rest_url( 'cmb/v1/' ) ),
 			'base'      => '/' . cmb_app_slug() . '/',
-			'route'     => (string) get_query_var( 'cmb_route' ),
+			'route'     => $route,
 			'nonce'     => wp_create_nonce( 'wp_rest' ),
 			'nonceUrl'  => esc_url_raw( admin_url( 'admin-ajax.php?action=cmb_nonce' ) ),
 			'logged'    => is_user_logged_in(),
@@ -643,6 +655,15 @@ function cmb_enqueue_app() {
 			   هزینه‌ای ندارد. */
 			'bookings'  => cmb_user_bookings_payload( $user->ID ),
 			'branch'    => $boot['branch'],
+			/* بیعانه: روشن بودن و درگاه آزمایشی. مبلغ هر خدمت داخل
+			   خود فهرست خدمات است (deposit). */
+			'pay'       => array(
+				'on'      => CMB_Payments::enabled(),
+				'sandbox' => CMB_Payments::enabled() && CMB_Payments::sandbox(),
+			),
+			/* صفحه‌ی نتیجه‌ی پرداخت: وضعیت همین‌جا ساخته می‌شود، چون
+			   ممکن است بی‌کوکی باز شده باشد (سافاری جدا در آیفون). */
+			'payResult' => 0 === strpos( $route, 'pay/result' ) ? CMB_Payments::result_payload() : null,
 			'notes'     => array(
 				'ecu'         => $boot['notes']['ecu'],
 				'outOfWindow' => $boot['notes']['outOfWindow'],
@@ -668,6 +689,8 @@ function cmb_enqueue_panel() {
 
 	$user = wp_get_current_user();
 
+	CMB_Payments::maybe_reconcile();
+
 	wp_localize_script(
 		'cmb-panel',
 		'CMB_PANEL',
@@ -688,6 +711,13 @@ function cmb_enqueue_panel() {
 			'login'    => cmb_login_url( cmb_app_url( 'panel' ) ),
 			'wpAdmin'  => esc_url_raw( admin_url( 'admin.php?page=cmb-bookings' ) ),
 			'wpSettings' => esc_url_raw( admin_url( 'admin.php?page=cmb-settings' ) ),
+			/* بیعانه: نمای «بازگشت وجه» و پنجره‌ی لغو با مبلغ. */
+			'pay'      => array(
+				'on'        => CMB_Payments::enabled(),
+				'used'      => CMB_Payments::in_use(),
+				'canRefund' => CMB_Panel_Api::can_refund(),
+				'shopPct'   => (int) CMB_Settings::get( 'pay_shop_refund_percent', 100 ),
+			),
 			/* دکمه‌ی «نصب روی گوشی»؛ null یعنی قابلیت خاموش است. */
 			'pwa'      => CMB_Panel_Pwa::js_config(),
 			/* ورود مسئول رزرو با کد پیامکی؛ فقط وقتی پیامک واقعاً ارسال می‌شود. */

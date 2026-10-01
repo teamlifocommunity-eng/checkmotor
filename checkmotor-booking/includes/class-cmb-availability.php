@@ -212,10 +212,12 @@ class CMB_Availability {
 			$params = array_merge( $params, $exclude );
 		}
 
+		$busy = cmb_occupying_sql();
+
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT block_key, COUNT(*) AS total FROM {$table}
-				 WHERE branch_id = %d AND booking_date = %s AND status IN ('confirmed','done'){$not_in}
+				 WHERE branch_id = %d AND booking_date = %s AND {$busy}{$not_in}
 				 GROUP BY block_key", // phpcs:ignore
 				$params
 			)
@@ -247,11 +249,12 @@ class CMB_Availability {
 		}
 
 		$table = cmb_table( 'bookings' );
+		$busy  = cmb_occupying_sql();
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT block_key, COUNT(*) AS total FROM {$table}
-				 WHERE service_id = %d AND branch_id = %d AND booking_date = %s AND status IN ('confirmed','done')
+				 WHERE service_id = %d AND branch_id = %d AND booking_date = %s AND {$busy}
 				 GROUP BY block_key", // phpcs:ignore
 				(int) $service_id,
 				(int) $branch_id,

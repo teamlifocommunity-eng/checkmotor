@@ -243,7 +243,29 @@ class CMB_Services {
 			'weekdays'    => self::allowed_weekdays( $service ),
 			'weekdayText' => self::weekday_text( self::allowed_weekdays( $service ) ),
 			'ownCapacity' => self::own_capacity( $service ),
+			// بیعانه با تنظیمات فعلی؛ ۰ یعنی رزرو این خدمت پرداخت ندارد
+			'deposit'     => CMB_Payments::service_deposit( $service ),
+			'depositLabel' => CMB_Payments::service_deposit( $service ) ? cmb_toman( CMB_Payments::service_deposit( $service ) ) : '',
 		);
+	}
+
+	/**
+	 * بیعانه‌ی دلخواه یک خدمت برای ذخیره.
+	 *
+	 * null (یا رشته‌ی خالی) یعنی «پیش‌فرض تنظیمات»، ۰ یعنی «بیعانه ندارد».
+	 *
+	 * @return int|null
+	 */
+	public static function clean_amount( $value ) {
+		if ( null === $value || '' === $value || 'default' === $value ) {
+			return null;
+		}
+
+		return max( 0, min( 100000000, (int) cmb_en_num( (string) $value ) ) );
+	}
+
+	public static function has_deposit_columns() {
+		return CMB_Payments::schema_ready();
 	}
 
 	/**
@@ -483,6 +505,14 @@ class CMB_Services {
 			$row['own_capacity'] = self::encode_own_capacity( $data['own_capacity'] );
 		}
 
+		if ( self::has_deposit_columns() ) {
+			foreach ( array( 'deposit_amount', 'cancel_refund_amount' ) as $col ) {
+				if ( array_key_exists( $col, $data ) ) {
+					$row[ $col ] = self::clean_amount( $data[ $col ] );
+				}
+			}
+		}
+
 		$ok = $wpdb->insert( $table, $row );
 
 		if ( ! $ok ) {
@@ -590,6 +620,16 @@ class CMB_Services {
 
 		if ( array_key_exists( 'own_capacity', $data ) && self::has_own_capacity_column() ) {
 			$fields['own_capacity'] = self::encode_own_capacity( $data['own_capacity'] );
+		}
+
+		/* بیعانه فقط وقتی کلیدش آمده باشد؛ روشن/خاموش کردن یا جابه‌جایی
+		   خدمت نباید مبلغ دلخواهش را پاک کند. */
+		if ( self::has_deposit_columns() ) {
+			foreach ( array( 'deposit_amount', 'cancel_refund_amount' ) as $col ) {
+				if ( array_key_exists( $col, $data ) ) {
+					$fields[ $col ] = self::clean_amount( $data[ $col ] );
+				}
+			}
 		}
 
 		if ( empty( $fields ) ) {

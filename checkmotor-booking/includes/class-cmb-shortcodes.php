@@ -79,6 +79,14 @@ class CMB_Shortcodes {
 			return '<div class="cmb-notice cmb-notice--error">در حال حاضر خدمتی برای رزرو تعریف نشده است.</div>';
 		}
 
+		/* فرم قدیمی گام قوانین و پرداخت ندارد. با بیعانه، مشتری به اپ رزرو
+		   فرستاده می‌شود (این فرم فقط وقتی دیده می‌شود که حالت تمام‌صفحه
+		   خاموش باشد). */
+		if ( CMB_Payments::enabled() ) {
+			return '<div class="cmb-notice"><p>رزرو نوبت با پرداخت بیعانه انجام می‌شود.</p>'
+				. '<p><a class="cmb-btn cmb-btn--primary" href="' . esc_url( cmb_app_url() ) . '">رفتن به صفحه‌ی رزرو نوبت</a></p></div>';
+		}
+
 		ob_start();
 		include CMB_DIR . 'templates/booking-form.php';
 

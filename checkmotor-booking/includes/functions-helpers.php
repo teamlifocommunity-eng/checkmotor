@@ -315,7 +315,86 @@ function cmb_statuses() {
 		'done'      => 'انجام شده',
 		'no_show'   => 'عدم مراجعه',
 		'cancelled' => 'لغو شده',
+		// فقط با پرداخت بیعانه: نوبتِ ثبت‌شده‌ای که هنوز پولش نیامده،
+		// و نوبتی که پولش هرگز نیامد (با «عدم مراجعه» فرق دارد).
+		'pending'   => 'در انتظار پرداخت',
+		'expired'   => 'پرداخت نشد',
 	);
+}
+
+/**
+ * وضعیت‌هایی که مسئول رزرو دستی می‌تواند بگذارد.
+ *
+ * pending و expired را فقط جریان پرداخت می‌سازد.
+ */
+function cmb_manual_statuses() {
+	return array_intersect_key( cmb_statuses(), array_flip( array( 'confirmed', 'done', 'no_show', 'cancelled' ) ) );
+}
+
+/**
+ * لحظه‌ی جاری به UTC، به شکل ستون DATETIME.
+ */
+function cmb_now_gmt() {
+	return gmdate( 'Y-m-d H:i:s', cmb_now()->getTimestamp() );
+}
+
+/**
+ * شرط SQL «این نوبت جا اشغال کرده است».
+ *
+ * تأییدشده و انجام‌شده همیشه؛ «در انتظار پرداخت» فقط تا پایان مهلت
+ * نگه‌داری‌اش. مهلت داخل خود شرط است، پس شمارش ظرفیت بدون اینکه کسی
+ * نوبت‌های مانده را «منقضی» کند درست است.
+ *
+ * تا مهاجرت ۱.۴.۰ اجرا نشده، ستون مهلت وجود ندارد و همان شرط قبلی
+ * برگردانده می‌شود.
+ *
+ * @param string $alias پیشوند جدول در کوئری، مثلاً «b.».
+ */
+function cmb_occupying_sql( $alias = '' ) {
+	if ( ! class_exists( 'CMB_Payments' ) || ! CMB_Payments::schema_ready() ) {
+		return "{$alias}status IN ('confirmed','done')";
+	}
+
+	$now = esc_sql( cmb_now_gmt() );
+
+	return "( {$alias}status IN ('confirmed','done') OR ( {$alias}status = 'pending' AND {$alias}hold_until_gmt > '{$now}' ) )";
+}
+
+/**
+ * مبلغ تومانی برای نمایش: «۱۰۰,۰۰۰ تومان».
+ */
+function cmb_toman( $amount ) {
+	return cmb_fa_num( number_format( (int) $amount ) ) . ' تومان';
+}
+
+/**
+ * قفل نام‌دار MySQL.
+ *
+ * @return string ok (گرفته شد)، busy (کس دیگری دارد و مهلت تمام شد)
+ *                یا none (دیتابیس قفل نام‌دار ندارد؛ مثلاً SQLite).
+ */
+function cmb_lock( $name, $timeout = 5 ) {
+	global $wpdb;
+
+	$key    = substr( md5( $name ), 0, 40 );
+	$result = $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $key, (int) $timeout ) );
+
+	if ( null === $result ) {
+		return 'none';
+	}
+
+	return 1 === (int) $result ? 'ok' : 'busy';
+}
+
+function cmb_unlock( $name, $state ) {
+	global $wpdb;
+
+	if ( 'ok' !== $state ) {
+		return;
+	}
+
+	$key = substr( md5( $name ), 0, 40 );
+	$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $key ) ); // phpcs:ignore
 }
 
 function cmb_status_label( $status ) {

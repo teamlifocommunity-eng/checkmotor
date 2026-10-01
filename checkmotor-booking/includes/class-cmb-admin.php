@@ -31,6 +31,7 @@ class CMB_Admin {
 		add_action( 'admin_post_cmb_update_booking', array( $this, 'handle_update_booking' ) );
 		add_action( 'admin_post_cmb_test_sms', array( $this, 'handle_test_sms' ) );
 		add_action( 'admin_post_cmb_export_bookings', array( $this, 'handle_export' ) );
+		add_action( 'admin_post_cmb_test_zarinpal', array( $this, 'handle_test_zarinpal' ) );
 		add_action( 'admin_notices', array( $this, 'setup_notice' ) );
 	}
 
@@ -88,6 +89,126 @@ class CMB_Admin {
 	/**
 	 * بخش «سرعت» در تنظیمات.
 	 */
+	/**
+	 * بخش «پرداخت بیعانه (زرین‌پال)» در تنظیمات.
+	 */
+	protected function render_pay_settings() {
+		$s       = CMB_Settings::all();
+		$ready   = CMB_Payments::schema_ready();
+		$source  = CMB_Payments::merchant_source();
+		$terms   = '' !== trim( (string) $s['pay_terms_text'] ) ? (string) $s['pay_terms_text'] : CMB_Payments::default_terms();
+		$https   = 0 === strpos( home_url( '/' ), 'https://' );
+		?>
+		<h2 class="title" id="cmb-pay">پرداخت بیعانه (زرین‌پال)</h2>
+		<?php if ( ! $ready ) : ?>
+			<div class="notice notice-warning inline"><p>ساختار دیتابیس هنوز به‌روز نشده است؛ صفحه را یک بار تازه کنید.</p></div>
+		<?php endif; ?>
+		<p class="description" style="max-width:760px">
+			با روشن بودن، رزرو خدمت‌هایی که بیعانه دارند فقط بعد از پرداخت موفق ثبت می‌شود. نوبت تا پرداخت «در انتظار پرداخت» است
+			و جایش برای مدت مشخصی نگه داشته می‌شود. لغو به‌موقع توسط مشتری بخشی از بیعانه را برمی‌گرداند و برگشت‌ها در پنل،
+			بخش «بازگشت وجه»، فهرست می‌شوند تا از پنل زرین‌پال انجامشان دهید.
+		</p>
+		<table class="form-table">
+			<tr>
+				<th><label>پرداخت بیعانه</label></th>
+				<td>
+					<label><input type="checkbox" name="pay_enabled" value="1" <?php checked( (int) $s['pay_enabled'], 1 ); ?> <?php disabled( ! $ready ); ?> /> روشن</label>
+					<p class="description">خاموش: رزرو مثل قبل رایگان است. نوبت‌های پرداخت‌شده‌ی قبلی و صف برگشت وجه با خاموش کردن از بین نمی‌روند.</p>
+				</td>
+			</tr>
+			<tr>
+				<th><label>مرچنت کد زرین‌پال</label></th>
+				<td>
+					<input type="text" name="zp_merchant_id" class="regular-text" dir="ltr" value="<?php echo esc_attr( $s['zp_merchant_id'] ); ?>" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+					<p class="description">
+						<?php if ( 'woocommerce' === $source ) : ?>
+							خالی است، پس از مرچنت کد افزونه‌ی زرین‌پال ووکامرس استفاده می‌شود. اگر درگاه جدا برای رزرو دارید اینجا بنویسید.
+						<?php else : ?>
+							۳۶ نویسه، از پنل زرین‌پال ← درگاه‌ها. اگر خالی بماند از تنظیمات افزونه‌ی زرین‌پال ووکامرس خوانده می‌شود.
+						<?php endif; ?>
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<th><label>درگاه آزمایشی</label></th>
+				<td>
+					<label><input type="checkbox" name="zp_sandbox" value="1" <?php checked( (int) $s['zp_sandbox'], 1 ); ?> /> sandbox زرین‌پال (پول واقعی جابه‌جا نمی‌شود)</label>
+					<?php if ( ! $https ) : ?>
+						<p class="description" style="color:#b32d2e">نشانی سایت HTTPS نیست؛ درگاه واقعی فقط روی HTTPS روشن می‌شود.</p>
+					<?php endif; ?>
+				</td>
+			</tr>
+			<tr>
+				<th><label>بیعانه‌ی پیش‌فرض</label></th>
+				<td>
+					<input type="number" name="pay_deposit_default" min="0" step="1000" class="regular-text" value="<?php echo esc_attr( $s['pay_deposit_default'] ); ?>" /> تومان
+					<p class="description">برای خدمت‌هایی که «پیش‌فرض» دارند. هر خدمت را می‌توانید جدا «بدون بیعانه» یا با مبلغ دیگر بگذارید (رزرو نوبت ← خدمات، یا پنل ← خدمات).</p>
+				</td>
+			</tr>
+			<tr>
+				<th><label>بازگشتی در لغوِ به‌موقع</label></th>
+				<td>
+					<input type="number" name="pay_cancel_refund_default" min="0" step="1000" class="regular-text" value="<?php echo esc_attr( $s['pay_cancel_refund_default'] ); ?>" /> تومان
+					<p class="description">وقتی مشتری تا مهلت لغو (<?php echo esc_html( cmb_fa_num( (int) $s['cancel_deadline_hours'] ) ); ?> ساعت پیش از نوبت) خودش لغو کند. بقیه‌ی بیعانه نزد مجموعه می‌ماند. کمتر از آن مهلت، لغو آنلاین ممکن نیست.</p>
+				</td>
+			</tr>
+			<tr>
+				<th><label>لغو از طرف مجموعه</label></th>
+				<td>
+					<input type="number" name="pay_shop_refund_percent" min="0" max="100" class="small-text" value="<?php echo esc_attr( $s['pay_shop_refund_percent'] ); ?>" /> درصد بیعانه
+					<p class="description">پیش‌فرضِ مبلغ بازگشتی وقتی خودتان نوبت پرداخت‌شده‌ای را لغو می‌کنید. هنگام لغو قابل تغییر است.</p>
+				</td>
+			</tr>
+			<tr>
+				<th><label>مهلت پرداخت</label></th>
+				<td>
+					<input type="number" name="pay_hold_minutes" min="10" max="60" class="small-text" value="<?php echo esc_attr( $s['pay_hold_minutes'] ); ?>" /> دقیقه
+					<p class="description">جای نوبت تا این مدت برای مشتری که به درگاه رفته نگه داشته می‌شود (۱۰ تا ۶۰).</p>
+				</td>
+			</tr>
+			<tr>
+				<th><label>قوانین و مقررات رزرو</label></th>
+				<td>
+					<textarea name="pay_terms_text" rows="9" class="large-text"><?php echo esc_textarea( $terms ); ?></textarea>
+					<p class="description">
+						پیش از پرداخت به مشتری نشان داده می‌شود و باید تیک پذیرش بزند. هر سطر یک بند.
+						جای‌خالی‌ها: <code>{deposit}</code> بیعانه، <code>{refund}</code> بازگشتی، <code>{kept}</code> سهم مجموعه در لغو،
+						<code>{hours}</code> مهلت لغو (ساعت)، <code>{shop_refund}</code> بازگشتی در لغو از طرف مجموعه.
+						پذیرش هر مشتری با زمان و متن دقیقی که دیده ذخیره می‌شود. برای برگشت به متن پیش‌فرض، کادر را خالی کنید.
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<th><label>ثبت برگشت وجه</label></th>
+				<td>
+					<label><input type="checkbox" name="pay_refund_operators" value="1" <?php checked( (int) $s['pay_refund_operators'], 1 ); ?> /> مسئولان رزرو هم بتوانند برگشت را «انجام‌شده» ثبت کنند</label>
+					<p class="description">بدون این، دیدن صف برای همه آزاد است ولی ثبتش فقط با مدیر سایت.</p>
+				</td>
+			</tr>
+			<tr>
+				<th><label>پترن پیامک برگشت وجه</label></th>
+				<td>
+					<input type="text" name="pattern_refund" class="regular-text" value="<?php echo esc_attr( $s['pattern_refund'] ); ?>" />
+					<p class="description">بعد از ثبت «انجام شد». متغیرها: <code>{0}</code> نام، <code>{1}</code> مبلغ (تومان)، <code>{2}</code> کد پیگیری نوبت.</p>
+				</td>
+			</tr>
+			<?php if ( $ready ) : ?>
+				<tr>
+					<th><label>نشانی کرون پرداخت</label></th>
+					<td>
+						<input type="text" readonly class="large-text" dir="ltr" value="<?php echo esc_attr( CMB_Payments::tick_url() ); ?>" onclick="this.select()" />
+						<p class="description">
+							اختیاری ولی پیشنهادی: در کرون‌جاب هاست هر ۵ دقیقه این نشانی را صدا بزنید
+							(<code dir="ltr">wget -q -O /dev/null "…"</code>). پرداخت مشتری‌هایی که بعد از پرداخت به سایت برنگشته‌اند سریع‌تر تأیید می‌شود.
+							بدون آن، این کار با بازدیدهای عادی اپ و پنل انجام می‌شود.
+						</p>
+					</td>
+				</tr>
+			<?php endif; ?>
+		</table>
+		<?php
+	}
+
 	protected function render_fast_settings() {
 		if ( ! class_exists( 'CMB_Fast' ) ) {
 			return;
@@ -383,6 +504,7 @@ class CMB_Admin {
 							</td>
 						</tr>
 						<?php $this->render_capacity_fields( CMB_Services::own_capacity( $service ), (int) $service->id ); ?>
+						<?php $this->render_deposit_fields( $service ); ?>
 						<tr>
 							<th><label>وضعیت</label></th>
 							<td>
@@ -956,6 +1078,8 @@ class CMB_Admin {
 					</tr>
 				</table>
 
+				<?php $this->render_pay_settings(); ?>
+
 				<?php $this->render_fast_settings(); ?>
 
 				<p class="submit">
@@ -964,6 +1088,20 @@ class CMB_Admin {
 			</form>
 
 			<hr />
+
+			<?php if ( CMB_Payments::schema_ready() ) : ?>
+				<h2 id="cmb-pay-test">آزمایش درگاه زرین‌پال</h2>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+					<?php wp_nonce_field( 'cmb_test_zarinpal' ); ?>
+					<input type="hidden" name="action" value="cmb_test_zarinpal" />
+					<p class="description">
+						یک درخواست پرداخت ۱,۰۰۰ تومانی به زرین‌پال فرستاده می‌شود (پولی جابه‌جا نمی‌شود؛ فقط بررسی می‌کند
+						سرور سایت به زرین‌پال دسترسی دارد و مرچنت کد پذیرفته می‌شود). با تنظیمات ذخیره‌شده کار می‌کند.
+					</p>
+					<p><button type="submit" class="button">آزمایش اتصال درگاه</button></p>
+				</form>
+				<hr />
+			<?php endif; ?>
 
 			<h2>تست اتصال پیامک</h2>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
@@ -1048,6 +1186,58 @@ class CMB_Admin {
 	/**
 	 * فیلدهای ظرفیت در فرم خدمت پیشخوان.
 	 */
+	/**
+	 * بیعانه‌ی خدمت در فرم پیشخوان. فقط وقتی پرداخت در کار است.
+	 */
+	protected function render_deposit_fields( $service ) {
+		if ( ! CMB_Payments::in_use() ) {
+			return;
+		}
+
+		$dep = isset( $service->deposit_amount ) ? $service->deposit_amount : null;
+		$ref = isset( $service->cancel_refund_amount ) ? $service->cancel_refund_amount : null;
+		$uid = (int) $service->id;
+		?>
+		<tr>
+			<th><label>بیعانه</label></th>
+			<td>
+				<select name="deposit_mode" onchange="this.parentNode.querySelector('.cmb-dep-amount').style.display = this.value === 'custom' ? '' : 'none'">
+					<option value="default" <?php selected( null === $dep ); ?>>پیش‌فرض تنظیمات (<?php echo esc_html( cmb_toman( CMB_Settings::get( 'pay_deposit_default', 100000 ) ) ); ?>)</option>
+					<option value="custom" <?php selected( null !== $dep && (int) $dep > 0 ); ?>>مبلغ دیگر</option>
+					<option value="none" <?php selected( null !== $dep && 0 === (int) $dep ); ?>>بدون بیعانه (رزرو رایگان)</option>
+				</select>
+				<span class="cmb-dep-amount" style="<?php echo ( null !== $dep && (int) $dep > 0 ) ? '' : 'display:none'; ?>">
+					<input type="number" name="deposit_amount" min="0" step="1000" class="small-text" style="width:120px" value="<?php echo esc_attr( null !== $dep ? (int) $dep : '' ); ?>" /> تومان
+				</span>
+				<p style="margin-top:8px">
+					بازگشتی در لغوِ به‌موقع:
+					<input type="number" name="cancel_refund_amount" min="0" step="1000" style="width:120px" value="<?php echo esc_attr( null !== $ref ? (int) $ref : '' ); ?>" placeholder="پیش‌فرض" /> تومان
+				</p>
+				<p class="description">خالی یعنی پیش‌فرض تنظیمات. تغییر فقط روی نوبت‌های تازه اثر دارد؛ هر نوبت شرایطی را دارد که مشتری هنگام پرداخت پذیرفت.</p>
+			</td>
+		</tr>
+		<?php
+	}
+
+	/**
+	 * @return array کلیدهای deposit_amount / cancel_refund_amount، یا خالی.
+	 */
+	protected function read_deposit_fields() {
+		// phpcs:disable WordPress.Security.NonceVerification
+		if ( ! isset( $_POST['deposit_mode'] ) ) {
+			return array();
+		}
+
+		$mode = sanitize_key( wp_unslash( $_POST['deposit_mode'] ) );
+		$ref  = trim( (string) wp_unslash( $_POST['cancel_refund_amount'] ?? '' ) );
+
+		return array(
+			'deposit_amount'       => 'default' === $mode ? null : ( 'none' === $mode ? 0 : (int) cmb_en_num( (string) wp_unslash( $_POST['deposit_amount'] ?? '0' ) ) ),
+			'cancel_refund_amount' => '' === $ref ? null : (int) cmb_en_num( $ref ),
+		);
+		// phpcs:enable
+	}
+
 	protected function render_capacity_fields( $own, $uid ) {
 		$is_own = null !== $own;
 		?>
@@ -1098,7 +1288,7 @@ class CMB_Admin {
 				'poster_id'        => (int) ( $_POST['poster_id'] ?? 0 ),
 				'is_active'        => isset( $_POST['is_active'] ) ? 1 : 0,
 				'own_capacity'     => $this->read_own_capacity(),
-			)
+			) + $this->read_deposit_fields()
 		);
 
 		$this->redirect( 'cmb-services', 'خدمت با موفقیت ذخیره شد.' );
@@ -1120,6 +1310,7 @@ class CMB_Admin {
 			'pattern_admin',
 			'pattern_cancel',
 			'pattern_admin_cancel',
+			'pattern_refund',
 			'admin_phones',
 			'confirm_note',
 			'ecu_note',
@@ -1174,6 +1365,14 @@ class CMB_Admin {
 		}
 
 		$values = array_merge( $values, $schedule );
+
+		$pay = $this->sanitize_pay();
+
+		if ( is_wp_error( $pay ) ) {
+			$this->redirect( 'cmb-settings', $pay->get_error_message(), 'error' );
+		}
+
+		$values = array_merge( $values, $pay );
 
 		CMB_Settings::update( $values );
 
@@ -1250,6 +1449,89 @@ class CMB_Admin {
 		$this->redirect( 'cmb-settings', 'تنظیمات ذخیره شد.' );
 	}
 
+	/**
+	 * تنظیمات پرداخت بیعانه از فرم.
+	 *
+	 * @return array|WP_Error
+	 */
+	protected function sanitize_pay() {
+		// phpcs:disable WordPress.Security.NonceVerification -- guard() پیش‌تر بررسی کرده
+		$num = function ( $key, $min, $max ) {
+			return max( $min, min( $max, (int) cmb_en_num( (string) wp_unslash( $_POST[ $key ] ?? '0' ) ) ) );
+		};
+
+		$out = array(
+			'pay_enabled'               => isset( $_POST['pay_enabled'] ) ? 1 : 0,
+			'zp_sandbox'                => isset( $_POST['zp_sandbox'] ) ? 1 : 0,
+			'pay_refund_operators'      => isset( $_POST['pay_refund_operators'] ) ? 1 : 0,
+			'zp_merchant_id'            => strtolower( trim( sanitize_text_field( wp_unslash( $_POST['zp_merchant_id'] ?? '' ) ) ) ),
+			'pay_deposit_default'       => $num( 'pay_deposit_default', 0, 100000000 ),
+			'pay_cancel_refund_default' => $num( 'pay_cancel_refund_default', 0, 100000000 ),
+			'pay_shop_refund_percent'   => $num( 'pay_shop_refund_percent', 0, 100 ),
+			'pay_hold_minutes'          => $num( 'pay_hold_minutes', 10, 60 ),
+		);
+
+		$terms = sanitize_textarea_field( wp_unslash( $_POST['pay_terms_text'] ?? '' ) );
+		// phpcs:enable
+
+		// متن پیش‌فرض ذخیره نمی‌شود تا اصلاحات بعدی متن پیش‌فرض به سایت برسد
+		$out['pay_terms_text'] = ( trim( $terms ) === trim( CMB_Payments::default_terms() ) ) ? '' : $terms;
+
+		if ( '' !== $out['zp_merchant_id'] && ! preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $out['zp_merchant_id'] ) ) {
+			return new WP_Error( 'cmb_bad_merchant', 'مرچنت کد زرین‌پال معتبر نیست؛ ۳۶ نویسه به شکل xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx است.' );
+		}
+
+		if ( $out['pay_cancel_refund_default'] > $out['pay_deposit_default'] ) {
+			return new WP_Error( 'cmb_bad_refund', 'مبلغ بازگشتی در لغو نمی‌تواند از بیعانه بیشتر باشد.' );
+		}
+
+		if ( $out['pay_enabled'] ) {
+			if ( ! CMB_Payments::schema_ready() ) {
+				return new WP_Error( 'cmb_pay_schema', 'ساختار دیتابیس هنوز به‌روز نشده است؛ صفحه را تازه کنید و دوباره ذخیره کنید.' );
+			}
+
+			$woo = get_option( 'woocommerce_WC_ZPal_settings' );
+
+			if ( '' === $out['zp_merchant_id'] && ! ( is_array( $woo ) && ! empty( $woo['merchantcode'] ) ) ) {
+				return new WP_Error( 'cmb_no_merchant', 'برای روشن کردن پرداخت بیعانه، مرچنت کد زرین‌پال را وارد کنید.' );
+			}
+
+			if ( ! $out['zp_sandbox'] && 0 !== strpos( home_url( '/' ), 'https://' ) ) {
+				return new WP_Error( 'cmb_no_https', 'درگاه واقعی فقط روی HTTPS کار می‌کند و نشانی سایت HTTPS نیست. یا گواهی SSL را فعال کنید یا فعلاً «درگاه آزمایشی» را روشن بگذارید.' );
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * آزمایش اتصال به زرین‌پال با یک درخواست پرداخت کوچک.
+	 */
+	public function handle_test_zarinpal() {
+		$this->guard( 'cmb_test_zarinpal' );
+
+		$merchant = CMB_Payments::merchant();
+
+		if ( '' === $merchant ) {
+			$this->redirect( 'cmb-settings', 'مرچنت کد زرین‌پال وارد نشده است.', 'error' );
+		}
+
+		$res = CMB_Zarinpal::request( $merchant, CMB_Payments::sandbox(), 10000, cmb_app_url( 'pay/return' ), 'آزمایش اتصال سیستم رزرو چک موتور' );
+
+		if ( is_wp_error( $res ) ) {
+			$this->redirect( 'cmb-settings', 'درگاه پاسخ نداد: ' . $res->get_error_message(), 'error' );
+		}
+
+		$this->redirect(
+			'cmb-settings',
+			sprintf(
+				'اتصال به زرین‌پال%s برقرار است و مرچنت کد پذیرفته شد (شناسه‌ی آزمایشی %s). این پرداخت انجام نمی‌شود.',
+				CMB_Payments::sandbox() ? ' (آزمایشی)' : '',
+				$res['authority']
+			)
+		);
+	}
+
 	public function handle_add_closure() {
 		$this->guard( 'cmb_add_closure' );
 
@@ -1296,7 +1578,12 @@ class CMB_Admin {
 		$new_status = sanitize_key( wp_unslash( $_REQUEST['status'] ?? '' ) );
 
 		if ( 'delete' === $new_status ) {
-			CMB_Bookings::delete( $booking_id );
+			$deleted = CMB_Bookings::delete( $booking_id );
+
+			if ( is_wp_error( $deleted ) ) {
+				$this->redirect( 'cmb-bookings', $deleted->get_error_message(), 'error' );
+			}
+
 			$this->redirect( 'cmb-bookings', 'نوبت حذف شد.' );
 		}
 
@@ -1375,7 +1662,7 @@ class CMB_Admin {
 
 		fwrite( $output, "\xEF\xBB\xBF" ); // BOM
 
-		fputcsv( $output, array( 'کد پیگیری', 'تاریخ شمسی', 'تاریخ میلادی', 'شیفت', 'خدمت', 'نام', 'موبایل', 'شهر', 'نوع خودرو', 'نوع موتور', 'سال', 'کارکرد', 'وضعیت', 'ثبت' ) );
+		fputcsv( $output, array( 'کد پیگیری', 'تاریخ شمسی', 'تاریخ میلادی', 'شیفت', 'خدمت', 'نام', 'موبایل', 'شهر', 'نوع خودرو', 'نوع موتور', 'سال', 'کارکرد', 'وضعیت', 'ثبت', 'بیعانه (تومان)', 'وضعیت پرداخت', 'برگشت (تومان)' ) );
 
 		foreach ( (array) $rows as $row ) {
 			$service = CMB_Services::get_service( $row->service_id );
@@ -1400,6 +1687,9 @@ class CMB_Admin {
 					cmb_status_label( $row->status ),
 					cmb_jalali_date( substr( (string) $row->created_at, 0, 10 ), 'numeric' )
 						. ' ' . substr( (string) $row->created_at, 11, 5 ),
+					isset( $row->deposit_amount ) ? (int) $row->deposit_amount : '',
+					( isset( $row->pay_status ) && $row->pay_status && CMB_Payments::summary( $row ) ) ? CMB_Payments::summary( $row )['statusLabel'] : '',
+					isset( $row->refund_amount ) && (int) $row->refund_amount ? (int) $row->refund_amount : '',
 					)
 				)
 			);

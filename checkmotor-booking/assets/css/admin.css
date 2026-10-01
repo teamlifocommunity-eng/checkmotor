@@ -108,3 +108,14 @@
 .cmb-admin table.widefat th {
 	text-align: right;
 }
+
+/* بیعانه */
+.cmb-pill--pending {
+	background: #fdf3e2;
+	color: #8a5a08;
+}
+
+.cmb-pill--expired {
+	background: #f3f5f7;
+	color: #5b6772;
+}

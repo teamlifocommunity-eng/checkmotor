@@ -27,7 +27,7 @@ var S = {
   loading: false, busy: false, servicesTried: false,
 
   /* ویزارد رزرو */
-  step: 1,                 // 1 خدمت · 2 زمان · 3 ورود · 4 مشخصات
+  step: 1,                 // 1 خدمت · 2 زمان · 3 ورود · 4 مشخصات · 5 قوانین و پرداخت (فقط با بیعانه)
   service: null,
   cal: null, calCache: {}, day: null, block: null,
   form: { name: '', city: '', brand: '', model: '', year: '', mileage: '', note: '' },
@@ -40,6 +40,14 @@ var S = {
   bookingsFresh: !!(C.bookings && C.bookings.length),
   receipt: null, lightbox: '',
   cancelAsk: 0, cancelBusy: 0,
+
+  /* بیعانه */
+  pay: C.pay || { on: false, sandbox: false },
+  quote: null, quoteFor: '', termsOk: false, redirecting: false,
+  pendingBlock: null,              // نوبتِ در انتظار پرداختی که جلوی ثبت تازه را گرفته
+  payResult: C.payResult || null,  // صفحه‌ی بازگشت از درگاه
+  payBusy: 0,
+
   toasts: [], sheet: null,
   online: navigator.onLine !== false
 };
@@ -217,6 +225,7 @@ function readRoute() {
 
   var p = r.split('/')[0];
   if (p === 'book') { return 'book'; }
+  if (p === 'pay') { return 'pay'; }
   if (TABS.indexOf(p) !== -1) { return p; }
   return 'home';
 }
@@ -258,6 +267,7 @@ var I = {
   note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3.5H6.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V9z"/><path d="M14 3.5V9h5.5"/><path d="M8.5 13h7M8.5 16.5h4.5"/></svg>',
   logout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 21H5.5A2 2 0 0 1 3.5 19V5a2 2 0 0 1 2-2h4"/><path d="M16 16.5L20.5 12 16 7.5"/><path d="M20.5 12H9.5"/></svg>',
   gauge: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 17a9 9 0 1 1 17 0"/><path d="M12 17l4-5.5"/><circle cx="12" cy="17" r="1.4" fill="currentColor" stroke="none"/></svg>',
+  card: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 15h4"/></svg>',
   panel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2.5"/><path d="M3 9h18M9 9v12"/></svg>',
   zoom: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6M11 8.5v5M8.5 11h5"/></svg>',
   empty: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="2.6"/><path d="M3.5 9.5h17M8 2.8v3.4M16 2.8v3.4"/><path d="M9 14.5h6"/></svg>'
@@ -321,6 +331,19 @@ function viewHome() {
     '</div>';
 
   html += '<div class="cmb-page">';
+
+  /* نوبتی که پرداختش نیمه‌کاره مانده (مثلاً مشتری از درگاه با «بازگشت»
+     برگشته): همین‌جا ادامه یا انصراف، تا جا بی‌جهت نگه داشته نشود. */
+  S.bookings.filter(function (x) { return x.status === 'pending' && x.holdLeft > 0; }).slice(0, 1).forEach(function (x) {
+    html += '<div class="cmb-card cmb-paynote">' +
+      '<div class="cmb-svc__t">' + I.clock + ' پرداخت نوبتتان تمام نشده</div>' +
+      '<p class="cmb-hint">' + esc(x.service) + ' — ' + esc(x.dateFa) + '، ' + esc(x.blockLabel) + '. جا تا ' +
+        fa(Math.ceil(x.holdLeft / 60)) + ' دقیقه‌ی دیگر برایتان نگه داشته می‌شود.</p>' +
+      '<div class="cmb-bk__acts cmb-mt3">' +
+        '<button class="cmb-btn cmb-btn--sm cmb-btn--pri" data-pay-retry="' + x.id + '"' + (S.payBusy ? ' disabled' : '') + '>ادامه‌ی پرداخت</button>' +
+        '<button class="cmb-btn cmb-btn--sm cmb-btn--soft" data-pay-abandon="' + x.id + '"' + (S.payBusy ? ' disabled' : '') + '>انصراف</button>' +
+      '</div></div>';
+  });
 
   if (S.loading && !S.services.length) {
     html += '<div class="cmb-sk cmb-sk--card"></div><div class="cmb-sk cmb-sk--card"></div>';
@@ -387,15 +410,21 @@ function svcCard(s) {
 
 /* ═══ ویزارد رزرو ═══ */
 
+/** آیا خدمت انتخاب‌شده بیعانه دارد؟ (گام پنجم: قوانین و پرداخت) */
+function needsDeposit() {
+  return !!(S.pay.on && S.service && Number(S.service.deposit) > 0);
+}
+
 function steps() {
+  var total = needsDeposit() ? 5 : 4;
   var out = '<div class="cmb-steps">';
-  for (var i = 1; i <= 4; i++) {
+  for (var i = 1; i <= total; i++) {
     out += '<div class="cmb-steps__i' + (i <= S.step ? ' is-done' : '') + '"></div>';
   }
   out += '</div>';
 
-  var labels = { 1: 'گام ۱ از ۴ — انتخاب خدمت', 2: 'گام ۲ از ۴ — تاریخ و ساعت', 3: 'گام ۳ از ۴ — تایید شماره', 4: 'گام ۴ از ۴ — مشخصات خودرو' };
-  out += '<div class="cmb-steps__lbl">' + labels[S.step] + '</div>';
+  var names = { 1: 'انتخاب خدمت', 2: 'تاریخ و ساعت', 3: 'تایید شماره', 4: 'مشخصات خودرو', 5: 'قوانین و پرداخت' };
+  out += '<div class="cmb-steps__lbl">گام ' + fa(S.step) + ' از ' + fa(total) + ' — ' + names[S.step] + '</div>';
   return out;
 }
 
@@ -407,6 +436,7 @@ function viewBook() {
   if (S.step === 1) { return head + stepService(); }
   if (S.step === 2) { return head + stepSlot(); }
   if (S.step === 3) { return head + stepAuth(); }
+  if (S.step === 5 && needsDeposit()) { return head + stepPay(); }
   return head + stepDetails();
 }
 
@@ -432,6 +462,7 @@ function svcChosen(s) {
           (s.priceLabel ? '<div class="cmb-chosen__row">' + I.tag + esc(s.priceLabel) + '</div>' : '') +
           (s.duration ? '<div class="cmb-chosen__row">' + I.clock + esc(s.duration) + '</div>' : '') +
           (s.weekdayText ? '<div class="cmb-chosen__row">' + I.cal + esc(s.weekdayText) + '</div>' : '') +
+          (S.pay.on && s.deposit > 0 ? '<div class="cmb-chosen__row">' + I.card + 'بیعانه ' + esc(s.depositLabel) + ' — از هزینه کسر می‌شود</div>' : '') +
         '</div>'
       : '') +
     '</div>';
@@ -456,6 +487,7 @@ function svcBox(s) {
       ? '<div class="cmb-box__meta">' +
           (s.duration ? '<div class="cmb-box__row">' + I.clock + esc(s.duration) + '</div>' : '') +
           (s.weekdayText ? '<div class="cmb-box__row">' + I.cal + esc(s.weekdayText) + '</div>' : '') +
+          (S.pay.on && s.deposit > 0 ? '<div class="cmb-box__row">' + I.card + 'بیعانه ' + esc(s.depositLabel) + '</div>' : '') +
         '</div>'
       : '') +
     '<div class="cmb-box__go">انتخاب و ادامه ' + I.chevL + '</div>' +
@@ -672,9 +704,89 @@ function stepDetails() {
 
   html += '</div>';
 
+  html += pendingCard();
+
   html += '<div class="cmb-actionbar"><div class="cmb-actionbar__in">' +
     '<button class="cmb-btn cmb-btn--pri" style="width:100%" data-submit' + (S.busy ? ' disabled' : '') + '>' +
-    (S.busy ? '<span class="cmb-spin"></span> در حال ثبت…' : 'ثبت نهایی نوبت') + '</button>' +
+    (S.busy ? '<span class="cmb-spin"></span> در حال ثبت…' : (needsDeposit() ? 'ادامه — قوانین و پرداخت' : 'ثبت نهایی نوبت')) + '</button>' +
+    '</div></div>';
+
+  return html;
+}
+
+/* ═══ قوانین و پرداخت بیعانه ═══ */
+
+/**
+ * کارت «نوبت در انتظار پرداخت دارید».
+ *
+ * وقتی سرور ثبت تازه را به‌خاطر یک نوبتِ پرداخت‌نشده رد می‌کند،
+ * مشتری باید بتواند همان را تمام کند یا رهایش کند — نه اینکه گیر کند.
+ */
+function pendingCard() {
+  var p = S.pendingBlock;
+  if (!p) { return ''; }
+
+  return '<div class="cmb-card cmb-paynote cmb-mt3">' +
+    '<div class="cmb-svc__t">' + I.clock + ' نوبت پرداخت‌نشده</div>' +
+    '<p class="cmb-hint">' + esc(p.message) + '</p>' +
+    '<div class="cmb-bk__acts cmb-mt3">' +
+      '<button class="cmb-btn cmb-btn--sm cmb-btn--pri" data-pay-retry="' + p.id + '" data-token="' + esc(p.token) + '"' + (S.payBusy ? ' disabled' : '') + '>ادامه‌ی پرداخت آن نوبت</button>' +
+      '<button class="cmb-btn cmb-btn--sm cmb-btn--ghostdanger" data-pay-abandon="' + p.id + '" data-token="' + esc(p.token) + '"' + (S.payBusy ? ' disabled' : '') + '>انصراف از آن نوبت</button>' +
+    '</div></div>';
+}
+
+/** متن قوانین: هر سطر یک بند (شماره‌گذاری همان است که مدیر نوشته). */
+function termsHtml(text) {
+  return '<div class="cmb-terms">' + String(text || '').split(/\n+/).filter(function (l) { return l.trim(); }).map(function (l) {
+    return '<p>' + esc(l) + '</p>';
+  }).join('') + '</div>';
+}
+
+function stepPay() {
+  var bl = (S.day && S.day.blocks || []).filter(function (x) { return x.key === S.block; })[0] || {};
+  var q = S.quote;
+
+  var html = '<div class="cmb-page cmb-mt4">';
+
+  html += '<div class="cmb-card cmb-card--flat">' +
+    kv('خدمت', S.service ? S.service.title : '') +
+    kv('تاریخ', S.day ? S.day.jalaliFull : '') +
+    kv('ساعت', (bl.label || '') + ' — ' + fa(bl.start || '')) +
+    '</div>';
+
+  if (!q) {
+    html += '<div class="cmb-sk cmb-sk--card"></div></div>';
+    return html;
+  }
+
+  html += '<div class="cmb-card cmb-deposit">' +
+    '<div class="cmb-deposit__amount"><span>بیعانه‌ی رزرو</span><b>' + esc(q.depositFa) + '</b></div>' +
+    (q.priceFa ? kv('هزینه‌ی خدمت', q.priceFa) + kv('باقی‌مانده هنگام مراجعه', q.remainingFa) : '') +
+    '<div class="cmb-deposit__rows">' +
+      '<div class="cmb-deposit__row ok">' + I.check + '<div>لغو تا <b>' + esc(q.cancelUntilFa) + '</b>: ' + esc(q.refundFa) + ' به کارتتان برمی‌گردد.</div></div>' +
+      '<div class="cmb-deposit__row bad">' + I.alert + '<div>بعد از آن لغو آنلاین ممکن نیست؛ اگر نیایید کل بیعانه نزد مجموعه می‌ماند.</div></div>' +
+    '</div>' +
+    '</div>';
+
+  html += '<div class="cmb-card">' +
+    '<div class="cmb-svc__t">قوانین و مقررات رزرو</div>' +
+    termsHtml(q.terms) +
+    '<label class="cmb-check cmb-mt4"><input type="checkbox" id="cmb-terms"' + (S.termsOk ? ' checked' : '') + '>' +
+    '<span>قوانین رزرو را خواندم و می‌پذیرم.</span></label>' +
+    '</div>';
+
+  if (S.pay.sandbox) {
+    html += note('warn', I.alert, 'درگاه در حالت آزمایشی است و پول واقعی جابه‌جا نمی‌شود.');
+  }
+
+  html += note('info', I.info, 'پس از پرداخت به همین صفحه برمی‌گردید. جا تا ' + fa(q.holdMinutes) + ' دقیقه برای پرداخت شما نگه داشته می‌شود.');
+  html += pendingCard();
+  html += '</div>';
+
+  html += '<div class="cmb-actionbar"><div class="cmb-actionbar__in">' +
+    '<button class="cmb-btn cmb-btn--pri" style="width:100%" data-pay' + (S.busy || !S.termsOk || S.redirecting ? ' disabled' : '') + '>' +
+    (S.redirecting ? '<span class="cmb-spin"></span> در حال انتقال به درگاه…'
+      : (S.busy ? '<span class="cmb-spin"></span> در حال ثبت…' : 'پرداخت ' + esc(q.depositFa))) + '</button>' +
     '</div></div>';
 
   return html;
@@ -756,9 +868,13 @@ function viewReceipt() {
         kv('نام', r.name) +
         kv('موبایل', r.phoneFa) +
         (r.servicePrice ? kv('هزینه', r.servicePrice) : '') +
+        (r.pay && r.pay.status === 'paid' ? kv('بیعانه‌ی پرداخت‌شده', r.pay.depositFa) : '') +
+        (r.pay && r.pay.status === 'paid' && r.pay.remainingFa ? kv('باقی‌مانده هنگام مراجعه', r.pay.remainingFa) : '') +
+        (r.refId ? kv('شماره پیگیری پرداخت', fa(r.refId)) : '') +
       '</div>' +
     '</div>';
 
+  if (r.pay && r.pay.status === 'paid' && r.cancelHint) { html += note('info', I.info, fa(r.cancelHint)); }
   if (r.note) { html += note('warn', I.alert, r.note); }
   if (r.lateRule) { html += note('info', I.clock, r.lateRule); }
 
@@ -767,6 +883,68 @@ function viewReceipt() {
     '</div>';
 
   return html;
+}
+
+/* ═══ نتیجه‌ی پرداخت ═══ */
+
+/**
+ * صفحه‌ی بازگشت از درگاه. وضعیت را سرور همراه صفحه فرستاده؛ این
+ * صفحه ممکن است بی‌کوکی باز شده باشد، پس به ورود تکیه نمی‌کند.
+ */
+function viewPay() {
+  var R = S.payResult || { state: 'invalid', message: 'این نشانی معتبر نیست.' };
+  var b = R.booking || null;
+
+  if (R.state === 'paid' && b) {
+    var save = S.receipt;
+    S.receipt = Object.assign({}, b, { refId: R.refId || '' });
+    var html = viewReceipt();
+    S.receipt = save;
+    return topBar('نتیجه‌ی پرداخت', '', false) + html;
+  }
+
+  var icon = I.alert, tone = 'bad', title = 'پرداخت انجام نشد';
+
+  if (R.state === 'checking') { icon = I.clock; tone = 'wait'; title = 'در انتظار نتیجه‌ی پرداخت'; }
+  if (R.state === 'refund') { icon = I.card; tone = 'wait'; title = 'پرداخت رسید ولی نوبت ثبت نشد'; }
+  if (R.state === 'expired') { title = 'نوبت ثبت نشد'; }
+  if (R.state === 'invalid' || R.state === 'closed') { icon = I.info; tone = 'wait'; title = 'وضعیت نوبت'; }
+
+  var out = topBar('نتیجه‌ی پرداخت', '', false) + '<div class="cmb-page cmb-mt5">' +
+    '<div class="cmb-card cmb-center cmb-payres cmb-payres--' + tone + '">' +
+      '<div class="cmb-payres__ic">' + icon + '</div>' +
+      '<div class="cmb-svc__t">' + esc(title) + '</div>' +
+      '<p class="cmb-hint">' + esc(R.message || '') + '</p>' +
+    '</div>';
+
+  if (b) {
+    out += '<div class="cmb-card cmb-card--flat">' +
+      kv('خدمت', b.service) +
+      kv('تاریخ', b.dateFa) +
+      kv('ساعت', b.blockLabel + ' — ' + fa(b.blockStart)) +
+      (b.pay ? kv('بیعانه', b.pay.depositFa) : '') +
+      kv('کد پیگیری', b.code) +
+      '</div>';
+  }
+
+  if (R.state === 'failed' && b) {
+    var left = Math.ceil((R.holdLeft || 0) / 60);
+
+    if (left > 0) { out += note('info', I.clock, 'جا تا ' + fa(left) + ' دقیقه‌ی دیگر برایتان نگه داشته می‌شود.'); }
+
+    out += (R.canRetry
+        ? '<button class="cmb-btn cmb-btn--pri cmb-mt4" data-pay-retry="' + R.id + '" data-token="' + esc(R.token) + '"' + (S.payBusy || S.redirecting ? ' disabled' : '') + '>' +
+          (S.redirecting ? '<span class="cmb-spin"></span> در حال انتقال به درگاه…' : 'پرداخت دوباره') + '</button>'
+        : '') +
+      '<button class="cmb-btn cmb-btn--ghost cmb-mt3" data-pay-abandon="' + R.id + '" data-token="' + esc(R.token) + '"' + (S.payBusy ? ' disabled' : '') + '>انصراف و آزاد کردن جا</button>';
+  } else if (R.state === 'checking') {
+    out += '<button class="cmb-btn cmb-btn--pri cmb-mt4" data-reload>بررسی دوباره</button>';
+  } else {
+    out += '<button class="cmb-btn cmb-btn--pri cmb-mt4" data-start>نوبت تازه</button>';
+  }
+
+  out += '<button class="cmb-btn cmb-btn--ghost cmb-mt3" data-tab="mine">نوبت‌های من</button></div>';
+  return out;
 }
 
 /* ═══ نوبت‌های من ═══ */
@@ -791,7 +969,9 @@ function cancelBox(b) {
     var busy = S.cancelBusy === b.id;
 
     return '<div class="cmb-bk__foot">' +
-      '<div class="cmb-bk__ask">این نوبت لغو شود؟ ظرفیت آزاد می‌شود و برگشت‌پذیر نیست.</div>' +
+      '<div class="cmb-bk__ask">' + (b.pay && b.pay.status === 'paid'
+        ? 'این نوبت لغو شود؟ ' + esc(b.pay.cancelRefundFa) + ' از بیعانه به کارت شما برمی‌گردد و بقیه طبق قوانین نزد مجموعه می‌ماند. لغو برگشت‌پذیر نیست.'
+        : 'این نوبت لغو شود؟ ظرفیت آزاد می‌شود و برگشت‌پذیر نیست.') + '</div>' +
       '<div class="cmb-bk__acts">' +
         '<button class="cmb-btn cmb-btn--sm cmb-btn--danger"' + (busy ? ' disabled' : '') +
           ' data-cancel-yes="' + b.id + '">' + (busy ? 'در حال لغو…' : 'بله، لغو کن') + '</button>' +
@@ -804,6 +984,38 @@ function cancelBox(b) {
     (b.cancelHint ? '<span class="cmb-bk__hint">' + fa(esc(b.cancelHint)) + '</span>' : '') +
     '<button class="cmb-btn cmb-btn--sm cmb-btn--ghostdanger" data-cancel="' + b.id + '">لغو نوبت</button>' +
     '</div>';
+}
+
+/** وضعیت بیعانه زیر هر نوبت. */
+function payLine(b) {
+  var p = b.pay;
+  if (!p || !p.deposit) { return ''; }
+
+  var txt = 'بیعانه ' + p.depositFa;
+
+  if (p.status === 'paid') { txt += ' — پرداخت شد' + (p.remainingFa ? '؛ باقی‌مانده هنگام مراجعه ' + p.remainingFa : ''); }
+  else if (p.status === 'refund_due' || p.status === 'refunding') { txt += ' — بازگشت ' + p.refundFa + ' در صف انجام است'; }
+  else if (p.status === 'refunded') { txt += ' — ' + p.refundFa + ' به کارت شما بازگردانده شد'; }
+  else if (p.status === 'kept') { txt += ' — نزد مجموعه ماند'; }
+  else if (b.status === 'pending') { txt += ' — هنوز پرداخت نشده'; }
+  else { return ''; }
+
+  return '<div class="cmb-bk__row">' + I.card + esc(txt) + '</div>';
+}
+
+/** نوبتِ در انتظار پرداخت: ادامه‌ی پرداخت یا انصراف. */
+function pendingBox(b) {
+  if (b.status !== 'pending') { return ''; }
+
+  var left = Math.ceil((b.holdLeft || 0) / 60);
+  var busy = S.payBusy === b.id;
+
+  return '<div class="cmb-bk__foot">' +
+    '<span class="cmb-bk__hint">' + (left > 0 ? 'جا تا ' + fa(left) + ' دقیقه‌ی دیگر برایتان نگه داشته می‌شود.' : 'مهلت پرداخت رو به پایان است.') + '</span>' +
+    '<div class="cmb-bk__acts">' +
+      '<button class="cmb-btn cmb-btn--sm cmb-btn--pri"' + (busy ? ' disabled' : '') + ' data-pay-retry="' + b.id + '">' + (busy ? '…' : 'ادامه‌ی پرداخت') + '</button>' +
+      '<button class="cmb-btn cmb-btn--sm cmb-btn--soft"' + (busy ? ' disabled' : '') + ' data-pay-abandon="' + b.id + '">انصراف</button>' +
+    '</div></div>';
 }
 
 function viewMine() {
@@ -847,7 +1059,9 @@ function viewMine() {
         '<div class="cmb-bk__row">' + I.cal + '<b>' + esc(b.dateFa) + '</b></div>' +
         '<div class="cmb-bk__row">' + I.clock + esc(b.blockLabel) + ' — ساعت ' + fa(esc(b.blockStart)) + '</div>' +
         '<div class="cmb-bk__row">' + I.car + esc(b.car) + '</div>' +
+        payLine(b) +
       '</div>' +
+      pendingBox(b) +
       cancelBox(b) +
       '</div>';
   });
@@ -1035,6 +1249,7 @@ function render() {
     case 'book': inner = viewBook(); break;
     case 'mine': inner = viewMine(); break;
     case 'me':   inner = viewMe(); break;
+    case 'pay':  inner = viewPay(); break;
     default:     inner = viewHome();
   }
 
@@ -1294,10 +1509,68 @@ function submitBooking() {
     return;
   }
 
-  S.busy = true;
+  // با بیعانه: اول قوانین و مبلغ، بعد ثبت و انتقال به درگاه
+  if (needsDeposit()) {
+    goStep(5);
+    loadQuote();
+    return;
+  }
+
+  sendBooking({});
+}
+
+/** مبلغ و قوانین همین شیفت. */
+function loadQuote(force) {
+  var key = S.service.id + '|' + S.day.date + '|' + S.block;
+
+  if (!force && S.quote && S.quoteFor === key) { return; }
+
+  S.quote = null;
+  S.quoteFor = key;
+  S.termsOk = false;
   paint();
 
-  post('bookings', {
+  get('bookings/quote?service_id=' + S.service.id + '&date=' + encodeURIComponent(S.day.date) + '&block=' + encodeURIComponent(S.block)).then(function (r) {
+    // این خدمت دیگر بیعانه ندارد (تنظیمات همین حالا عوض شده): ثبت رایگان
+    if (r.success !== false && !r.quote) {
+      S.service.deposit = 0;
+      S.quoteFor = '';
+      goStep(4);
+      sendBooking({});
+      return;
+    }
+
+    if (r.success === false) {
+      toast(r.message || 'دریافت قوانین رزرو ناموفق بود.', 'bad');
+      S.quoteFor = '';
+      goStep(4);
+      return;
+    }
+
+    S.quote = r.quote;
+    paint();
+  });
+}
+
+function payNow() {
+  if (!S.quote || !S.termsOk || S.busy || S.redirecting) { return; }
+
+  sendBooking({
+    accept_terms: 1,
+    terms_hash: S.quote.hash,
+    deposit_seen: S.quote.deposit
+  });
+}
+
+/** ثبت نوبت؛ با بیعانه، پاسخ نشانی درگاه را دارد. */
+function sendBooking(extra) {
+  var f = S.form;
+
+  S.busy = true;
+  S.pendingBlock = null;
+  paint();
+
+  var body = {
     service_id: S.service.id,
     date: S.day.date,
     block: S.block,
@@ -1308,10 +1581,36 @@ function submitBooking() {
     car_year: f.year,
     car_mileage: f.mileage,
     note: f.note
-  }).then(function (r) {
+  };
+
+  Object.keys(extra || {}).forEach(function (k) { body[k] = extra[k]; });
+
+  post('bookings', body).then(function (r) {
     S.busy = false;
 
     if (r.success === false) {
+      // قوانین یا مبلغ همین حالا عوض شده: نسخه‌ی تازه، تیک دوباره
+      if (r.code === 'cmb_terms_changed' || r.code === 'cmb_terms_required') {
+        if (r.data && r.data.quote) {
+          S.quote = r.data.quote;
+          S.quoteFor = S.service.id + '|' + S.day.date + '|' + S.block;
+          // فهرست خدماتِ کش‌شده هنوز «بدون بیعانه» می‌گفت
+          S.pay.on = true;
+          S.service.deposit = r.data.quote.deposit;
+        }
+        S.termsOk = false;
+        toast(r.message, 'bad');
+        if (S.step !== 5) { goStep(5); } else { paint(); }
+        return;
+      }
+
+      if (r.code === 'cmb_pending_exists' && r.data && r.data.pending) {
+        S.pendingBlock = r.data.pending;
+        S.pendingBlock.message = r.message;
+        paint();
+        return;
+      }
+
       toast(r.message || 'ثبت نوبت ناموفق بود.', 'bad');
 
       // ظرفیت پر شده یا روز بسته شده: کاربر باید دوباره زمان انتخاب کند
@@ -1332,11 +1631,91 @@ function submitBooking() {
       return;
     }
 
+    // بیعانه: نوبت «در انتظار پرداخت» ثبت شد؛ برو به درگاه
+    if (r.payment && r.payment.url) {
+      S.redirecting = true;
+      S.bookingsFresh = false;
+      paint();
+      location.href = r.payment.url;
+      return;
+    }
+
     S.receipt = r.booking;
     S.bookings = [];
     toast('نوبت شما با موفقیت ثبت شد.', 'ok');
     window.scrollTo(0, 0);
     paint();
+  });
+}
+
+/**
+ * پرداخت دوباره‌ی نوبتی که در انتظار است. با توکن (صفحه‌ی نتیجه که
+ * شاید بی‌کوکی باز شده) یا بی‌توکن (نوبت‌های من؛ مالکیت از ورود).
+ */
+function payRetry(id, token) {
+  if (S.payBusy) { return; }
+
+  S.payBusy = id;
+  paint();
+
+  post('bookings/pay', { id: id, token: token || '' }).then(function (r) {
+    if (r.success === false) {
+      S.payBusy = 0;
+      toast(r.message || 'انتقال به درگاه ممکن نشد.', 'bad');
+      S.bookingsFresh = false;
+      if (S.page === 'mine') { load('mine'); } else { paint(); }
+      return;
+    }
+
+    if (r.url) {
+      S.redirecting = true;
+      paint();
+      location.href = r.url;
+      return;
+    }
+
+    // در همین فاصله پول رسید و نوبت ثبت شد
+    S.payBusy = 0;
+    toast('پرداخت این نوبت انجام شده و نوبت ثبت است.', 'ok');
+    if (S.page === 'pay') { location.reload(); return; }
+    S.pendingBlock = null;
+    S.bookingsFresh = false;
+    go('mine');
+  });
+}
+
+function payAbandon(id, token) {
+  if (S.payBusy) { return; }
+  if (!window.confirm('از پرداخت این نوبت انصراف می‌دهید؟ جای رزروشده آزاد می‌شود.')) { return; }
+
+  S.payBusy = id;
+  paint();
+
+  post('bookings/abandon', { id: id, token: token || '' }).then(function (r) {
+    S.payBusy = 0;
+
+    if (r.success === false) {
+      toast(r.message || 'انجام نشد. دوباره تلاش کنید.', 'bad');
+      paint();
+      return;
+    }
+
+    if (S.page === 'pay') {
+      S.payResult = r.state;
+      paint();
+      return;
+    }
+
+    if (S.pendingBlock && S.pendingBlock.id === id) {
+      S.pendingBlock = null;
+      toast('انصراف ثبت شد. حالا می‌توانید نوبت تازه را ثبت کنید.', 'ok');
+      paint();
+      return;
+    }
+
+    toast(r.state && r.state.state === 'paid' ? 'پرداخت این نوبت پیش‌تر انجام شده بود و نوبت ثبت است.' : 'انصراف ثبت شد و جا آزاد شد.', 'ok');
+    S.bookingsFresh = false;
+    load('mine');
   });
 }
 
@@ -1520,6 +1899,22 @@ function bind() {
 
     if (up('[data-start]')) { e.preventDefault(); startBooking(); return; }
 
+    if (up('[data-pay]')) { e.preventDefault(); payNow(); return; }
+
+    if ((el = up('[data-pay-retry]'))) {
+      e.preventDefault();
+      payRetry(Number(el.getAttribute('data-pay-retry')), el.getAttribute('data-token') || '');
+      return;
+    }
+
+    if ((el = up('[data-pay-abandon]'))) {
+      e.preventDefault();
+      payAbandon(Number(el.getAttribute('data-pay-abandon')), el.getAttribute('data-token') || '');
+      return;
+    }
+
+    if (up('[data-reload]')) { e.preventDefault(); location.reload(); return; }
+
     if ((el = up('[data-cancel]'))) {
       e.preventDefault();
       S.cancelAsk = Number(el.getAttribute('data-cancel'));
@@ -1698,6 +2093,19 @@ function bind() {
   /* مقادیر فرم قبل از رندر مجدد از بین نروند */
   document.addEventListener('change', function (e) {
     if (e.target.id && e.target.id.indexOf('cmb-f-') === 0) { grabForm(); }
+    if (e.target.id === 'cmb-terms') { S.termsOk = !!e.target.checked; paint(); }
+  });
+
+  /* برگشت از درگاه با دکمه‌ی «بازگشت» مرورگر: صفحه از حافظه (bfcache)
+     با همان حالت «در حال انتقال…» برمی‌گردد. نوبتِ ثبت‌شده حالا در
+     «نوبت‌های من» با دکمه‌ی ادامه‌ی پرداخت یا انصراف است. */
+  window.addEventListener('pageshow', function (e) {
+    if (!e.persisted || !S.redirecting) { return; }
+
+    S.redirecting = false;
+    S.payBusy = 0;
+    S.bookingsFresh = false;
+    go('mine');
   });
 
   window.addEventListener('popstate', function () {

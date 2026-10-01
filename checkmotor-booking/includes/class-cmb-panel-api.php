@@ -156,6 +156,8 @@ class CMB_Panel_Api {
 			'panel/health/sweep' => array( 'POST', 'health_sweep' ),
 			'panel/closures'  => array( 'GET', 'closures' ),
 			'panel/closure'   => array( 'POST', 'save_closure' ),
+			'panel/refunds'   => array( 'GET', 'refunds' ),
+			'panel/refund'    => array( 'POST', 'update_refund' ),
 		);
 
 		foreach ( $routes as $path => $conf ) {
@@ -311,7 +313,7 @@ class CMB_Panel_Api {
 					SUM( booking_date = %s AND status IN ('confirmed','done') ) AS today_c,
 					SUM( booking_date = %s AND status IN ('confirmed','done') ) AS tomorrow_c,
 					SUM( booking_date >= %s AND status = 'confirmed' )          AS upcoming_c,
-					SUM( created_at >= %s )                                     AS week_c,
+					SUM( created_at >= %s AND status NOT IN ('pending','expired') ) AS week_c,
 					SUM( status = 'no_show'   AND booking_date >= %s )          AS no_show_c,
 					SUM( status = 'cancelled' AND booking_date >= %s )          AS cancelled_c
 				 FROM {$table}", // phpcs:ignore
@@ -324,7 +326,12 @@ class CMB_Panel_Api {
 			)
 		);
 
+		if ( class_exists( 'CMB_Payments' ) ) {
+			CMB_Payments::expire_stale();
+		}
+
 		$counts = array(
+			'refunds'   => CMB_Payments::count_open_refunds(),
 			'today'     => $row ? (int) $row->today_c : 0,
 			'tomorrow'  => $row ? (int) $row->tomorrow_c : 0,
 			'upcoming'  => $row ? (int) $row->upcoming_c : 0,
@@ -514,7 +521,7 @@ class CMB_Panel_Api {
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT * FROM {$table}
-				 WHERE branch_id = %d AND booking_date BETWEEN %s AND %s AND status <> 'cancelled'
+				 WHERE branch_id = %d AND booking_date BETWEEN %s AND %s AND status NOT IN ('cancelled','expired')
 				 ORDER BY booking_date ASC, block_key ASC, id ASC", // phpcs:ignore
 				(int) $branch_id,
 				$from,
@@ -589,6 +596,9 @@ class CMB_Panel_Api {
 		if ( $status && array_key_exists( $status, cmb_statuses() ) ) {
 			$where[]  = 'status = %s';
 			$params[] = $status;
+		} else {
+			// «پرداخت نشد» فقط با فیلتر خودش؛ وگرنه فهرست پر از تلاش‌های نیمه‌کاره می‌شد
+			$where[] = "status <> 'expired'";
 		}
 
 		if ( '' !== $q ) {
@@ -663,6 +673,11 @@ class CMB_Panel_Api {
 			'note'        => $row->note,
 			'status'      => $row->status,
 			'statusLabel' => self::status_label_for( $row ),
+			'pay'         => CMB_Payments::summary( $row ),
+			'actions'     => CMB_Bookings::actions_for( $row ),
+			'holdLeft'    => ( 'pending' === $row->status && ! empty( $row->hold_until_gmt ) )
+				? max( 0, strtotime( $row->hold_until_gmt . ' UTC' ) - cmb_now()->getTimestamp() )
+				: 0,
 			'createdAt'   => $row->created_at,
 			'createdAtFa' => cmb_jalali_date( substr( (string) $row->created_at, 0, 10 ), 'full' )
 				. ' — ' . cmb_fa_num( substr( (string) $row->created_at, 11, 5 ) ),
@@ -705,12 +720,23 @@ class CMB_Panel_Api {
 		}
 
 		if ( 'delete' === $status ) {
-			CMB_Bookings::delete( $id );
+			$deleted = CMB_Bookings::delete( $id );
+
+			if ( is_wp_error( $deleted ) ) {
+				return $deleted;
+			}
 
 			return rest_ensure_response( array( 'success' => true, 'deleted' => true ) );
 		}
 
-		$result = CMB_Bookings::set_status( $id, $status );
+		$result = CMB_Bookings::set_status(
+			$id,
+			$status,
+			array(
+				'refund' => $request->get_param( 'refund' ),
+				'force'  => (bool) $request->get_param( 'force' ),
+			)
+		);
 
 		if ( is_wp_error( $result ) ) {
 			return $result;
@@ -749,6 +775,11 @@ class CMB_Panel_Api {
 				'poster'      => $poster ? $poster : '',
 				'sortOrder'   => (int) $service->sort_order,
 				'ownCapacity' => CMB_Services::own_capacity( $service ),
+				// null = پیش‌فرض تنظیمات، ۰ = بدون بیعانه
+				'deposit'      => ( isset( $service->deposit_amount ) && null !== $service->deposit_amount ) ? (int) $service->deposit_amount : null,
+				'cancelRefund' => ( isset( $service->cancel_refund_amount ) && null !== $service->cancel_refund_amount ) ? (int) $service->cancel_refund_amount : null,
+				'depositNow'   => CMB_Payments::service_deposit( $service ),
+				'refundNow'    => CMB_Payments::service_refund( $service ),
 			);
 		}
 
@@ -838,6 +869,22 @@ class CMB_Panel_Api {
 
 		if ( is_array( $params ) && array_key_exists( 'ownCapacity', $params ) ) {
 			$data['own_capacity'] = is_array( $params['ownCapacity'] ) ? $params['ownCapacity'] : null;
+		}
+
+		// بیعانه‌ی خدمت: null = پیش‌فرض، ۰ = ندارد، عدد = مبلغ دلخواه (تومان)
+		if ( is_array( $params ) && array_key_exists( 'deposit', $params ) ) {
+			$data['deposit_amount'] = $params['deposit'];
+		}
+
+		if ( is_array( $params ) && array_key_exists( 'cancelRefund', $params ) ) {
+			$data['cancel_refund_amount'] = $params['cancelRefund'];
+		}
+
+		if ( isset( $data['deposit_amount'], $data['cancel_refund_amount'] )
+			&& null !== CMB_Services::clean_amount( $data['deposit_amount'] )
+			&& null !== CMB_Services::clean_amount( $data['cancel_refund_amount'] )
+			&& CMB_Services::clean_amount( $data['cancel_refund_amount'] ) > CMB_Services::clean_amount( $data['deposit_amount'] ) ) {
+			return new WP_Error( 'cmb_bad_refund', 'مبلغ بازگشتی در لغو نمی‌تواند از خود بیعانه بیشتر باشد.', array( 'status' => 400 ) );
 		}
 
 		if ( '' === $data['title'] ) {
@@ -981,7 +1028,8 @@ class CMB_Panel_Api {
 		$page  = max( 1, (int) $request->get_param( 'page' ) );
 		$per   = 25;
 
-		$where  = array( "phone <> ''" );
+		// تلاش‌های پرداخت‌نشده مشتری حساب نمی‌شوند
+		$where  = array( "phone <> ''", "status NOT IN ('pending','expired')" );
 		$params = array();
 
 		if ( '' !== $q ) {
@@ -1111,6 +1159,62 @@ class CMB_Panel_Api {
 				'total' => $total,
 				'page'  => $page,
 				'pages' => (int) ceil( $total / $per ),
+			)
+		);
+	}
+
+	/* ------------------------------------------------------------------
+	 * بازگشت وجه
+	 * --------------------------------------------------------------- */
+
+	/**
+	 * آیا کاربر فعلی می‌تواند برگشت وجه را ثبت کند؟
+	 *
+	 * دیدن صف برای همه‌ی مسئولان رزرو آزاد است؛ ثبتِ «انجام شد» با پول
+	 * سروکار دارد و پیش‌فرض فقط مدیر کل.
+	 */
+	public static function can_refund() {
+		return current_user_can( 'manage_options' ) || (bool) CMB_Settings::get( 'pay_refund_operators', 0 );
+	}
+
+	public function refunds( WP_REST_Request $request ) {
+		$which = 'done' === $request->get_param( 'which' ) ? 'done' : 'open';
+
+		return rest_ensure_response(
+			array(
+				'items'     => CMB_Payments::refund_queue( $which ),
+				'which'     => $which,
+				'canRefund' => self::can_refund(),
+				'open'      => CMB_Payments::count_open_refunds(),
+			)
+		);
+	}
+
+	public function update_refund( WP_REST_Request $request ) {
+		if ( ! self::can_refund() ) {
+			return new WP_Error( 'cmb_refund_forbidden', 'ثبت برگشت وجه فقط برای مدیر سایت مجاز است.', array( 'status' => 403 ) );
+		}
+
+		$id     = (int) $request->get_param( 'id' );
+		$action = sanitize_key( (string) $request->get_param( 'action' ) );
+
+		if ( 'amount' === $action ) {
+			$result = CMB_Payments::edit_refund( $id, (int) cmb_en_num( (string) $request->get_param( 'amount' ) ), get_current_user_id() );
+		} elseif ( 'done' === $action ) {
+			$result = CMB_Payments::mark_refunded( $id, (string) $request->get_param( 'ref' ), get_current_user_id(), (bool) $request->get_param( 'sms' ) );
+		} else {
+			return new WP_Error( 'cmb_bad_action', 'درخواست معتبر نیست.', array( 'status' => 400 ) );
+		}
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'items'   => CMB_Payments::refund_queue( 'open' ),
+				'open'    => CMB_Payments::count_open_refunds(),
 			)
 		);
 	}

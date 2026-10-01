@@ -34,6 +34,7 @@ class CMB_Health {
 			self::check_schema(),
 			self::check_schedule(),
 			self::check_timezone(),
+			self::check_payments(),
 			self::check_services(),
 			self::check_stale_bookings(),
 			self::check_orphans(),
@@ -186,6 +187,75 @@ class CMB_Health {
 				$fix
 			),
 		);
+	}
+
+	/**
+	 * پرداخت بیعانه: پیکربندی درگاه، پرداخت‌های بی‌جواب، برگشت‌های
+	 * معطل، و پولی که آمده ولی نه نوبتی گرفته و نه در صف برگشت است.
+	 */
+	protected static function check_payments() {
+		global $wpdb;
+
+		if ( ! CMB_Payments::in_use() ) {
+			return array();
+		}
+
+		$out   = array();
+		$title = 'پرداخت بیعانه';
+
+		if ( CMB_Settings::get( 'pay_enabled', 0 ) ) {
+			if ( '' === CMB_Payments::merchant() ) {
+				$out[] = self::item( self::BAD, $title, 'پرداخت روشن است ولی مرچنت کد زرین‌پال وارد نشده؛ رزرو خدمت‌های بیعانه‌دار ممکن نیست.', 'در تنظیمات افزونه، بخش «پرداخت بیعانه»، مرچنت کد را وارد کنید.' );
+			} elseif ( CMB_Payments::sandbox() ) {
+				$out[] = self::item( self::WARN, $title, 'درگاه در حالت آزمایشی (sandbox) است؛ پرداخت‌ها واقعی نیستند و نوبت‌ها بدون پول واقعی ثبت می‌شوند.', 'بعد از آزمایش، «درگاه آزمایشی» را در تنظیمات خاموش کنید.' );
+			} elseif ( 0 !== strpos( home_url( '/' ), 'https://' ) ) {
+				$out[] = self::item( self::BAD, $title, 'نشانی سایت HTTPS نیست و زرین‌پال بازگشت به آن را نمی‌پذیرد.', 'گواهی SSL را فعال کنید.' );
+			} else {
+				$out[] = self::item( self::OK, $title, 'روشن است و درگاه تنظیم شده.' );
+			}
+		}
+
+		$pt    = cmb_table( 'payments' );
+		$bt    = cmb_table( 'bookings' );
+		$hour  = gmdate( 'Y-m-d H:i:s', cmb_now()->getTimestamp() - HOUR_IN_SECONDS );
+		$stuck = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$pt} WHERE status = 'requested' AND next_check_gmt IS NOT NULL AND next_check_gmt < %s", $hour ) ); // phpcs:ignore
+
+		if ( $stuck ) {
+			$out[] = self::item(
+				self::WARN,
+				'بررسی پرداخت‌ها',
+				sprintf( '%s پرداخت بیش از یک ساعت است بی‌جواب مانده؛ یعنی بررسی خودکار اجرا نمی‌شود (سایت بازدید ندارد یا کرون غیرفعال است).', cmb_fa_num( $stuck ) ),
+				'نشانی کرون پرداخت (تنظیمات ← پرداخت بیعانه) را در کرون‌جاب هاست هر ۵ دقیقه صدا بزنید.'
+			);
+		}
+
+		$old = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$pt} WHERE refund_status IN ('due','failed') AND paid_at < %s", cmb_now()->modify( '-45 days' )->format( 'Y-m-d H:i:s' ) ) ); // phpcs:ignore
+
+		if ( $old ) {
+			$out[] = self::item(
+				self::BAD,
+				'بازگشت وجه',
+				sprintf( '%s برگشت وجه بیش از ۴۵ روز در صف مانده؛ زرین‌پال فقط تا ۲ ماه بعد از پرداخت استرداد می‌کند.', cmb_fa_num( $old ) ),
+				'از پنل رزرو، بخش «بازگشت وجه»، همین حالا انجامشان دهید.'
+			);
+		}
+
+		$orphan = (int) $wpdb->get_var( // phpcs:ignore
+			"SELECT COUNT(*) FROM {$pt} p LEFT JOIN {$bt} b ON b.id = p.booking_id
+			 WHERE p.status = 'paid' AND p.refund_status = '' AND p.refund_reason = ''
+			   AND ( b.id IS NULL OR b.status NOT IN ('confirmed','done','no_show','cancelled') )"
+		);
+
+		if ( $orphan ) {
+			$out[] = self::item(
+				self::BAD,
+				'پرداخت بی‌نوبت',
+				sprintf( '%s پرداخت موفق هست که نه نوبتی برایش ثبت شده و نه در صف بازگشت وجه است.', cmb_fa_num( $orphan ) ),
+				'با پشتیبانی افزونه تماس بگیرید؛ این حالت نباید پیش بیاید.'
+			);
+		}
+
+		return $out;
 	}
 
 	/**

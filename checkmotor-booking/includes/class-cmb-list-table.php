@@ -237,8 +237,15 @@ class CMB_Bookings_List_Table extends WP_List_Table {
 			'confirmed' => 'بازگردانی',
 		);
 
+		// همان قواعد پنل: نوبت پرداخت‌نشده فقط لغو، نوبت با برگشت وجهِ انجام‌شده هیچ…
+		$allowed = CMB_Bookings::actions_for( $item );
+
+		if ( 'pending' === $item->status ) {
+			$map['cancelled'] = 'لغو (آزاد کردن جا)';
+		}
+
 		foreach ( $map as $status => $label ) {
-			if ( $status === $item->status ) {
+			if ( $status === $item->status || ! in_array( $status, $allowed, true ) ) {
 				continue;
 			}
 
@@ -247,7 +254,16 @@ class CMB_Bookings_List_Table extends WP_List_Table {
 				'cmb_update_booking_' . $item->id
 			);
 
-			$confirm = 'cancelled' === $status ? ' onclick="return confirm(\'با لغو نوبت، پیامک اطلاع‌رسانی برای مشتری ارسال می‌شود. مطمئن هستید؟\')"' : '';
+			$ask = 'با لغو نوبت، پیامک اطلاع‌رسانی برای مشتری ارسال می‌شود. مطمئن هستید؟';
+
+			if ( 'cancelled' === $status && isset( $item->pay_status ) && 'paid' === $item->pay_status ) {
+				$ask = sprintf(
+					'بیعانه‌ی این نوبت پرداخت شده؛ با لغو، %s تومان در صف بازگشت وجه می‌نشیند (مبلغ دیگر را از پنل رزرو می‌توانید بگذارید). مطمئن هستید؟',
+					number_format( CMB_Payments::shop_refund_default( (int) $item->deposit_amount ) )
+				);
+			}
+
+			$confirm = 'cancelled' === $status ? ' onclick="return confirm(\'' . esc_js( $ask ) . '\')"' : '';
 
 			$links[] = '<a class="button button-small" href="' . esc_url( $url ) . '"' . $confirm . '>' . esc_html( $label ) . '</a>';
 		}
@@ -257,7 +273,15 @@ class CMB_Bookings_List_Table extends WP_List_Table {
 			'cmb_update_booking_' . $item->id
 		);
 
-		$links[] = '<a class="button button-small cmb-danger" href="' . esc_url( $delete_url ) . '" onclick="return confirm(\'این نوبت برای همیشه حذف شود؟\')">حذف</a>';
+		if ( in_array( 'delete', $allowed, true ) ) {
+			$links[] = '<a class="button button-small cmb-danger" href="' . esc_url( $delete_url ) . '" onclick="return confirm(\'این نوبت برای همیشه حذف شود؟\')">حذف</a>';
+		}
+
+		$pay = CMB_Payments::summary( $item );
+
+		if ( $pay && $pay['deposit'] ) {
+			$links[] = '<p class="description">بیعانه ' . esc_html( $pay['depositFa'] ) . ( $pay['statusLabel'] ? ' — ' . esc_html( $pay['statusLabel'] ) : '' ) . '</p>';
+		}
 
 		$note = $item->note ? '<p class="description">یادداشت: ' . esc_html( $item->note ) . '</p>' : '';
 

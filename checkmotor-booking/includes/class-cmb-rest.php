@@ -103,6 +103,39 @@ class CMB_Rest {
 			)
 		);
 
+		/* بیعانه: مبلغ و قوانین پیش از پرداخت، پرداخت دوباره، انصراف.
+		   pay و abandon با توکن نوبت هم کار می‌کنند، چون صفحه‌ی بازگشت از
+		   درگاه در آیفون ممکن است در سافاری جدا و بی‌کوکی باز شود. */
+		register_rest_route(
+			self::NAMESPACE_V1,
+			'/bookings/quote',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'quote' ),
+				'permission_callback' => '__return_true',
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_V1,
+			'/bookings/pay',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'pay_again' ),
+				'permission_callback' => array( $this, 'check_nonce' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_V1,
+			'/bookings/abandon',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'abandon' ),
+				'permission_callback' => array( $this, 'check_nonce' ),
+			)
+		);
+
 		register_rest_route(
 			self::NAMESPACE_V1,
 			'/bookings/cancel',
@@ -189,6 +222,8 @@ class CMB_Rest {
 	}
 
 	public function get_availability( WP_REST_Request $request ) {
+		CMB_Payments::maybe_reconcile();
+
 		$calendar = CMB_Availability::get_calendar(
 			(int) $request->get_param( 'service_id' ),
 			(int) $request->get_param( 'branch_id' )
@@ -246,6 +281,10 @@ class CMB_Rest {
 			'car_year'    => (string) $request->get_param( 'car_year' ),
 			'car_mileage' => (string) $request->get_param( 'car_mileage' ),
 			'note'        => (string) $request->get_param( 'note' ),
+			// بیعانه: پذیرش قوانین، و همان قوانین و مبلغی که مشتری دید
+			'accept_terms' => (bool) $request->get_param( 'accept_terms' ),
+			'terms_hash'   => (string) $request->get_param( 'terms_hash' ),
+			'deposit_seen' => (int) $request->get_param( 'deposit_seen' ),
 		);
 
 		$result = CMB_Bookings::create( $data );
@@ -254,10 +293,78 @@ class CMB_Rest {
 			return $result;
 		}
 
+		$out = array(
+			'success' => true,
+			'booking' => $result,
+		);
+
+		// با بیعانه: نوبت هنوز ثبت نهایی نشده و مشتری باید به درگاه برود
+		if ( isset( $result['payment'] ) ) {
+			$out['payment'] = $result['payment'];
+			unset( $out['booking']['payment'] );
+		}
+
+		return rest_ensure_response( $out );
+	}
+
+	/**
+	 * مبلغ بیعانه، مهلت لغو و متن قوانین برای یک شیفت مشخص.
+	 */
+	public function quote( WP_REST_Request $request ) {
+		$service = CMB_Services::get_service( (int) $request->get_param( 'service_id' ) );
+		$date    = sanitize_text_field( (string) $request->get_param( 'date' ) );
+		$block   = sanitize_key( (string) $request->get_param( 'block' ) );
+
+		if ( ! $service || ! $service->is_active ) {
+			return new WP_Error( 'cmb_service_not_found', 'خدمت انتخاب‌شده در دسترس نیست.', array( 'status' => 404 ) );
+		}
+
+		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) || '' === cmb_block_start( $block ) ) {
+			return new WP_Error( 'cmb_bad_slot', 'زمان نوبت معتبر نیست.', array( 'status' => 400 ) );
+		}
+
 		return rest_ensure_response(
 			array(
 				'success' => true,
-				'booking' => $result,
+				'quote'   => CMB_Payments::quote( $service, $date, $block ),
+			)
+		);
+	}
+
+	public function pay_again( WP_REST_Request $request ) {
+		$booking = CMB_Payments::resolve( (int) $request->get_param( 'id' ), (string) $request->get_param( 'token' ) );
+
+		if ( ! $booking ) {
+			return new WP_Error( 'cmb_not_found', 'نوبت یافت نشد.', array( 'status' => 404 ) );
+		}
+
+		$result = CMB_Payments::retry( $booking );
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return rest_ensure_response( array( 'success' => true ) + $result );
+	}
+
+	public function abandon( WP_REST_Request $request ) {
+		$booking = CMB_Payments::resolve( (int) $request->get_param( 'id' ), (string) $request->get_param( 'token' ) );
+
+		if ( ! $booking ) {
+			return new WP_Error( 'cmb_not_found', 'نوبت یافت نشد.', array( 'status' => 404 ) );
+		}
+
+		$booking = CMB_Payments::abandon( $booking );
+
+		if ( is_wp_error( $booking ) ) {
+			return $booking;
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'state'   => CMB_Payments::state_of( $booking ),
+				'booking' => CMB_Bookings::to_array( $booking ),
 			)
 		);
 	}
@@ -295,12 +402,20 @@ class CMB_Rest {
 			$bookings[] = CMB_Bookings::to_array( $row );
 		}
 
+		$message = 'نوبت شما لغو شد و ظرفیت آزاد شد.';
+
+		if ( ! empty( $result['pay'] ) && 'refund_due' === $result['pay']['status'] ) {
+			$message = sprintf( 'نوبت شما لغو شد. %s به کارتی که با آن پرداخت کرده بودید بازگردانده می‌شود.', $result['pay']['refundFa'] );
+		} elseif ( ! empty( $result['pay'] ) && 'kept' === $result['pay']['status'] ) {
+			$message = 'نوبت شما لغو شد. طبق قوانین رزرو، مبلغی از بیعانه بازگردانده نمی‌شود.';
+		}
+
 		return rest_ensure_response(
 			array(
 				'success'  => true,
 				'booking'  => $result,
 				'bookings' => $bookings,
-				'message'  => 'نوبت شما لغو شد و ظرفیت آزاد شد.',
+				'message'  => $message,
 			)
 		);
 	}
