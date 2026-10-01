@@ -68,6 +68,26 @@ class CMB_Fast {
 	}
 
 	/**
+	 * محتوای فایلی که در mu-plugins نوشته می‌شود: همان الگو، به‌اضافه‌ی
+	 * سربرگ «Plugin Name» تا در فهرست Must-Use نام درستی داشته باشد.
+	 *
+	 * الگوی داخل بسته عمداً این سربرگ را ندارد؛ وردپرس فایل‌های یک پوشه
+	 * پایین‌تر از پوشه‌ی افزونه را هم برای پیدا کردن فایل اصلی می‌گردد و
+	 * لینک «فعال‌سازی» بعد از بارگذاری zip به این فایل می‌رفت.
+	 *
+	 * @return string
+	 */
+	public static function contents() {
+		$code   = (string) file_get_contents( self::source() ); // phpcs:ignore
+		$header = "<?php\n/**\n"
+			. " * Plugin Name: چک موتور — درخواست‌های سریع\n"
+			. ' * Description: روی درخواست‌های خود سیستم رزرو چک موتور فقط افزونه‌های لازم بارگذاری می‌شوند. افزونه‌ی «چک موتور — سیستم رزرو نوبت» این فایل را خودش نصب و حذف می‌کند؛ برای خاموش کردن از «رزرو نوبت ← تنظیمات ← سرعت» استفاده کنید.' . "\n"
+			. " */\n";
+
+		return (string) preg_replace( '/^<\?php\s*/', $header, $code, 1 );
+	}
+
+	/**
 	 * فایل mu را با تنظیمات هم‌خوان می‌کند.
 	 *
 	 * @return true|WP_Error
@@ -89,11 +109,13 @@ class CMB_Fast {
 			return new WP_Error( 'cmb_fast_src', 'فایل حالت سریع داخل بسته‌ی افزونه پیدا نشد؛ افزونه را دوباره نصب کنید.' );
 		}
 
-		if ( file_exists( $dst ) && md5_file( $dst ) === md5_file( $src ) ) {
+		$code = self::contents();
+
+		if ( file_exists( $dst ) && md5_file( $dst ) === md5( $code ) ) {
 			return true;
 		}
 
-		if ( ! wp_mkdir_p( WPMU_PLUGIN_DIR ) || ! @copy( $src, $dst ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		if ( ! wp_mkdir_p( WPMU_PLUGIN_DIR ) || false === @file_put_contents( $dst, $code ) ) { // phpcs:ignore
 			return new WP_Error(
 				'cmb_fast_write',
 				sprintf( 'نوشتن در پوشه‌ی %s ممکن نشد. دسترسی نوشتن این پوشه را از هاست بررسی کنید، یا فایل %s را دستی همان‌جا کپی کنید.', WPMU_PLUGIN_DIR, self::source() )
