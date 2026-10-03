@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CMB_Install {
 
-	const DB_VERSION = '1.4.0';
+	const DB_VERSION = '1.5.0';
 
 	public static function activate() {
 		global $wpdb;
@@ -292,6 +292,8 @@ class CMB_Install {
 			refund_by BIGINT UNSIGNED DEFAULT 0 NOT NULL,
 			refund_due_at DATETIME NULL,
 			refund_done_at DATETIME NULL,
+			refund_after_gmt DATETIME NULL,
+			refund_tries SMALLINT UNSIGNED DEFAULT 0 NOT NULL,
 			raw TEXT NULL,
 			ip VARCHAR(45) DEFAULT '' NOT NULL,
 			created_at DATETIME NOT NULL,
@@ -301,7 +303,8 @@ class CMB_Install {
 			UNIQUE KEY authority (authority),
 			KEY booking_id (booking_id),
 			KEY status_check (status,next_check_gmt),
-			KEY refund_status (refund_status)
+			KEY refund_status (refund_status),
+			KEY refund_after (refund_status,refund_after_gmt)
 		) {$charset};";
 
 		$sql[] = "CREATE TABLE {$closures} (

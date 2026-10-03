@@ -1020,3 +1020,10 @@ select.cmb-in {
 }
 .cmb-payres--bad .cmb-payres__ic  { background: var(--bad-bg); color: var(--bad); }
 .cmb-payres--wait .cmb-payres__ic { background: var(--warn-bg); color: var(--warn); }
+
+/* خدمت آزمایشی (فقط مدیران می‌بینند) */
+.cmb-testtag {
+  display: inline-block; vertical-align: middle; font-size: 11px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px; background: var(--warn-bg); color: var(--warn);
+}
+.cmb-testtag--float { position: absolute; top: 10px; right: 10px; box-shadow: var(--sh-1); }

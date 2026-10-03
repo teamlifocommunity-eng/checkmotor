@@ -3,7 +3,7 @@
  * Plugin Name: چک موتور — سیستم رزرو نوبت
  * Plugin URI:  https://checkmotor.ir
  * Description: سیستم رزرو نوبت آنلاین چک موتور (MVP) — ورود با کد تایید پیامکی ملی‌پیامک، تقویم ۷ روزه، شیفت صبح/بعدازظهر، پنل مدیریت نوبت‌ها.
- * Version:     1.33.0
+ * Version:     1.34.0
  * Author:      رضا امام‌حسنی
  * Text Domain: checkmotor-booking
  * Domain Path: /languages
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMB_VERSION', '1.33.0' );
+define( 'CMB_VERSION', '1.34.0' );
 define( 'CMB_FILE', __FILE__ );
 define( 'CMB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMB_URL', plugin_dir_url( __FILE__ ) );
@@ -113,7 +113,9 @@ function cmb_load_files() {
 		'includes/class-cmb-sms.php',
 		'includes/class-cmb-otp.php',
 		'includes/class-cmb-zarinpal.php',
+		'includes/class-cmb-zarinpal-refund.php',
 		'includes/class-cmb-payments.php',
+		'includes/class-cmb-pay-review.php',
 		'includes/class-cmb-services.php',
 		'includes/class-cmb-availability.php',
 		'includes/class-cmb-bookings.php',
@@ -646,6 +648,8 @@ function cmb_enqueue_app() {
 			'cols'      => (int) get_option( 'cmb_poster_cols', 1 ),
 			'canManage' => CMB_Panel_Api::can(),
 			'panel'     => cmb_app_url( 'panel' ),
+			/* خدمت‌های «آزمایشی — فقط مدیران» بیرون از کش عمومی خدمات. */
+			'testServices' => CMB_Panel_Api::can() ? CMB_Services::test_services() : array(),
 			'me'        => array(
 				'name'  => $user->ID ? $user->display_name : '',
 				'phone' => $user->ID ? cmb_get_user_phone( $user->ID ) : '',
@@ -660,6 +664,9 @@ function cmb_enqueue_app() {
 			'pay'       => array(
 				'on'      => CMB_Payments::enabled(),
 				'sandbox' => CMB_Payments::enabled() && CMB_Payments::sandbox(),
+				'auto'    => CMB_Payments::auto_on(),
+				// «کِی پولم برمی‌گردد» برای متن تأیید لغو
+				'eta'     => CMB_Payments::refund_eta( 'customer' ),
 			),
 			/* صفحه‌ی نتیجه‌ی پرداخت: وضعیت همین‌جا ساخته می‌شود، چون
 			   ممکن است بی‌کوکی باز شده باشد (سافاری جدا در آیفون). */
@@ -717,6 +724,9 @@ function cmb_enqueue_panel() {
 				'used'      => CMB_Payments::in_use(),
 				'canRefund' => CMB_Panel_Api::can_refund(),
 				'shopPct'   => (int) CMB_Settings::get( 'pay_shop_refund_percent', 100 ),
+				'auto'      => CMB_Payments::auto_on(),
+				'delay'     => CMB_Payments::refund_delay(),
+				'methodFa'  => CMB_Payments::method_label( CMB_Payments::refund_method() ),
 			),
 			/* دکمه‌ی «نصب روی گوشی»؛ null یعنی قابلیت خاموش است. */
 			'pwa'      => CMB_Panel_Pwa::js_config(),

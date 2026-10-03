@@ -21,7 +21,8 @@ var S = {
   cols: Number(C.cols) === 2 ? 2 : 1,
 
   // داده‌ی اولین رندر از خود صفحه می‌آید، نه از یک درخواست دوم
-  services: (C.boot && C.boot.services) || [],
+  /* خدمت‌های «آزمایشی» فقط برای مدیران، بیرون از فهرست کش‌شده‌ی عمومی */
+  services: ((C.boot && C.boot.services) || []).concat(C.testServices || []),
   branch: (C.boot && C.boot.branch) || C.branch || null,
   notes: C.notes || (C.boot && C.boot.notes) || {},
   loading: false, busy: false, servicesTried: false,
@@ -390,13 +391,14 @@ function svcCard(s) {
         (s.posterW ? ' width="' + s.posterW + '" height="' + s.posterH + '"' : '') +
         ' alt="' + esc(s.title) + '" loading="lazy" decoding="async">' +
       '<span class="cmb-svc__zoom" data-zoom="' + esc(s.posterFull || s.poster) + '">' + I.zoom + '</span>' +
+      (s.test ? '<span class="cmb-testtag cmb-testtag--float">آزمایشی</span>' : '') +
       (on ? '<span class="cmb-svc__tick">' + I.check + '</span>' : '') +
       '</button>';
   }
 
   return '<button class="cmb-svc' + (on ? ' is-on' : '') + '" data-svc="' + s.id + '">' +
     '<div class="cmb-svc__body">' +
-      '<div class="cmb-svc__head"><div class="cmb-svc__t">' + esc(s.title) + '</div>' +
+      '<div class="cmb-svc__head"><div class="cmb-svc__t">' + esc(s.title) + (s.test ? ' <span class="cmb-testtag">آزمایشی</span>' : '') + '</div>' +
       (s.priceLabel ? '<div class="cmb-svc__price">' + esc(s.priceLabel) + '</div>' : '') + '</div>' +
       (s.description ? '<p class="cmb-svc__desc">' + esc(s.description) + '</p>' : '') +
       (s.duration || s.weekdayText
@@ -453,7 +455,7 @@ function svcChosen(s) {
       '<span class="cmb-chosen__tick">' + I.check + '</span>' +
       '<div class="cmb-chosen__grow">' +
         '<div class="cmb-chosen__k">خدمت انتخابی</div>' +
-        '<div class="cmb-chosen__t">' + esc(s.title) + '</div>' +
+        '<div class="cmb-chosen__t">' + esc(s.title) + (s.test ? ' <span class="cmb-testtag">آزمایشی</span>' : '') + '</div>' +
       '</div>' +
       '<button class="cmb-chosen__edit" data-change-svc>تغییر</button>' +
     '</div>' +
@@ -479,7 +481,7 @@ function svcChosen(s) {
 function svcBox(s) {
   return '<button class="cmb-box" data-svc="' + s.id + '">' +
     '<div class="cmb-box__hd">' +
-      '<div class="cmb-box__t">' + esc(s.title) + '</div>' +
+      '<div class="cmb-box__t">' + esc(s.title) + (s.test ? ' <span class="cmb-testtag">آزمایشی</span>' : '') + '</div>' +
       (s.priceLabel ? '<div class="cmb-box__price">' + esc(s.priceLabel) + '</div>' : '') +
     '</div>' +
     (s.description ? '<p class="cmb-box__desc">' + esc(s.description) + '</p>' : '') +
@@ -970,7 +972,7 @@ function cancelBox(b) {
 
     return '<div class="cmb-bk__foot">' +
       '<div class="cmb-bk__ask">' + (b.pay && b.pay.status === 'paid'
-        ? 'این نوبت لغو شود؟ ' + esc(b.pay.cancelRefundFa) + ' از بیعانه به کارت شما برمی‌گردد و بقیه طبق قوانین نزد مجموعه می‌ماند. لغو برگشت‌پذیر نیست.'
+        ? 'این نوبت لغو شود؟ ' + esc(b.pay.cancelRefundFa) + ' از بیعانه ' + esc(S.pay.eta || 'به کارت شما برمی‌گردد') + ' و بقیه طبق قوانین نزد مجموعه می‌ماند. لغو برگشت‌پذیر نیست.'
         : 'این نوبت لغو شود؟ ظرفیت آزاد می‌شود و برگشت‌پذیر نیست.') + '</div>' +
       '<div class="cmb-bk__acts">' +
         '<button class="cmb-btn cmb-btn--sm cmb-btn--danger"' + (busy ? ' disabled' : '') +
@@ -994,7 +996,7 @@ function payLine(b) {
   var txt = 'بیعانه ' + p.depositFa;
 
   if (p.status === 'paid') { txt += ' — پرداخت شد' + (p.remainingFa ? '؛ باقی‌مانده هنگام مراجعه ' + p.remainingFa : ''); }
-  else if (p.status === 'refund_due' || p.status === 'refunding') { txt += ' — بازگشت ' + p.refundFa + ' در صف انجام است'; }
+  else if (p.status === 'refund_due' || p.status === 'refunding') { txt += ' — بازگشت ' + p.refundFa + (S.pay.auto ? ' خودکار انجام می‌شود' : ' در صف انجام است'); }
   else if (p.status === 'refunded') { txt += ' — ' + p.refundFa + ' به کارت شما بازگردانده شد'; }
   else if (p.status === 'kept') { txt += ' — نزد مجموعه ماند'; }
   else if (b.status === 'pending') { txt += ' — هنوز پرداخت نشده'; }

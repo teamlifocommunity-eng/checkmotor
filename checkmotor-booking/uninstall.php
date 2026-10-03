@@ -49,6 +49,8 @@ $cmb_options = array(
 	'cmb_fast',
 	'cmb_fast_stamp',
 	'cmb_pay_used',
+	'cmb_zp_token',
+	'cmb_pay_selftest',
 );
 
 /* فایل حالت سریع در mu-plugins؛ فقط اگر واقعاً مال همین افزونه باشد. */

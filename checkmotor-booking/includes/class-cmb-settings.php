@@ -69,6 +69,10 @@ class CMB_Settings {
 			'pay_hold_minutes'          => 20,      // جا تا این مدت برای پرداخت نگه داشته می‌شود
 			'pay_terms_text'            => '',      // خالی: متن پیش‌فرض (CMB_Payments::default_terms)
 			'pay_refund_operators'      => 0,       // مسئول رزرو هم بتواند برگشت وجه را «انجام‌شده» ثبت کند
+			'pay_refund_mode'           => 'manual', // manual | auto (برگشت با API زرین‌پال)
+			'pay_refund_delay'          => 30,      // دقیقه بعد از لغو؛ تا لغو اشتباهی قابل بازگرداندن باشد
+			'zp_refund_method'          => 'PAYA',  // PAYA (چرخه‌ی بعد) | CARD (فوری)
+			'zp_terminal_id'            => '',      // شماره‌ی ترمینال (درگاه) در پنل زرین‌پال
 			'pay_tick_key'              => '',      // کلید نشانی کرون پرداخت؛ خودکار ساخته می‌شود
 			'pattern_refund'            => '',      // پترن پیامک «بازگشت وجه انجام شد»
 

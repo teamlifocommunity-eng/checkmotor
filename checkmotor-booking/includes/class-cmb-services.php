@@ -246,7 +246,45 @@ class CMB_Services {
 			// بیعانه با تنظیمات فعلی؛ ۰ یعنی رزرو این خدمت پرداخت ندارد
 			'deposit'     => CMB_Payments::service_deposit( $service ),
 			'depositLabel' => CMB_Payments::service_deposit( $service ) ? cmb_toman( CMB_Payments::service_deposit( $service ) ) : '',
+			'test'        => 2 === (int) $service->is_active,
 		);
+	}
+
+	/**
+	 * آیا این کاربر می‌تواند این خدمت را ببیند و رزرو کند؟
+	 *
+	 * is_active: ۱ برای همه، ۲ «آزمایشی — فقط مدیران»، ۰ غیرفعال. خدمت
+	 * آزمایشی برای امتحان مسیر واقعی رزرو و پرداخت روی سایت اصلی است،
+	 * بی‌آنکه مشتری‌ها ببینندش.
+	 */
+	public static function bookable( $service ) {
+		if ( ! $service ) {
+			return false;
+		}
+
+		$active = (int) $service->is_active;
+
+		return 1 === $active || ( 2 === $active && class_exists( 'CMB_Panel_Api' ) && CMB_Panel_Api::can() );
+	}
+
+	/**
+	 * خدمت‌های آزمایشی (فقط برای مدیران؛ بیرون از کش عمومی خدمات).
+	 *
+	 * @return array[]
+	 */
+	public static function test_services( $branch_id = 0 ) {
+		global $wpdb;
+
+		$branch_id = $branch_id ? (int) $branch_id : self::default_branch_id();
+		$table     = cmb_table( 'services' );
+		$rows      = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} WHERE branch_id = %d AND is_active = 2 ORDER BY sort_order ASC, id ASC", $branch_id ) ); // phpcs:ignore
+		$out       = array();
+
+		foreach ( (array) $rows as $row ) {
+			$out[] = self::to_array( $row );
+		}
+
+		return $out;
 	}
 
 	/**
@@ -262,6 +300,36 @@ class CMB_Services {
 		}
 
 		return max( 0, min( 100000000, (int) cmb_en_num( (string) $value ) ) );
+	}
+
+	/**
+	 * قواعد زرین‌پال برای مبلغ‌ها (تومان):
+	 *
+	 *   · بیعانه ۰ (بدون بیعانه) یا دست‌کم ۱,۰۰۰ — کمترین پرداخت درگاه
+	 *   · برگشتی ۰ یا دست‌کم ۲,۰۰۰ — کمترین استرداد زرین‌پال
+	 *   · برگشتی بیشتر از بیعانه نه
+	 *
+	 * null یعنی «پیش‌فرض تنظیمات» و این‌جا بررسی نمی‌شود (پیش‌فرض‌ها جدا
+	 * بررسی شده‌اند).
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function validate_amounts( $deposit, $refund, $label = '' ) {
+		$label = '' !== $label ? ' (' . $label . ')' : '';
+
+		if ( null !== $deposit && (int) $deposit > 0 && (int) $deposit < 1000 ) {
+			return new WP_Error( 'cmb_bad_deposit', 'بیعانه' . $label . ' باید ۰ (بدون بیعانه) یا دست‌کم ۱,۰۰۰ تومان باشد؛ زرین‌پال پرداخت کمتر از این را نمی‌پذیرد.', array( 'status' => 400 ) );
+		}
+
+		if ( null !== $refund && (int) $refund > 0 && (int) $refund < 2000 ) {
+			return new WP_Error( 'cmb_bad_refund', 'مبلغ بازگشتی در لغو' . $label . ' باید ۰ یا دست‌کم ۲,۰۰۰ تومان باشد؛ زرین‌پال کمتر از این را برنمی‌گرداند.', array( 'status' => 400 ) );
+		}
+
+		if ( null !== $deposit && null !== $refund && (int) $refund > (int) $deposit ) {
+			return new WP_Error( 'cmb_bad_refund', 'مبلغ بازگشتی در لغو' . $label . ' نمی‌تواند از خود بیعانه بیشتر باشد.', array( 'status' => 400 ) );
+		}
+
+		return true;
 	}
 
 	public static function has_deposit_columns() {
@@ -497,7 +565,7 @@ class CMB_Services {
 				'duration_note'    => isset( $data['duration_note'] ) ? sanitize_text_field( $data['duration_note'] ) : '',
 				'allowed_weekdays' => isset( $data['allowed_weekdays'] ) ? self::clean_weekdays( $data['allowed_weekdays'] ) : '',
 				'sort_order'       => $max + 10,
-				'is_active'        => isset( $data['is_active'] ) ? (int) (bool) $data['is_active'] : 1,
+				'is_active'        => isset( $data['is_active'] ) ? max( 0, min( 2, (int) $data['is_active'] ) ) : 1,
 				'created_at'       => current_time( 'mysql' ),
 		);
 

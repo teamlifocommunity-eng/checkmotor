@@ -158,6 +158,8 @@ class CMB_Panel_Api {
 			'panel/closure'   => array( 'POST', 'save_closure' ),
 			'panel/refunds'   => array( 'GET', 'refunds' ),
 			'panel/refund'    => array( 'POST', 'update_refund' ),
+			'panel/pay-review' => array( 'GET', 'pay_review' ),
+			'panel/pay-report' => array( 'GET', 'pay_report' ),
 		);
 
 		foreach ( $routes as $path => $conf ) {
@@ -854,7 +856,8 @@ class CMB_Panel_Api {
 			'price'            => (int) $request->get_param( 'price' ),
 			'duration_note'    => sanitize_text_field( (string) $request->get_param( 'duration' ) ),
 			'allowed_weekdays' => implode( ',', $weekdays ),
-			'is_active'        => $request->get_param( 'active' ) ? 1 : 0,
+			// ۱ برای همه، ۲ آزمایشی (فقط مدیران)، ۰ غیرفعال
+			'is_active'        => max( 0, min( 2, (int) $request->get_param( 'active' ) ) ),
 			'sort_order'       => (int) $request->get_param( 'sortOrder' ),
 		);
 
@@ -880,11 +883,15 @@ class CMB_Panel_Api {
 			$data['cancel_refund_amount'] = $params['cancelRefund'];
 		}
 
-		if ( isset( $data['deposit_amount'], $data['cancel_refund_amount'] )
-			&& null !== CMB_Services::clean_amount( $data['deposit_amount'] )
-			&& null !== CMB_Services::clean_amount( $data['cancel_refund_amount'] )
-			&& CMB_Services::clean_amount( $data['cancel_refund_amount'] ) > CMB_Services::clean_amount( $data['deposit_amount'] ) ) {
-			return new WP_Error( 'cmb_bad_refund', 'مبلغ بازگشتی در لغو نمی‌تواند از خود بیعانه بیشتر باشد.', array( 'status' => 400 ) );
+		if ( array_key_exists( 'deposit_amount', $data ) || array_key_exists( 'cancel_refund_amount', $data ) ) {
+			$valid = CMB_Services::validate_amounts(
+				array_key_exists( 'deposit_amount', $data ) ? CMB_Services::clean_amount( $data['deposit_amount'] ) : null,
+				array_key_exists( 'cancel_refund_amount', $data ) ? CMB_Services::clean_amount( $data['cancel_refund_amount'] ) : null
+			);
+
+			if ( is_wp_error( $valid ) ) {
+				return $valid;
+			}
 		}
 
 		if ( '' === $data['title'] ) {
@@ -1190,6 +1197,20 @@ class CMB_Panel_Api {
 		);
 	}
 
+	/**
+	 * بیعانه و برگشت هر خدمت، با هشدار و سناریوها.
+	 */
+	public function pay_review( WP_REST_Request $request ) {
+		return rest_ensure_response( CMB_Pay_Review::services() );
+	}
+
+	public function pay_report( WP_REST_Request $request ) {
+		$days = (int) $request->get_param( 'days' );
+		$days = in_array( $days, array( 0, 7, 30, 90, 365 ), true ) ? $days : 30;
+
+		return rest_ensure_response( CMB_Pay_Review::report( $days, (bool) $request->get_param( 'sandbox' ) ) );
+	}
+
 	public function update_refund( WP_REST_Request $request ) {
 		if ( ! self::can_refund() ) {
 			return new WP_Error( 'cmb_refund_forbidden', 'ثبت برگشت وجه فقط برای مدیر سایت مجاز است.', array( 'status' => 403 ) );
@@ -1198,8 +1219,17 @@ class CMB_Panel_Api {
 		$id     = (int) $request->get_param( 'id' );
 		$action = sanitize_key( (string) $request->get_param( 'action' ) );
 
+		$outcome = '';
+
 		if ( 'amount' === $action ) {
 			$result = CMB_Payments::edit_refund( $id, (int) cmb_en_num( (string) $request->get_param( 'amount' ) ), get_current_user_id() );
+		} elseif ( 'auto' === $action ) {
+			$result = CMB_Payments::run_now( $id );
+
+			if ( ! is_wp_error( $result ) ) {
+				$outcome = $result;
+				$result  = true;
+			}
 		} elseif ( 'done' === $action ) {
 			$result = CMB_Payments::mark_refunded( $id, (string) $request->get_param( 'ref' ), get_current_user_id(), (bool) $request->get_param( 'sms' ) );
 		} else {
@@ -1210,9 +1240,13 @@ class CMB_Panel_Api {
 			return $result;
 		}
 
+		$payment = CMB_Payments::get_payment( $id );
+
 		return rest_ensure_response(
 			array(
 				'success' => true,
+				'outcome' => $outcome,
+				'error'   => $payment ? (string) $payment->refund_error : '',
 				'items'   => CMB_Payments::refund_queue( 'open' ),
 				'open'    => CMB_Payments::count_open_refunds(),
 			)

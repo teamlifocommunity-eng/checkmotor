@@ -240,6 +240,37 @@ class CMB_Health {
 			);
 		}
 
+		// برگشت خودکار
+		if ( CMB_Payments::auto_on() && ! CMB_Payments::sandbox() && ! CMB_Zarinpal_Refund::configured() ) {
+			$out[] = self::item( self::BAD, 'برگشت خودکار', 'روشن است ولی توکن دسترسی یا شماره‌ی ترمینال زرین‌پال تنظیم نشده؛ هر برگشت شکست می‌خورد.', 'در تنظیمات ← پرداخت بیعانه، توکن و ترمینال را وارد کنید و «آزمایش اتصال API برگشت» را بزنید.' );
+		}
+
+		if ( CMB_Payments::auto_schema() ) {
+			$failed = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$pt} WHERE refund_status = 'failed'" ); // phpcs:ignore
+
+			if ( $failed ) {
+				$out[] = self::item( self::WARN, 'برگشت ناموفق', sprintf( '%s برگشت وجه انجام نشد و منتظر شماست.', cmb_fa_num( $failed ) ), 'پنل رزرو ← بیعانه و برگشت: دلیل هر کدام نوشته شده؛ بعد از رفع، «برگشت خودکار همین حالا» یا «ثبت انجام‌شده» را بزنید.' );
+			}
+
+			$stuck_r = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$pt} WHERE refund_status = 'processing' AND updated_at < %s", cmb_now()->modify( '-1 hour' )->format( 'Y-m-d H:i:s' ) ) ); // phpcs:ignore
+
+			if ( $stuck_r ) {
+				$out[] = self::item( self::WARN, 'برگشت نامعلوم', sprintf( '%s برگشت بیش از یک ساعت است جوابش از زرین‌پال معلوم نشده.', cmb_fa_num( $stuck_r ) ), 'در پنل زرین‌پال ← تراکنش‌ها ببینید انجام شده یا نه، و در پنل رزرو ثبتش کنید.' );
+			}
+		}
+
+		$bad_svc = array();
+
+		foreach ( CMB_Pay_Review::services()['items'] as $row ) {
+			if ( 'bad' === $row['level'] && $row['active'] ) {
+				$bad_svc[] = $row['title'];
+			}
+		}
+
+		if ( $bad_svc ) {
+			$out[] = self::item( self::BAD, 'مبلغ‌های بیعانه', 'مبلغ بیعانه یا برگشتیِ این خدمت‌ها با قواعد زرین‌پال جور نیست: ' . implode( '، ', $bad_svc ) . '.', 'پنل رزرو ← بیعانه و برگشت ← بررسی خدمات.' );
+		}
+
 		$orphan = (int) $wpdb->get_var( // phpcs:ignore
 			"SELECT COUNT(*) FROM {$pt} p LEFT JOIN {$bt} b ON b.id = p.booking_id
 			 WHERE p.status = 'paid' AND p.refund_status = '' AND p.refund_reason = ''

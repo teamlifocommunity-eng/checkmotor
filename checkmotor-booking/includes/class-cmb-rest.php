@@ -315,7 +315,7 @@ class CMB_Rest {
 		$date    = sanitize_text_field( (string) $request->get_param( 'date' ) );
 		$block   = sanitize_key( (string) $request->get_param( 'block' ) );
 
-		if ( ! $service || ! $service->is_active ) {
+		if ( ! CMB_Services::bookable( $service ) ) {
 			return new WP_Error( 'cmb_service_not_found', 'خدمت انتخاب‌شده در دسترس نیست.', array( 'status' => 404 ) );
 		}
 
@@ -405,7 +405,7 @@ class CMB_Rest {
 		$message = 'نوبت شما لغو شد و ظرفیت آزاد شد.';
 
 		if ( ! empty( $result['pay'] ) && 'refund_due' === $result['pay']['status'] ) {
-			$message = sprintf( 'نوبت شما لغو شد. %s به کارتی که با آن پرداخت کرده بودید بازگردانده می‌شود.', $result['pay']['refundFa'] );
+			$message = sprintf( 'نوبت شما لغو شد. %s %s.', $result['pay']['refundFa'], CMB_Payments::refund_eta( 'customer' ) );
 		} elseif ( ! empty( $result['pay'] ) && 'kept' === $result['pay']['status'] ) {
 			$message = 'نوبت شما لغو شد. طبق قوانین رزرو، مبلغی از بیعانه بازگردانده نمی‌شود.';
 		}

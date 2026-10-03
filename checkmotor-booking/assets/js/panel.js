@@ -11,7 +11,7 @@ var NONCE = C.nonce || '';
 var NURL  = C.nonceUrl || '/wp-admin/admin-ajax.php?action=cmb_nonce';
 
 var VIEWS = ['summary', 'board', 'bookings', 'customers', 'services', 'closures', 'settings', 'refunds'];
-var PAY = C.pay || { on: false, used: false, canRefund: false, shopPct: 100 };
+var PAY = C.pay || { on: false, used: false, canRefund: false, shopPct: 100, auto: false, delay: 0, methodFa: '' };
 
 
 /* وضعیت‌ها ثابت‌اند و نباید از پاسخ سرور خوانده شوند.
@@ -48,6 +48,8 @@ var S = {
   sched: null, schedFull: '', health: null, sweeping: false,
   closures: null, closeForm: { date: '', block: '', reason: '' },
   refunds: null, refWhich: 'open', refEdit: null,   // صف بازگشت وجه
+  payReview: null, simFor: 0,                      // بررسی مبلغ‌های هر خدمت
+  payReport: null, repDays: 30, repSandbox: false,  // گزارش
   login: freshLogin(),
   menu: false,
   got: {}   // نشانی هر درخواستِ موفق ← زمانش؛ برای نمایش فوری هنگام جابه‌جایی
@@ -225,7 +227,7 @@ var NAV = [
 ];
 
 // «بازگشت وجه» فقط وقتی پرداخت بیعانه روشن است یا روزی بوده
-if (PAY.used) { NAV.splice(4, 0, { k: 'refunds', t: 'بازگشت وجه', ic: I.card }); }
+if (PAY.used) { NAV.splice(4, 0, { k: 'refunds', t: 'بیعانه و برگشت', ic: I.card }); }
 
 function side() {
   var up = S.summary && S.summary.counts ? S.summary.counts.upcoming : 0;
@@ -1028,8 +1030,16 @@ function svcModal() {
 
     depositFields(s) +
 
-    '<label class="pn-check" style="margin-bottom:16px">' +
-    '<input type="checkbox" id="sv-active"' + (s.active ? ' checked' : '') + '> در اپ قابل رزرو باشد</label>' +
+    '<div class="pn-field"><span class="pn-field__l">وضعیت</span>' +
+      '<div class="pn-seg pn-seg--3">' +
+        '<button type="button" class="pn-seg__b' + (Number(s.active) === 1 ? ' is-on' : '') + '" data-svc-active="1">برای همه</button>' +
+        '<button type="button" class="pn-seg__b' + (Number(s.active) === 2 ? ' is-on' : '') + '" data-svc-active="2">آزمایشی</button>' +
+        '<button type="button" class="pn-seg__b' + (Number(s.active) === 0 ? ' is-on' : '') + '" data-svc-active="0">غیرفعال</button>' +
+      '</div>' +
+      '<div class="pn-hint">' + (Number(s.active) === 2
+        ? 'فقط مدیران و مسئولان رزرو این خدمت را در اپ می‌بینند (با نشان «آزمایشی») — برای امتحان مسیر واقعی رزرو، پرداخت و برگشت. بهتر است سهمیه‌ی جداگانه و بیعانه‌ی ۲,۰۰۰ تومان داشته باشد.'
+        : (Number(s.active) === 1 ? 'در اپ برای همه‌ی مشتری‌ها قابل رزرو است.' : 'در اپ دیده نمی‌شود.')) + '</div>' +
+    '</div>' +
 
     '<div class="pn-modal__ft">' +
       '<button class="pn-btn pn-btn--pri" data-svc-save' + (S.busy ? ' disabled' : '') + '>' +
@@ -1049,14 +1059,28 @@ function svcModal() {
  */
 function viewRefunds() {
   var R = S.refunds;
-  var html = head('بازگشت وجه', 'برگشت بیعانه به کارت مشتری',
+  var html = head('بیعانه و برگشت', 'برگشت بیعانه به کارت مشتری، بررسی مبلغ‌ها و گزارش',
     '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>');
 
-  html += '<div class="pn-tabs" style="margin-bottom:16px;max-width:360px">' +
-    '<button class="pn-tabs__b' + (S.refWhich === 'open' ? ' is-on' : '') + '" data-ref-which="open">در صف' +
-      (R && R.open ? ' (' + fa(R.open) + ')' : '') + '</button>' +
-    '<button class="pn-tabs__b' + (S.refWhich === 'done' ? ' is-on' : '') + '" data-ref-which="done">انجام‌شده</button>' +
+  var tab = function (k, t) {
+    return '<button class="pn-tabs__b' + (S.refWhich === k ? ' is-on' : '') + '" data-ref-which="' + k + '">' + t + '</button>';
+  };
+
+  html += '<div class="pn-tabs pn-reftabs">' +
+    tab('open', 'در صف' + (R && R.open ? ' (' + fa(R.open) + ')' : '')) +
+    tab('done', 'انجام‌شده') +
+    tab('review', 'بررسی خدمات') +
+    tab('report', 'گزارش') +
     '</div>';
+
+  if (S.refWhich === 'review') { return html + viewPayReview(); }
+  if (S.refWhich === 'report') { return html + viewPayReport(); }
+
+  if (S.refWhich === 'open' && PAY.auto) {
+    html += note('info', I.info, 'برگشت خودکار روشن است: هر برگشت ' +
+      (PAY.delay ? fa(PAY.delay) + ' دقیقه بعد از لغو' : 'بلافاصله') + ' با ' + esc(PAY.methodFa) +
+      ' از طریق زرین‌پال انجام می‌شود. ردیف‌های ناموفق با دلیلشان این‌جا می‌مانند تا دوباره بفرستید یا دستی انجام دهید.');
+  }
 
   if (S.refWhich === 'open') {
     html += '<details class="pn-card pn-guide"><summary class="pn-card__t">' + I.info + ' راهنمای برگشت وجه در زرین‌پال</summary>' +
@@ -1085,6 +1109,130 @@ function viewRefunds() {
   return html;
 }
 
+/* ═══ بررسی مبلغ‌های هر خدمت + شبیه‌ساز ═══ */
+
+function viewPayReview() {
+  var R = S.payReview;
+  if (!R) { return skel(3); }
+
+  var st = R.settings || {};
+  var chip = function (t, kind) { return '<span class="pn-chipinfo' + (kind ? ' is-' + kind : '') + '">' + t + '</span>'; };
+
+  var html = '<div class="pn-card pn-revset">' +
+    '<div class="pn-card__t">' + I.cog + ' تنظیمات مشترک</div>' +
+    '<div class="pn-chipline">' +
+      chip(st.enabled ? 'پرداخت بیعانه روشن' : 'پرداخت بیعانه خاموش', st.enabled ? 'ok' : 'warn') +
+      chip(st.sandbox ? 'درگاه آزمایشی' : 'درگاه واقعی', st.sandbox ? 'warn' : '') +
+      chip('برگشت ' + (st.auto ? 'خودکار' : 'دستی'), st.auto ? 'ok' : 'warn') +
+      (st.auto ? chip('روش: ' + esc(st.methodFa)) + chip('تأخیر: ' + (st.delay ? fa(st.delay) + ' دقیقه' : 'ندارد')) : '') +
+      chip('مهلت لغو مشتری: ' + fa(st.hours) + ' ساعت') +
+      chip('لغو از طرف مجموعه: ' + fa(st.shopPct) + '٪ بیعانه') +
+    '</div>' +
+    (C.wpSettings ? '<a class="pn-revset__link" href="' + esc(C.wpSettings) + '#cmb-pay" target="_blank">تغییر در تنظیمات ←</a>' : '') +
+    '</div>';
+
+  (R.global || []).forEach(function (g) { html += note(g[0] === 'bad' ? 'bad' : (g[0] === 'warn' ? 'warn' : 'info'), I.info, esc(g[1])); });
+
+  html += '<div class="pn-revlist">' + R.items.map(function (x) {
+    var mode = x.depositMode === 'default' ? 'پیش‌فرض' : (x.depositMode === 'none' ? 'بدون بیعانه' : 'مبلغ دلخواه');
+    var open = S.simFor === x.id;
+
+    var card = '<div class="pn-card pn-rev is-' + x.level + '">' +
+      '<div class="pn-rev__hd"><div><div class="pn-rev__t">' + esc(x.title) + '</div>' +
+        '<div class="pn-rev__s">' + esc(x.activeFa) + ' · قیمت ' + esc(x.priceFa) + '</div></div>' +
+        '<span class="pn-badge pn-badge--' + (x.level === 'bad' ? 'cancelled' : (x.level === 'warn' ? 'no_show' : 'confirmed')) + '">' +
+          (x.level === 'bad' ? 'نیاز به اصلاح' : (x.level === 'warn' ? 'بررسی شود' : 'درست')) + '</span></div>';
+
+    if (!x.deposit) {
+      card += '<div class="pn-hint">' + (x.depositMode === 'none' ? 'این خدمت بیعانه ندارد؛ رزرو رایگان است.' : 'بیعانه ندارد.') + '</div>';
+    } else {
+      card += '<div class="pn-rev__grid">' +
+        kvs('بیعانه (' + mode + ')', x.depositFa) +
+        kvs('برگشت در لغوِ به‌موقع' + (x.refundMode === 'custom' ? ' (دلخواه)' : ''), x.refundFa) +
+        kvs('سهم مجموعه در همان لغو', x.keptFa) +
+        kvs('برگشت در لغو از طرف مجموعه', x.shopFa) +
+        kvs('عدم مراجعه', 'کل بیعانه نزد مجموعه') +
+        kvs('باقی‌مانده هنگام مراجعه', x.remainingFa) +
+        '</div>';
+    }
+
+    (x.warnings || []).forEach(function (w) { card += note(w[0] === 'bad' ? 'bad' : (w[0] === 'warn' ? 'warn' : 'info'), I.alert, esc(w[1])); });
+
+    card += '<div class="pn-refund__acts">' +
+      (x.deposit ? '<button class="pn-btn ' + (open ? 'pn-btn--dark' : 'pn-btn--soft') + '" data-sim="' + x.id + '">' + (open ? 'بستن شبیه‌ساز' : 'شبیه‌ساز سناریوها') + '</button>' : '') +
+      '<button class="pn-btn pn-btn--soft" data-svc-goto="' + x.id + '">ویرایش خدمت</button>' +
+      '</div>';
+
+    if (open) { card += simulator(x); }
+
+    return card + '</div>';
+  }).join('') + '</div>';
+
+  return html;
+}
+
+/** شبیه‌ساز: هر سناریو چه مبلغی، کِی و چطور. */
+function simulator(x) {
+  return '<div class="pn-sim">' + x.scenarios.map(function (c) {
+    return '<div class="pn-sim__row">' +
+      '<div class="pn-sim__t">' + esc(c.title) + '</div>' +
+      '<div class="pn-sim__nums">' +
+        '<span class="pn-sim__back' + (c.back ? '' : ' is-zero') + '">به مشتری: <b>' + esc(c.backFa) + '</b></span>' +
+        '<span class="pn-sim__kept">نزد مجموعه: <b>' + esc(c.keptFa) + '</b></span>' +
+      '</div>' +
+      (c.back ? '<div class="pn-sim__when pn-sim__when--' + c.how + '">' + (c.how === 'auto' ? I.check : I.clock) + '<span>' + esc(c.when) + '</span></div>' : '') +
+      (c.note ? '<div class="pn-sim__note">' + esc(c.note) + '</div>' : '') +
+      (c.customer && c.customer !== '—' ? '<div class="pn-sim__msg">پیام به مشتری: «' + esc(c.customer) + '»</div>' : '') +
+      '</div>';
+  }).join('') + '</div>';
+}
+
+/* ═══ گزارش ═══ */
+
+function viewPayReport() {
+  var R = S.payReport;
+
+  var html = '<div class="pn-repbar">' +
+    '<div class="pn-chips">' + [[7, '۷ روز'], [30, '۳۰ روز'], [90, '۳ ماه'], [365, 'یک سال'], [0, 'همه']].map(function (d) {
+      return '<button type="button" class="pn-chip' + (S.repDays === d[0] ? ' is-on' : '') + '" data-rep-days="' + d[0] + '">' + d[1] + '</button>';
+    }).join('') + '</div>' +
+    '<label class="pn-check"><input type="checkbox" id="rep-sandbox"' + (S.repSandbox ? ' checked' : '') + '> با پرداخت‌های آزمایشی</label>' +
+    '</div>';
+
+  if (!R || !R.totals) { return html + skel(2); }
+
+  var t = R.totals;
+
+  if (!t.paidCount) {
+    return html + empty('در این بازه پرداختی نبوده', S.repSandbox ? '' : 'پرداخت‌های درگاه آزمایشی حساب نشده‌اند.');
+  }
+
+  html += '<div class="pn-stats pn-stats--rep">' +
+    stat('بیعانه‌ی پرداخت‌شده (' + fa(t.paidCount) + ')', t.paidFa, I.card, '') +
+    stat('برگشت داده‌شده (' + fa(t.refundedCount) + ')', t.refundedFa, I.check, 'ok') +
+    stat('در صف برگشت (' + fa(t.pendingCount) + ')', t.pendingFa, I.clock, '') +
+    stat('برگشت ناموفق (' + fa(t.failedCount) + ')', t.failedFa, I.alert, t.failedCount ? 'hot' : '') +
+    stat('نزد مجموعه', t.keptFa, I.gauge, '') +
+    stat('کارمزد درگاه', t.feesFa, I.tag, '') +
+    '</div>';
+
+  var table = function (title, rows, cols) {
+    if (!rows.length) { return ''; }
+    return '<div class="pn-card"><div class="pn-card__t">' + title + '</div><div class="pn-tablewrap"><table class="pn-table pn-table--rep"><thead><tr>' +
+      cols.map(function (c) { return '<th>' + c[0] + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      rows.map(function (r) { return '<tr>' + cols.map(function (c) { return '<td data-label="' + esc(c[0]) + '">' + esc(r[c[1]]) + '</td>'; }).join('') + '</tr>'; }).join('') +
+      '</tbody></table></div></div>';
+  };
+
+  html += table('به تفکیک خدمت', R.services, [['خدمت', 'title'], ['تعداد', 'countFa'], ['پرداخت‌شده', 'paidFa'], ['برگشت داده‌شده', 'refundedFa'], ['در صف یا ناموفق', 'openFa']]);
+  html += table('برگشت‌ها به تفکیک دلیل', R.reasons, [['دلیل', 'label'], ['تعداد', 'countFa'], ['مبلغ', 'sumFa']]);
+  html += table('برگشت‌های انجام‌شده به تفکیک روش', R.methods, [['روش', 'label'], ['تعداد', 'countFa'], ['مبلغ', 'sumFa']]);
+
+  if (t.tests) { html += note('info', I.info, fa(t.tests) + ' آزمون پرداخت و برگشت ۲,۰۰۰ تومانی در این بازه بوده که جزو درآمد حساب نشده است.'); }
+
+  return html + '<div class="pn-hint">مبنای بازه، زمان پرداخت است؛ برگشت هر پرداخت در همان سطر حساب می‌شود، هر وقت انجام شده باشد.</div>';
+}
+
 function refundCard(x, can) {
   var late = x.daysLeft < 0;
   var soon = !late && x.daysLeft < 15;
@@ -1104,7 +1252,7 @@ function refundCard(x, can) {
       kvs('کارت', x.card ? 'انتهای ' + fa(x.card) : '—') +
       kvs('زمان پرداخت', fa(x.paidAtFa)) +
       (x.status === 'done'
-        ? kvs('انجام شد', fa(x.doneAtFa)) + kvs('پیگیری برگشت', x.ref ? fa(x.ref) : '—')
+        ? kvs('انجام شد', fa(x.doneAtFa) + (x.methodLabel ? ' — ' + x.methodLabel : '')) + kvs('پیگیری برگشت', x.ref ? fa(x.ref) : '—')
         : kvs('مهلت زرین‌پال', late ? 'گذشته' : fa(x.daysLeft) + ' روز')) +
     '</div>';
 
@@ -1115,7 +1263,14 @@ function refundCard(x, can) {
       html += note('warn', I.clock, 'فقط ' + fa(x.daysLeft) + ' روز تا پایان مهلت استرداد در زرین‌پال مانده است.');
     }
 
-    if (x.error) { html += note('bad', I.alert, esc(x.error)); }
+    if (x.status === 'due' && x.auto && x.autoIn >= 0) {
+      html += note('info', I.clock, 'برگشت خودکار ' + (x.autoIn > 0 ? 'حدود ' + fa(x.autoIn) + ' دقیقه‌ی دیگر' : 'در اولین فرصت') +
+        (x.autoIn > 0 ? '؛ تا آن موقع با «بازگردانی» نوبت لغو نمی‌شود.' : '.'));
+    } else if (x.status === 'processing') {
+      html += note('warn', I.clock, 'در حال انجام در زرین‌پال…');
+    }
+
+    if (x.error) { html += note('bad', I.alert, esc(x.error) + (x.tries > 1 ? ' (تلاش ' + fa(x.tries) + ')' : '')); }
 
     if (!can) {
       // فقط دیدن
@@ -1138,7 +1293,11 @@ function refundCard(x, can) {
         '</div></div>';
     } else {
       html += '<div class="pn-refund__acts">' +
-        '<button class="pn-btn pn-btn--pri" data-ref-done="' + x.id + '">ثبت انجام‌شده</button>' +
+        (x.auto && x.status !== 'processing'
+          ? '<button class="pn-btn pn-btn--pri" data-ref-auto="' + x.id + '"' + (S.busy ? ' disabled' : '') + '>' +
+            (S.busy === 'auto' + x.id ? '<span class="pn-spin"></span> …' : 'برگشت خودکار همین حالا') + '</button>'
+          : '') +
+        '<button class="pn-btn ' + (x.auto ? 'pn-btn--soft' : 'pn-btn--pri') + '" data-ref-done="' + x.id + '">ثبت انجام‌شده (دستی)</button>' +
         (x.status === 'due' ? '<button class="pn-btn pn-btn--soft" data-ref-amount="' + x.id + '">ویرایش مبلغ</button>' : '') +
         '</div>';
     }
@@ -1149,6 +1308,47 @@ function refundCard(x, can) {
 
 function kvs(k, v) {
   return '<div class="pn-kv"><span class="pn-kv__k">' + esc(k) + '</span><span class="pn-kv__v">' + esc(v) + '</span></div>';
+}
+
+/** «ویرایش خدمت» از جدول بررسی: پنجره‌ی همان خدمت باز شود. */
+function openPendingSvc() {
+  if (!S.openSvc || !S.services) { return; }
+
+  var svc = findService(S.openSvc);
+  S.openSvc = 0;
+
+  if (svc) {
+    S.svcEdit = JSON.parse(JSON.stringify(svc));
+    paintModal();
+  }
+}
+
+/** «برگشت خودکار همین حالا». */
+function refundAuto(id) {
+  if (S.busy) { return; }
+
+  S.busy = 'auto' + id;
+  paint();
+
+  post('panel/refund', { id: id, action: 'auto' }).then(function (r) {
+    S.busy = false;
+
+    if (r.success === false) { toast(r.message || 'انجام نشد.', 'bad'); paint(); return; }
+
+    var msg = {
+      done: ['برگشت انجام شد و برای مشتری پیامک رفت.', 'ok'],
+      failed: [r.error || 'زرین‌پال برگشت را نپذیرفت.', 'bad'],
+      due: ['زرین‌پال موقتاً پاسخ نداد؛ چند دقیقه‌ی دیگر خودکار دوباره امتحان می‌شود.', 'bad'],
+      processing: ['جواب زرین‌پال نرسید؛ چند دقیقه‌ی دیگر خودکار بررسی می‌شود.', 'bad'],
+      busy: ['برگشت دیگری همین حالا در حال انجام است؛ چند ثانیه بعد دوباره بزنید.', 'bad']
+    }[r.outcome] || ['انجام شد.', 'ok'];
+
+    toast(msg[0], msg[1]);
+
+    S.refunds = { items: r.items, open: r.open, canRefund: true, which: 'open' };
+    if (S.summary && S.summary.counts) { S.summary.counts.refunds = r.open; shellKey = ''; }
+    paint();
+  });
 }
 
 function refundAction(id, action) {
@@ -1206,9 +1406,31 @@ function depositFields(s) {
           '<label class="pn-field"><span class="pn-field__l">بازگشتی در لغوِ به‌موقع توسط مشتری (تومان)</span>' +
           '<input class="pn-in num" id="sv-ref" inputmode="numeric" dir="ltr" placeholder="پیش‌فرض' + (s.refundNow ? ' — ' + money(s.refundNow) : '') + '" value="' + (rmode === 'custom' ? Number(s.cancelRefund) : '') + '"></label>' +
         '</div>' +
+        '<div id="sv-amt-warn"></div>' +
         '<div class="pn-hint">خالی یعنی پیش‌فرض تنظیمات. ۰ یعنی در لغو هیچ مبلغی برنمی‌گردد. تغییر، فقط روی نوبت‌های تازه اثر دارد.</div>'
       : '<div class="pn-hint">رزرو این خدمت رایگان است و پرداختی ندارد.</div>') +
     '</div>';
+}
+
+/**
+ * همان قواعد سرور (CMB_Services::validate_amounts)، پیش از ذخیره:
+ * بیعانه ۰ یا دست‌کم ۱,۰۰۰؛ برگشتی ۰ یا دست‌کم ۲,۰۰۰ و نه بیشتر از بیعانه.
+ */
+function amountWarn() {
+  var box = $('#sv-amt-warn');
+  if (!box) { return; }
+
+  var depEl = $('#sv-dep');
+  var dep = depEl ? Number(en(depEl.value).replace(/\D/g, '') || 0) : (S.svcEdit && S.svcEdit.depositNow) || 0;
+  var refRaw = en(val('#sv-ref')).replace(/\D/g, '');
+  var ref = refRaw === '' ? null : Number(refRaw);
+  var msg = '';
+
+  if (depEl && dep > 0 && dep < 1000) { msg = 'بیعانه باید ۰ یا دست‌کم ۱,۰۰۰ تومان باشد؛ زرین‌پال پرداخت کمتر را نمی‌پذیرد.'; }
+  else if (ref !== null && ref > 0 && ref < 2000) { msg = 'برگشتی باید ۰ یا دست‌کم ۲,۰۰۰ تومان باشد؛ زرین‌پال کمتر را برنمی‌گرداند.'; }
+  else if (ref !== null && dep && ref > dep) { msg = 'برگشتی از بیعانه (' + money(dep) + ') بیشتر است.'; }
+
+  box.innerHTML = msg ? note('bad', I.alert, esc(msg)) : (dep ? '<div class="pn-hint">لغوِ به‌موقع: ' + money(ref === null ? Math.min(dep, (S.svcEdit && S.svcEdit.refundNow) || 0) : ref) + ' تومان به مشتری، بقیه نزد مجموعه.</div>' : '');
 }
 
 /* ═══ بستن روز ═══ */
@@ -1513,6 +1735,8 @@ function paintModal() {
 
   var inner = S.svcEdit ? svcModal() : (S.modal.install ? installModal() : bookingModal());
   host.innerHTML = '<div class="pn-scrim" data-scrim><div class="pn-modal">' + inner + '</div></div>';
+
+  if (S.svcEdit) { amountWarn(); }
 }
 
 /* ═══ بارگذاری ═══ */
@@ -1529,16 +1753,19 @@ function jobs() {
                '&page=' + f.page, function (r) { S.list = r; }],
     customers: ['panel/customers?q=' + encodeURIComponent(S.custQ) + '&page=' + S.custPage,
                 function (r) { S.customers = r; }],
-    services: ['panel/services', function (r) { S.services = r.items || []; }],
+    services: ['panel/services', function (r) { S.services = r.items || []; openPendingSvc(); }],
     closures: ['panel/closures', function (r) { S.closures = r; }],
     settings: ['panel/settings', function (r) { S.sched = r.settings; S.schedFull = r.fullUrl || ''; }],
-    refunds:  ['panel/refunds?which=' + S.refWhich, function (r) { S.refunds = r; }]
+    refunds:  S.refWhich === 'review' ? ['panel/pay-review', function (r) { S.payReview = r; }]
+      : (S.refWhich === 'report' ? ['panel/pay-report?days=' + S.repDays + '&sandbox=' + (S.repSandbox ? 1 : 0), function (r) { S.payReport = r; }]
+      : ['panel/refunds?which=' + S.refWhich, function (r) { S.refunds = r; }])
   };
 }
 
 function hasData(view) {
   var m = { summary: S.summary, board: S.board, bookings: S.list, customers: S.customers,
-            services: S.services, closures: S.closures, settings: S.sched, refunds: S.refunds };
+            services: S.services, closures: S.closures, settings: S.sched,
+            refunds: S.refWhich === 'review' ? S.payReview : (S.refWhich === 'report' ? S.payReport : S.refunds) };
   return !!m[view];
 }
 
@@ -1621,7 +1848,7 @@ function looksValid(view, r) {
     case 'services': return Array.isArray(r.items);
     case 'closures': return Array.isArray(r.items);
     case 'settings': return !!r.settings;
-    case 'refunds':  return Array.isArray(r.items);
+    case 'refunds':  return S.refWhich === 'report' ? !!r.totals : Array.isArray(r.items);
     default:         return true;
   }
 }
@@ -1921,7 +2148,6 @@ function readSvcForm() {
   s.description = val('#sv-desc').trim();
   s.price = Number(en(val('#sv-price')).replace(/\D/g, '') || 0);
   s.duration = val('#sv-dur').trim();
-  s.active = checked('#sv-active') ? 1 : 0;
 
   if (s.ownCapacity) {
     BLOCKS.forEach(function (b) {
@@ -2499,6 +2725,14 @@ function bind() {
       return;
     }
 
+    if ((el = up('[data-svc-active]'))) {
+      e.preventDefault();
+      readSvcForm();
+      S.svcEdit.active = Number(el.getAttribute('data-svc-active'));
+      paintModal();
+      return;
+    }
+
     if ((el = up('[data-cap-mode]'))) {
       e.preventDefault();
 
@@ -2554,11 +2788,37 @@ function bind() {
     if ((el = up('[data-ref-which]'))) {
       e.preventDefault();
       S.refWhich = el.getAttribute('data-ref-which');
-      S.refunds = null;
+      if (S.refWhich === 'open' || S.refWhich === 'done') { S.refunds = null; }
       S.refEdit = null;
       load('refunds');
       return;
     }
+
+    if ((el = up('[data-sim]'))) {
+      e.preventDefault();
+      var sid = Number(el.getAttribute('data-sim'));
+      S.simFor = S.simFor === sid ? 0 : sid;
+      paint();
+      return;
+    }
+
+    if ((el = up('[data-svc-goto]'))) {
+      e.preventDefault();
+      S.openSvc = Number(el.getAttribute('data-svc-goto'));
+      go('services');
+      openPendingSvc();
+      return;
+    }
+
+    if ((el = up('[data-rep-days]'))) {
+      e.preventDefault();
+      S.repDays = Number(el.getAttribute('data-rep-days'));
+      S.payReport = null;
+      load('refunds');
+      return;
+    }
+
+    if ((el = up('[data-ref-auto]'))) { e.preventDefault(); refundAuto(Number(el.getAttribute('data-ref-auto'))); return; }
 
     if ((el = up('[data-ref-done]'))) { e.preventDefault(); S.refEdit = { id: Number(el.getAttribute('data-ref-done')), mode: 'done' }; paint(); return; }
     if ((el = up('[data-ref-amount]'))) { e.preventDefault(); S.refEdit = { id: Number(el.getAttribute('data-ref-amount')), mode: 'amount' }; paint(); return; }
@@ -2612,6 +2872,9 @@ function bind() {
   var typeTimer = 0;
 
   document.addEventListener('input', function (e) {
+    // هشدار زنده‌ی مبلغ بیعانه و برگشت در ویرایشگر خدمت
+    if (e.target && (e.target.id === 'sv-dep' || e.target.id === 'sv-ref')) { amountWarn(); }
+
     var id = e.target && e.target.id;
 
     /* کد: ارقام فارسی به لاتین، و با کامل شدن خودکار فرستاده می‌شود
@@ -2661,6 +2924,12 @@ function bind() {
       S.filter.page = 1;
       S.list = null;
       load('bookings');
+    }
+
+    if (e.target && e.target.id === 'rep-sandbox') {
+      S.repSandbox = !!e.target.checked;
+      S.payReport = null;
+      load('refunds');
     }
   });
 

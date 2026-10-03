@@ -20,7 +20,7 @@ class CMB_Availability {
 	public static function get_calendar( $service_id, $branch_id = 0 ) {
 		$service = CMB_Services::get_service( $service_id );
 
-		if ( ! $service || ! $service->is_active ) {
+		if ( ! CMB_Services::bookable( $service ) ) {
 			return new WP_Error( 'cmb_service_not_found', 'خدمت انتخاب‌شده در دسترس نیست.', array( 'status' => 404 ) );
 		}
 
@@ -383,7 +383,7 @@ class CMB_Availability {
 			$service = CMB_Services::get_service( $service );
 		}
 
-		if ( ! $service || ! $service->is_active ) {
+		if ( ! CMB_Services::bookable( $service ) ) {
 			return new WP_Error( 'cmb_service_not_found', 'خدمت انتخاب‌شده در دسترس نیست.', array( 'status' => 400 ) );
 		}
 
