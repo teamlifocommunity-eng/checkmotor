@@ -59,6 +59,42 @@ class CMB_Zarinpal_Refund {
 		return '' !== self::token() && '' !== self::terminal();
 	}
 
+	/**
+	 * ذخیره یا پاک کردن توکن (جدا از بقیه‌ی تنظیمات، autoload=no).
+	 * «Bearer » اول متن چسبانده‌شده برداشته می‌شود.
+	 *
+	 * @param string|null $token null یعنی «همان قبلی»، '' یعنی پاک کن.
+	 */
+	public static function save_token( $token ) {
+		if ( null === $token ) {
+			return;
+		}
+
+		$token = sanitize_text_field( preg_replace( '/^Bearer\s+/i', '', trim( (string) $token ) ) );
+
+		if ( '' === $token ) {
+			delete_option( 'cmb_zp_token' );
+		} else {
+			update_option( 'cmb_zp_token', $token, false );
+		}
+	}
+
+	/**
+	 * توکن چسبانده‌شده در فرم: null اگر چیزی نیامده (همان قبلی)، '' اگر
+	 * تیک پاک کردن خورده.
+	 */
+	public static function token_from_post() {
+		// phpcs:disable WordPress.Security.NonceVerification -- فراخواننده nonce را بررسی کرده
+		if ( ! empty( $_POST['zp_token_clear'] ) ) {
+			return '';
+		}
+
+		$token = trim( (string) wp_unslash( $_POST['zp_access_token'] ?? '' ) );
+		// phpcs:enable
+
+		return '' === $token ? null : preg_replace( '/^Bearer\s+/i', '', $token );
+	}
+
 	/* ------------------------------------------------------------------ */
 
 	/**
@@ -137,12 +173,14 @@ class CMB_Zarinpal_Refund {
 	/**
 	 * درخواست استرداد.
 	 *
+	 * reason همیشه CUSTOMER_REQUEST است: مستندات AddRefund فقط همین را
+	 * نام می‌برد. جزئیات (پرداخت تکراری، آزمون) در description می‌آید.
+	 *
 	 * @param string $method PAYA | CARD
-	 * @param string $reason CUSTOMER_REQUEST | DUPLICATE_TRANSACTION | OTHER
 	 *
 	 * @return array|WP_Error { id, amount, status, time }
 	 */
-	public static function add_refund( $session_id, $amount_rial, $method, $reason, $description ) {
+	public static function add_refund( $session_id, $amount_rial, $method, $description ) {
 		$data = self::call(
 			'mutation AddRefund($session_id: ID!, $amount: BigInteger!, $description: String, $method: InstantPayoutActionTypeEnum, $reason: RefundReasonEnum) {
 				resource: AddRefund(session_id: $session_id, amount: $amount, description: $description, method: $method, reason: $reason) {
@@ -154,7 +192,7 @@ class CMB_Zarinpal_Refund {
 				'amount'      => (int) $amount_rial,
 				'description' => (string) $description,
 				'method'      => 'CARD' === $method ? 'CARD' : 'PAYA',
-				'reason'      => in_array( $reason, array( 'CUSTOMER_REQUEST', 'DUPLICATE_TRANSACTION', 'SUSPICIOUS_TRANSACTION', 'OTHER' ), true ) ? $reason : 'CUSTOMER_REQUEST',
+				'reason'      => 'CUSTOMER_REQUEST',
 			),
 			true
 		);

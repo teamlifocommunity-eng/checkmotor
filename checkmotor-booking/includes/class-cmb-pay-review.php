@@ -157,6 +157,11 @@ class CMB_Pay_Review {
 
 			$wait = in_array( $reason, CMB_Payments::DELAYED_REASONS, true ) ? $delay : 0;
 
+			// برگشت‌های سیستمی کامل‌اند و همان دقیقه‌های اول بعد از پرداخت انجام می‌شوند
+			if ( ! in_array( $reason, CMB_Payments::DELAYED_REASONS, true ) && CMB_Payments::reverse_on() ) {
+				return array( 'auto', 'بلافاصله، با برگشت فوری زرین‌پال (بی‌کارمزد، به همان کارت). اگر نشد، خودکار با ' . $method . '.' );
+			}
+
 			return array(
 				'auto',
 				( $wait ? cmb_fa_num( $wait ) . ' دقیقه بعد از لغو' : 'بلافاصله' ) . '، خودکار با ' . $method
@@ -321,7 +326,7 @@ class CMB_Pay_Review {
 			$back   = (int) ( $p->refund_amount_rial / 10 );
 
 			// آزمون ۲,۰۰۰ تومانی جزو درآمد نیست
-			if ( 'selftest' === $p->refund_reason ) {
+			if ( CMB_Payments::is_selftest_reason( $p->refund_reason ) ) {
 				$t['tests']++;
 				continue;
 			}

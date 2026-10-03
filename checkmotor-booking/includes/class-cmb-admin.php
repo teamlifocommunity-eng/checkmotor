@@ -31,9 +31,7 @@ class CMB_Admin {
 		add_action( 'admin_post_cmb_update_booking', array( $this, 'handle_update_booking' ) );
 		add_action( 'admin_post_cmb_test_sms', array( $this, 'handle_test_sms' ) );
 		add_action( 'admin_post_cmb_export_bookings', array( $this, 'handle_export' ) );
-		add_action( 'admin_post_cmb_test_zarinpal', array( $this, 'handle_test_zarinpal' ) );
-		add_action( 'admin_post_cmb_test_zp_refund', array( $this, 'handle_test_zp_refund' ) );
-		add_action( 'admin_post_cmb_pay_selftest', array( $this, 'handle_pay_selftest' ) );
+		add_action( 'admin_post_cmb_pay_setup', array( 'CMB_Pay_Setup', 'handle' ) );
 		add_action( 'admin_notices', array( $this, 'setup_notice' ) );
 	}
 
@@ -64,6 +62,7 @@ class CMB_Admin {
 		add_submenu_page( 'cmb-bookings', 'خدمات و پوسترها', 'خدمات و پوسترها', self::CAPABILITY, 'cmb-services', array( $this, 'page_services' ) );
 		add_submenu_page( 'cmb-bookings', 'بستن روز / شیفت', 'بستن روز / شیفت', self::CAPABILITY, 'cmb-closures', array( $this, 'page_closures' ) );
 		add_submenu_page( 'cmb-bookings', 'تنظیمات', 'تنظیمات', self::CAPABILITY, 'cmb-settings', array( $this, 'page_settings' ) );
+		add_submenu_page( 'cmb-bookings', 'راه‌اندازی زرین‌پال', 'راه‌اندازی زرین‌پال', 'manage_options', 'cmb-zarinpal', array( 'CMB_Pay_Setup', 'render' ) );
 
 		add_submenu_page(
 			'cmb-bookings',
@@ -102,6 +101,14 @@ class CMB_Admin {
 		$https   = 0 === strpos( home_url( '/' ), 'https://' );
 		?>
 		<h2 class="title" id="cmb-pay">پرداخت بیعانه (زرین‌پال)</h2>
+		<?php $setup = CMB_Pay_Setup::summary(); ?>
+		<div class="cmb-box" style="max-width:760px;border-inline-start:4px solid <?php echo $setup['ready'] === $setup['total'] ? '#1b7f4b' : '#dba617'; ?>">
+			<p style="margin:4px 0">
+				<b>راه‌اندازی قدم‌به‌قدم زرین‌پال: <?php echo esc_html( cmb_fa_num( $setup['ready'] ) . ' از ' . cmb_fa_num( $setup['total'] ) ); ?> آماده</b> —
+				<?php echo esc_html( $setup['text'] ); ?>
+				<a class="button button-small" href="<?php echo esc_url( admin_url( 'admin.php?page=cmb-zarinpal' ) ); ?>">رفتن به صفحه‌ی راه‌اندازی و آزمون‌ها</a>
+			</p>
+		</div>
 		<?php if ( ! $ready ) : ?>
 			<div class="notice notice-warning inline"><p>ساختار دیتابیس هنوز به‌روز نشده است؛ صفحه را یک بار تازه کنید.</p></div>
 		<?php endif; ?>
@@ -210,6 +217,13 @@ class CMB_Admin {
 						<option value="PAYA" <?php selected( CMB_Payments::refund_method(), 'PAYA' ); ?>>پایا — در چرخه‌ی بعدی پایا (معمولاً تا یک روز کاری)</option>
 						<option value="CARD" <?php selected( CMB_Payments::refund_method(), 'CARD' ); ?>>کارت — فوری به کارت مشتری</option>
 					</select>
+				</td>
+			</tr>
+			<tr>
+				<th><label>برگشت فوری</label></th>
+				<td>
+					<label><input type="checkbox" name="zp_reverse" value="1" <?php checked( CMB_Payments::reverse_on() ); ?> /> برگشت‌های کامل تا ۳۰ دقیقه بعد از پرداخت با «برگشت فوری» زرین‌پال (بی‌کارمزد)</label>
+					<p class="description">پرداخت تکراری، پرداخت دیر و آزمون‌ها. آی‌پی سرور سایت باید در پنل زرین‌پال ثبت باشد؛ اگر نشد، همان لحظه استرداد جایش را می‌گیرد. راهنما و آزمون: <a href="<?php echo esc_url( admin_url( 'admin.php?page=cmb-zarinpal#step-ip' ) ); ?>">راه‌اندازی زرین‌پال ← قدم ۳</a>.</p>
 				</td>
 			</tr>
 			<tr>
@@ -1136,46 +1150,13 @@ class CMB_Admin {
 			<hr />
 
 			<?php if ( CMB_Payments::schema_ready() ) : ?>
-				<h2 id="cmb-pay-test">آزمایش درگاه زرین‌پال</h2>
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-					<?php wp_nonce_field( 'cmb_test_zarinpal' ); ?>
-					<input type="hidden" name="action" value="cmb_test_zarinpal" />
-					<p class="description">
-						یک درخواست پرداخت ۱,۰۰۰ تومانی به زرین‌پال فرستاده می‌شود (پولی جابه‌جا نمی‌شود؛ فقط بررسی می‌کند
-						سرور سایت به زرین‌پال دسترسی دارد و مرچنت کد پذیرفته می‌شود). با تنظیمات ذخیره‌شده کار می‌کند.
-					</p>
-					<p><button type="submit" class="button">آزمایش اتصال درگاه</button></p>
-				</form>
-
-				<h2 id="cmb-refund-test">آزمایش برگشت پول</h2>
-				<?php $this->render_selftest_result(); ?>
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-bottom:14px">
-					<?php wp_nonce_field( 'cmb_test_zp_refund' ); ?>
-					<input type="hidden" name="action" value="cmb_test_zp_refund" />
-					<p class="description">
-						<b>۱) اتصال API برگشت:</b> فقط یک پرسش خواندنی از زرین‌پال (آخرین تراکنش این ترمینال). درستیِ توکن و شماره‌ی ترمینال را
-						نشان می‌دهد؛ پولی جابه‌جا نمی‌شود. فعال بودن سرویس استرداد و موجودی کیف پول را فقط آزمون ۲ نشان می‌دهد.
-					</p>
-					<p><button type="submit" class="button">آزمایش اتصال API برگشت</button></p>
-				</form>
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-					<?php wp_nonce_field( 'cmb_pay_selftest' ); ?>
-					<input type="hidden" name="action" value="cmb_pay_selftest" />
-					<p class="description">
-						<b>۲) آزمون کامل پرداخت و برگشت:</b> به درگاه می‌روید و ۲,۰۰۰ تومان می‌پردازید؛ بعد از بازگشت، همان کدی که پول
-						مشتری‌ها را برمی‌گرداند کل مبلغ را به کارتتان برمی‌گرداند (نوبتی ساخته نمی‌شود) و نتیجه‌ی هر مرحله همین‌جا نشان داده می‌شود.
-						<?php if ( CMB_Payments::sandbox() ) : ?>
-							<br /><b>درگاه آزمایشی روشن است:</b> همین آزمون بدون پول واقعی و با برگشت شبیه‌سازی‌شده اجرا می‌شود.
-						<?php else : ?>
-							<br />پول واقعی است؛ کارمزد استرداد زرین‌پال از کیف پول شما کم می‌شود. اگر برگشت شکست بخورد، مبلغ در صف «بازگشت وجه» پنل می‌ماند.
-						<?php endif; ?>
-					</p>
-					<p><button type="submit" class="button button-primary">شروع آزمون ۲,۰۰۰ تومانی</button></p>
-				</form>
-				<p class="description">
-					<b>۳) خدمت آزمایشی:</b> در «خدمات» وضعیت یک خدمت را «آزمایشی — فقط مدیران» بگذارید (بهتر با سهمیه‌ی جداگانه و بیعانه‌ی ۲,۰۰۰ تومان).
-					وقتی با حساب مدیر وارد اپ شوید آن خدمت را با نشان «آزمایشی» می‌بینید و کل مسیر واقعی مشتری را — رزرو، پرداخت، لغو، برگشت خودکار، پیامک — امتحان می‌کنید.
-					<b>۴) بدون پول:</b> با «درگاه آزمایشی» روشن، همین مسیرها بدون پول اجرا می‌شوند و برگشت شبیه‌سازی می‌شود.
+				<h2 id="cmb-pay-test">آزمایش درگاه و برگشت پول</h2>
+				<p class="description" style="max-width:760px">
+					آزمایش اتصال درگاه، آزمایش API استرداد، آی‌پی سرور برای برگشت فوری، و دو آزمون ۲,۰۰۰ تومانی (برگشت فوری و استرداد) با کارت نتیجه‌ی
+					مرحله‌به‌مرحله، همه در یک صفحه‌اند:
+					<a href="<?php echo esc_url( admin_url( 'admin.php?page=cmb-zarinpal' ) ); ?>">رزرو نوبت ← راه‌اندازی زرین‌پال</a>.
+					<br><b>خدمت آزمایشی:</b> در «خدمات» وضعیت یک خدمت را «آزمایشی — فقط مدیران» بگذارید (بهتر با سهمیه‌ی جداگانه و بیعانه‌ی ۲,۰۰۰ تومان)
+					تا با حساب مدیر کل مسیر واقعی مشتری را — رزرو، پرداخت، لغو، برگشت، پیامک — امتحان کنید.
 				</p>
 				<hr />
 			<?php endif; ?>
@@ -1474,12 +1455,7 @@ class CMB_Admin {
 		}
 
 		if ( array_key_exists( '__token', $pay ) ) {
-			if ( '' === $pay['__token'] ) {
-				delete_option( 'cmb_zp_token' );
-			} else {
-				update_option( 'cmb_zp_token', $pay['__token'], false );
-			}
-
+			CMB_Zarinpal_Refund::save_token( $pay['__token'] );
 			unset( $pay['__token'] );
 		}
 
@@ -1583,17 +1559,15 @@ class CMB_Admin {
 			'pay_refund_mode'           => 'auto' === sanitize_key( wp_unslash( $_POST['pay_refund_mode'] ?? '' ) ) ? 'auto' : 'manual',
 			'pay_refund_delay'          => $num( 'pay_refund_delay', 0, 1440 ),
 			'zp_refund_method'          => 'CARD' === sanitize_text_field( wp_unslash( $_POST['zp_refund_method'] ?? '' ) ) ? 'CARD' : 'PAYA',
+			'zp_reverse'                => isset( $_POST['zp_reverse'] ) ? 1 : 0,
 			'zp_terminal_id'            => preg_replace( '/\D/', '', cmb_en_num( (string) wp_unslash( $_POST['zp_terminal_id'] ?? '' ) ) ),
 		);
 
 		// توکن جدا از cmb_settings نگه داشته می‌شود؛ خالی یعنی «همان قبلی»
-		$token = trim( (string) wp_unslash( $_POST['zp_access_token'] ?? '' ) );
-		$token = preg_replace( '/^Bearer\s+/i', '', $token );
+		$token = CMB_Zarinpal_Refund::token_from_post();
 
-		if ( ! empty( $_POST['zp_token_clear'] ) ) {
-			$out['__token'] = '';
-		} elseif ( '' !== $token ) {
-			$out['__token'] = sanitize_text_field( $token );
+		if ( null !== $token ) {
+			$out['__token'] = $token;
 		}
 
 		$terms = sanitize_textarea_field( wp_unslash( $_POST['pay_terms_text'] ?? '' ) );
@@ -1602,6 +1576,20 @@ class CMB_Admin {
 		// متن پیش‌فرض ذخیره نمی‌شود تا اصلاحات بعدی متن پیش‌فرض به سایت برسد
 		$out['pay_terms_text'] = ( trim( $terms ) === trim( CMB_Payments::default_terms() ) ) ? '' : $terms;
 
+		$ok = self::check_pay( $out );
+
+		return is_wp_error( $ok ) ? $ok : $out;
+	}
+
+	/**
+	 * قواعد مشترک تنظیمات پرداخت (صفحه‌ی تنظیمات و صفحه‌ی راه‌اندازی).
+	 *
+	 * @param array $out همه‌ی کلیدهای پرداخت؛ «__token» اگر توکن عوض می‌شود
+	 *                   ('' یعنی پاک شود).
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function check_pay( array $out ) {
 		if ( '' !== $out['zp_merchant_id'] && ! preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $out['zp_merchant_id'] ) ) {
 			return new WP_Error( 'cmb_bad_merchant', 'مرچنت کد زرین‌پال معتبر نیست؛ ۳۶ نویسه به شکل xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx است.' );
 		}
@@ -1642,103 +1630,7 @@ class CMB_Admin {
 			}
 		}
 
-		return $out;
-	}
-
-	/**
-	 * آزمایش اتصال به زرین‌پال با یک درخواست پرداخت کوچک.
-	 */
-	public function handle_test_zarinpal() {
-		$this->guard( 'cmb_test_zarinpal' );
-
-		$merchant = CMB_Payments::merchant();
-
-		if ( '' === $merchant ) {
-			$this->redirect( 'cmb-settings', 'مرچنت کد زرین‌پال وارد نشده است.', 'error' );
-		}
-
-		$res = CMB_Zarinpal::request( $merchant, CMB_Payments::sandbox(), 10000, cmb_app_url( 'pay/return' ), 'آزمایش اتصال سیستم رزرو چک موتور' );
-
-		if ( is_wp_error( $res ) ) {
-			$this->redirect( 'cmb-settings', 'درگاه پاسخ نداد: ' . $res->get_error_message(), 'error' );
-		}
-
-		$this->redirect(
-			'cmb-settings',
-			sprintf(
-				'اتصال به زرین‌پال%s برقرار است و مرچنت کد پذیرفته شد (شناسه‌ی آزمایشی %s). این پرداخت انجام نمی‌شود.',
-				CMB_Payments::sandbox() ? ' (آزمایشی)' : '',
-				$res['authority']
-			)
-		);
-	}
-
-	/**
-	 * آزمایش خواندنی API برگشت (توکن و ترمینال).
-	 */
-	public function handle_test_zp_refund() {
-		$this->guard( 'cmb_test_zp_refund' );
-
-		$res = CMB_Zarinpal_Refund::test_connection();
-
-		if ( is_wp_error( $res ) ) {
-			$this->redirect( 'cmb-settings', 'API برگشت زرین‌پال: ' . $res->get_error_message(), 'error' );
-		}
-
-		$last = $res['last'];
-
-		$this->redirect(
-			'cmb-settings',
-			'توکن و شماره‌ی ترمینال درست است؛ API برگشت زرین‌پال پاسخ داد.'
-				. ( $last ? sprintf( ' آخرین تراکنش: %s ریال، %s.', number_format( (int) $last['amount'] ), isset( $last['created_at'] ) ? $last['created_at'] : '' ) : ' هنوز تراکنشی روی این ترمینال نیست.' )
-		);
-	}
-
-	/**
-	 * شروع آزمون ۲,۰۰۰ تومانی: ریدایرکت به درگاه.
-	 */
-	public function handle_pay_selftest() {
-		$this->guard( 'cmb_pay_selftest' );
-
-		$url = CMB_Payments::selftest_start();
-
-		if ( is_wp_error( $url ) ) {
-			$this->redirect( 'cmb-settings', 'آزمون شروع نشد: ' . $url->get_error_message(), 'error' );
-		}
-
-		// نشانی درگاه زرین‌پال؛ wp_safe_redirect دامنه‌ی بیرونی را نمی‌پذیرد
-		wp_redirect( $url ); // phpcs:ignore WordPress.Security.SafeRedirect
-		exit;
-	}
-
-	/**
-	 * کارت نتیجه‌ی آخرین آزمون پرداخت و برگشت.
-	 */
-	protected function render_selftest_result() {
-		$r = CMB_Payments::selftest_result();
-
-		if ( ! $r ) {
-			return;
-		}
-
-		$icons = array(
-			'ok'   => '✅',
-			'bad'  => '❌',
-			'wait' => '⏳',
-		);
-		?>
-		<div class="cmb-box" style="max-width:760px;border-inline-start:4px solid <?php echo $r['ok'] ? '#1b7f4b' : '#c87f0a'; ?>">
-			<p><b>آخرین آزمون پرداخت و برگشت</b> — <?php echo esc_html( cmb_fa_num( $r['when'] ) ); ?><?php echo $r['sandbox'] ? ' (درگاه آزمایشی)' : ''; ?></p>
-			<ol style="margin:0 20px 0 0">
-				<?php foreach ( $r['steps'] as $st ) : ?>
-					<li style="margin-bottom:6px"><?php echo esc_html( $icons[ $st[0] ] . ' ' . $st[1] ); ?>: <?php echo esc_html( $st[2] ); ?></li>
-				<?php endforeach; ?>
-			</ol>
-			<?php if ( $r['ok'] ) : ?>
-				<p style="color:#1b7f4b"><b>همه‌ی مراحل درست کار کرد؛ برگشت خودکار برای مشتری‌ها آماده است.</b></p>
-			<?php endif; ?>
-		</div>
-		<?php
+		return true;
 	}
 
 	public function handle_add_closure() {

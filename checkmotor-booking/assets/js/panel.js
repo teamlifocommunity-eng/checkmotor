@@ -11,7 +11,7 @@ var NONCE = C.nonce || '';
 var NURL  = C.nonceUrl || '/wp-admin/admin-ajax.php?action=cmb_nonce';
 
 var VIEWS = ['summary', 'board', 'bookings', 'customers', 'services', 'closures', 'settings', 'refunds'];
-var PAY = C.pay || { on: false, used: false, canRefund: false, shopPct: 100, auto: false, delay: 0, methodFa: '' };
+var PAY = C.pay || { on: false, used: false, canRefund: false, shopPct: 100, auto: false, delay: 0, methodFa: '', setup: null };
 
 
 /* وضعیت‌ها ثابت‌اند و نباید از پاسخ سرور خوانده شوند.
@@ -1072,6 +1072,12 @@ function viewRefunds() {
     tab('review', 'بررسی خدمات') +
     tab('report', 'گزارش') +
     '</div>';
+
+  // فقط مدیر سایت: راه‌اندازی زرین‌پال تا کامل نشده، یادآوری می‌شود
+  if (PAY.setup && PAY.setup.ready < PAY.setup.total && S.refWhich !== 'report') {
+    html += note('warn', I.alert, '<b>راه‌اندازی زرین‌پال: ' + fa(PAY.setup.ready) + ' از ' + fa(PAY.setup.total) + ' آماده.</b> ' +
+      esc(PAY.setup.text) + ' <a href="' + esc(PAY.setup.url) + '" target="_blank" rel="noopener">باز کردن صفحه‌ی راه‌اندازی و آزمون‌ها</a>');
+  }
 
   if (S.refWhich === 'review') { return html + viewPayReview(); }
   if (S.refWhich === 'report') { return html + viewPayReport(); }
