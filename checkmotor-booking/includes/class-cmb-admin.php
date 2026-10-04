@@ -230,7 +230,7 @@ class CMB_Admin {
 				<th><label>شماره‌ی ترمینال زرین‌پال</label></th>
 				<td>
 					<input type="text" name="zp_terminal_id" class="regular-text" dir="ltr" inputmode="numeric" value="<?php echo esc_attr( CMB_Settings::get( 'zp_terminal_id', '' ) ); ?>" placeholder="349555" />
-					<p class="description">شماره‌ی درگاه (ترمینال) در پنل زرین‌پال ← درگاه‌ها. برای پیدا کردن تراکنش هر پرداخت لازم است.</p>
+					<p class="description">شناسه‌ی درگاه (ترمینال) خودِ زرین‌پال، در «تنظیمات درگاه ← مشخصات درگاه». <b>نه</b> عددهای «شماره پایانه»ی بانک‌ها در «خدمات‌دهندگان پرداخت». برای پیدا کردن تراکنش هر پرداخت لازم است.</p>
 				</td>
 			</tr>
 			<tr>

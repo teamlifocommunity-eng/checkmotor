@@ -1392,6 +1392,9 @@ class CMB_Payments {
 
 			$session = $found;
 			self::update_payment( $p->id, array( 'zp_session_id' => cmb_substr( $session, 0, 40 ) ) );
+
+			// تراکنش با همین ترمینال پیدا شد: شماره‌ی ترمینال درست است
+			CMB_Pay_Setup::record( 'api', true, 'تراکنش یک پرداخت با همین شماره‌ی ترمینال پیدا شد؛ توکن و ترمینال درست است.', 'ok' );
 		}
 
 		return self::send_refund( self::get_payment( $p->id ), $session );
