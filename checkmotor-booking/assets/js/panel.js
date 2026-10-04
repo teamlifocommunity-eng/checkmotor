@@ -11,7 +11,7 @@ var NONCE = C.nonce || '';
 var NURL  = C.nonceUrl || '/wp-admin/admin-ajax.php?action=cmb_nonce';
 
 var VIEWS = ['summary', 'board', 'bookings', 'customers', 'services', 'closures', 'settings', 'refunds'];
-var PAY = C.pay || { on: false, used: false, canRefund: false, shopPct: 100, auto: false, delay: 0, methodFa: '', setup: null };
+var PAY = C.pay || { on: false, used: false, canRefund: false, shopPct: 100, auto: false, delay: 0, methodFa: '', reverse: false, setup: null };
 
 
 /* وضعیت‌ها ثابت‌اند و نباید از پاسخ سرور خوانده شوند.
@@ -1085,7 +1085,9 @@ function viewRefunds() {
   if (S.refWhich === 'open' && PAY.auto) {
     html += note('info', I.info, 'برگشت خودکار روشن است: هر برگشت ' +
       (PAY.delay ? fa(PAY.delay) + ' دقیقه بعد از لغو' : 'بلافاصله') + ' با ' + esc(PAY.methodFa) +
-      ' از طریق زرین‌پال انجام می‌شود. ردیف‌های ناموفق با دلیلشان این‌جا می‌مانند تا دوباره بفرستید یا دستی انجام دهید.');
+      ' از طریق زرین‌پال انجام می‌شود.' +
+      (PAY.reverse ? ' برگشت‌های کامل تا ۳۰ دقیقه بعد از پرداخت (مثل پرداخت تکراری یا پرداخت دیر) همان لحظه با «برگشت فوری» و بی‌کارمزد برمی‌گردند.' : '') +
+      ' ردیف‌های ناموفق با دلیلشان این‌جا می‌مانند تا دوباره بفرستید یا دستی انجام دهید.');
   }
 
   if (S.refWhich === 'open') {

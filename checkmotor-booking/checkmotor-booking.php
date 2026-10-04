@@ -3,7 +3,7 @@
  * Plugin Name: چک موتور — سیستم رزرو نوبت
  * Plugin URI:  https://checkmotor.ir
  * Description: سیستم رزرو نوبت آنلاین چک موتور (MVP) — ورود با کد تایید پیامکی ملی‌پیامک، تقویم ۷ روزه، شیفت صبح/بعدازظهر، پنل مدیریت نوبت‌ها.
- * Version:     1.35.0
+ * Version:     1.35.1
  * Author:      رضا امام‌حسنی
  * Text Domain: checkmotor-booking
  * Domain Path: /languages
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMB_VERSION', '1.35.0' );
+define( 'CMB_VERSION', '1.35.1' );
 define( 'CMB_FILE', __FILE__ );
 define( 'CMB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMB_URL', plugin_dir_url( __FILE__ ) );
@@ -728,6 +728,7 @@ function cmb_enqueue_panel() {
 				'auto'      => CMB_Payments::auto_on(),
 				'delay'     => CMB_Payments::refund_delay(),
 				'methodFa'  => CMB_Payments::method_label( CMB_Payments::refund_method() ),
+				'reverse'   => CMB_Payments::reverse_on(),
 				// پیشرفت صفحه‌ی «راه‌اندازی زرین‌پال»؛ فقط برای مدیر سایت
 				'setup'     => current_user_can( 'manage_options' ) && CMB_Payments::schema_ready() ? CMB_Pay_Setup::panel_info() : null,
 			),
