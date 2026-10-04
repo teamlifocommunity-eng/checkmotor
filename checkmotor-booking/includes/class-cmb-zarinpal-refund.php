@@ -455,6 +455,11 @@ class CMB_Zarinpal_Refund {
 			return 'موجودی کیف پول زرین‌پال برای این برگشت کافی نیست. کیف پول را شارژ کنید؛ بعد «برگشت خودکار همین حالا» را بزنید.';
 		}
 
+		// «This service is currently unavailable for this terminal»: استرداد روی این درگاه فعال نشده
+		if ( preg_match( '/unavailable for this terminal|currently unavailable|not available for this terminal|service is not available/', $low ) ) {
+			return 'سرویس «استرداد وجه» برای این درگاه در زرین‌پال فعال نیست (This service is currently unavailable for this terminal). از پشتیبانی زرین‌پال فعال‌سازی‌اش را بخواهید؛ بعد «برگشت خودکار همین حالا» را بزنید.';
+		}
+
 		if ( preg_match( '/refund.*(not active|inactive|disabled|not enabled|permission|not allowed)|(permission|not allowed|forbidden)/', $low ) ) {
 			return 'سرویس «استرداد وجه» روی حساب زرین‌پال فعال نیست یا توکن اجازه‌ی آن را ندارد. با تیکت به پشتیبانی زرین‌پال درخواست فعال‌سازی دهید.';
 		}
