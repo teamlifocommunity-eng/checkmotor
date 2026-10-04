@@ -1367,6 +1367,15 @@ class CMB_Payments {
 			$p = self::get_payment( $p->id );
 		}
 
+		// توکن هست ولی شماره‌ی ترمینال نه: از فهرست درگاه‌های زرین‌پال پیدایش کن
+		if ( '' === CMB_Zarinpal_Refund::terminal() && '' !== CMB_Zarinpal_Refund::token() ) {
+			$found = CMB_Zarinpal_Refund::detect_terminal( self::merchant(), wp_parse_url( home_url(), PHP_URL_HOST ) );
+
+			if ( ! is_wp_error( $found ) ) {
+				CMB_Settings::update( array( 'zp_terminal_id' => $found['id'] ) );
+			}
+		}
+
 		if ( ! CMB_Zarinpal_Refund::configured() ) {
 			$fast = self::last_event( $p, 'reverse' );
 

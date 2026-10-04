@@ -164,6 +164,40 @@ class CMB_Pay_Setup {
 			return array( false, $msg );
 		}
 
+		/* شماره‌ی ترمینال واقعاً مال همین حساب و همین مرچنت کد است؟ (اگر
+		   فهرست درگاه‌ها در دسترس نبود، همان آزمون تراکنش کافی است.) */
+		$list = CMB_Zarinpal_Refund::terminals();
+
+		if ( is_array( $list ) && $list ) {
+			$mine = null;
+
+			foreach ( $list as $t ) {
+				if ( $t['id'] === CMB_Zarinpal_Refund::terminal() ) {
+					$mine = $t;
+				}
+			}
+
+			if ( ! $mine ) {
+				$msg = sprintf(
+					'شماره‌ی ترمینال %s در حساب زرین‌پال شما نیست (شاید شماره‌ی پایانه‌ی یکی از بانک‌هاست). درگاه‌های حساب شما: %s.',
+					CMB_Zarinpal_Refund::terminal(),
+					CMB_Zarinpal_Refund::describe( $list )
+				);
+				self::record( 'api', false, $msg, 'terminal' );
+
+				return array( false, $msg );
+			}
+
+			$merchant = strtolower( CMB_Payments::merchant() );
+
+			if ( '' !== $merchant && '' !== $mine['key'] && $mine['key'] !== $merchant ) {
+				$msg = sprintf( 'ترمینال %s مال درگاه دیگری است%s؛ مرچنت کدش با مرچنت کد قدم ۱ یکی نیست.', $mine['id'], '' !== $mine['domain'] ? ' (' . $mine['domain'] . ')' : '' );
+				self::record( 'api', false, $msg, 'terminal' );
+
+				return array( false, $msg );
+			}
+		}
+
 		$last = $res['last'];
 
 		/* هیچ تراکنشی: یا درگاه تازه است، یا شماره اشتباه است (مثلاً «شماره
@@ -341,7 +375,7 @@ class CMB_Pay_Setup {
 		$r = self::result( 'api' );
 
 		if ( '' === CMB_Zarinpal_Refund::terminal() || '' === CMB_Zarinpal_Refund::token() ) {
-			$s = array( 'todo', 'شماره‌ی ترمینال یا توکن دسترسی وارد نشده است.' );
+			$s = array( 'todo', '' === CMB_Zarinpal_Refund::token() ? 'توکن دسترسی وارد نشده است.' : 'شماره‌ی ترمینال هنوز نیست؛ «پیدا کردن خودکار شماره‌ی ترمینال» را بزنید.' );
 		} else {
 			$s = self::from_result( 'api', 'ترمینال و توکن وارد شده؛ «ذخیره و آزمایش» را بزنید.' );
 		}
@@ -484,7 +518,8 @@ class CMB_Pay_Setup {
 			'-18'  => 'دامنه‌ی ثبت‌شده‌ی درگاه در زرین‌پال باید ' . wp_parse_url( home_url(), PHP_URL_HOST ) . ' باشد.',
 			'-62'  => 'آی‌پی سرور (دکمه‌ی «پیدا کردن آی‌پی سرور») را در پنل زرین‌پال ثبت کنید، بعد دوباره «آزمون برگشت فوری» بگیرید.',
 			'auth'  => 'توکن تازه بسازید (یا از پشتیبانی بگیرید) و در قدم ۴ بچسبانید.',
-			'empty' => 'شناسه‌ی درگاه زرین‌پال را بگذارید، نه عددهای ستون «شماره پایانه» در «خدمات‌دهندگان پرداخت» (آن‌ها مال بانک‌هاست). اگر درگاه تازه است و هنوز پرداختی نداشته، بعد از اولین پرداخت (مثلاً آزمون ۲,۰۰۰ تومانی) دوباره آزمایش کنید؛ اولین استرداد موفق هم این قدم را خودش ✅ می‌کند.',
+			'terminal' => 'دکمه‌ی «پیدا کردن خودکار شماره‌ی ترمینال» را بزنید تا شماره‌ی درست از خود زرین‌پال خوانده شود.',
+			'empty' => 'دکمه‌ی «پیدا کردن خودکار شماره‌ی ترمینال» را بزنید، یا شناسه‌ی درگاه زرین‌پال را بگذارید، نه عددهای ستون «شماره پایانه» در «خدمات‌دهندگان پرداخت» (آن‌ها مال بانک‌هاست). اگر درگاه تازه است و هنوز پرداختی نداشته، بعد از اولین پرداخت (مثلاً آزمون ۲,۰۰۰ تومانی) دوباره آزمایش کنید؛ اولین استرداد موفق هم این قدم را خودش ✅ می‌کند.',
 		);
 
 		if ( isset( $map[ $code ] ) ) {
@@ -639,6 +674,25 @@ class CMB_Pay_Setup {
 		}
 		// phpcs:enable
 
+		/* شماره‌ی ترمینال را از خود زرین‌پال بخوان: با دکمه‌ی «پیدا کردن
+		   خودکار»، یا وقتی کادرش خالی است و «ذخیره و آزمایش» زده شده. */
+		$detected = null;
+
+		if ( 'api' === $step && ( 'detect' === $do || ( 'test' === $do && '' === $changes['zp_terminal_id'] ) ) ) {
+			CMB_Zarinpal_Refund::save_token( $token );
+			$token = null;
+
+			$detected = CMB_Zarinpal_Refund::detect_terminal( CMB_Payments::merchant(), wp_parse_url( home_url(), PHP_URL_HOST ) );
+
+			if ( is_wp_error( $detected ) ) {
+				$msg = 'پیدا کردن خودکار شماره‌ی ترمینال نشد: ' . $detected->get_error_message();
+				self::record( 'api', false, $msg, CMB_Zarinpal_Refund::kind( $detected ) );
+				self::back( 'step-api', $msg, 'error' );
+			}
+
+			$changes['zp_terminal_id'] = $detected['id'];
+		}
+
 		$check = array_merge( CMB_Settings::all(), $changes );
 
 		if ( null !== $token ) {
@@ -659,9 +713,13 @@ class CMB_Pay_Setup {
 			self::back( 'step-gateway', $r[1], $r[0] ? 'success' : 'error' );
 		}
 
-		if ( 'test' === $do && 'api' === $step ) {
-			$r = self::test_api();
-			self::back( 'step-api', $r[1], isset( $r[2] ) ? $r[2] : ( $r[0] ? 'success' : 'error' ) );
+		if ( in_array( $do, array( 'test', 'detect' ), true ) && 'api' === $step ) {
+			$r   = self::test_api();
+			$pre = $detected
+				? sprintf( 'شماره‌ی ترمینال از زرین‌پال پیدا و ذخیره شد: %s%s. ', $detected['id'], '' !== $detected['domain'] ? ' (درگاه ' . $detected['domain'] . ')' : '' )
+				: '';
+
+			self::back( 'step-api', $pre . $r[1], isset( $r[2] ) ? $r[2] : ( $r[0] ? 'success' : 'error' ) );
 		}
 
 		self::back( 'step-' . $step, 'ذخیره شد.' );
@@ -860,20 +918,15 @@ class CMB_Pay_Setup {
 
 		self::guide(
 			array(
-				'شماره‌ی ترمینال یعنی شناسه‌ی درگاه خودِ زرین‌پال: در «تنظیمات درگاه» ← «مشخصات درگاه»، یا عددی که در نشانی صفحه‌ی پنل بعد از کلمه‌ی panel می‌آید. اگر مطمئن نیستید، از پشتیبانی بپرسید.',
-				'عددهای ستون «شماره پایانه» در «خدمات‌دهندگان پرداخت» (مثل شماره‌ی پایانه‌ی سامان یا ملت) مال بانک‌هاست؛ آن‌ها را این‌جا نگذارید.',
 				'توکن دسترسی (Access Token): در پنل زرین‌پال، بخش توکن‌ها / دسترسی API، یک توکن بسازید و کپی کنید.',
+				'شماره‌ی ترمینال را لازم نیست خودتان پیدا کنید: توکن را بچسبانید و «پیدا کردن خودکار شماره‌ی ترمینال» را بزنید. افزونه فهرست درگاه‌های حسابتان را از زرین‌پال می‌گیرد و درگاهی را برمی‌دارد که مرچنت کدش همان مرچنت کد قدم ۱ است.',
+				'عددهای ستون «شماره پایانه» در «خدمات‌دهندگان پرداخت» (مثل شماره‌ی پایانه‌ی سامان یا ملت) مال بانک‌هاست و این‌جا به کار نمی‌آیند.',
 				'اگر چنین بخشی ندیدید، از پشتیبانی زرین‌پال «توکن دسترسی برای API استرداد وجه» بخواهید (مستندات API زرین‌پال دریافت دسترسی را از طریق پشتیبانی هم گفته است).',
 				'توکن جدا از بقیه‌ی تنظیمات نگه داشته می‌شود و در هیچ صفحه‌ای نمایش داده نمی‌شود.',
 			)
 		);
 		self::form_open( 'api' );
 		?>
-			<p>
-				<label>شماره‌ی ترمینال<br>
-				<input type="text" name="zp_terminal_id" class="regular-text" dir="ltr" inputmode="numeric" value="<?php echo esc_attr( CMB_Settings::get( 'zp_terminal_id', '' ) ); ?>" placeholder="349555" /></label>
-				<br><span class="description"><b>نه</b> «شماره پایانه»ی بانک‌ها در «خدمات‌دهندگان پرداخت»؛ شناسه‌ی درگاه زرین‌پال.</span>
-			</p>
 			<?php if ( 'constant' === $src ) : ?>
 				<p>✅ توکن از ثابت <code>CMB_ZP_ACCESS_TOKEN</code> در wp-config خوانده می‌شود.</p>
 			<?php else : ?>
@@ -885,11 +938,17 @@ class CMB_Pay_Setup {
 					<?php endif; ?>
 				</p>
 			<?php endif; ?>
+			<p>
+				<label>شماره‌ی ترمینال (خودکار پیدا می‌شود)<br>
+				<input type="text" name="zp_terminal_id" class="regular-text" dir="ltr" inputmode="numeric" value="<?php echo esc_attr( CMB_Settings::get( 'zp_terminal_id', '' ) ); ?>" placeholder="خالی بگذارید تا خودکار پیدا شود" /></label>
+				<br><span class="description">شناسه‌ی درگاه زرین‌پال؛ <b>نه</b> «شماره پایانه»ی بانک‌ها در «خدمات‌دهندگان پرداخت».</span>
+			</p>
 			<p class="cmb-su__btns">
-				<button type="submit" name="do" value="test" class="button button-primary">ذخیره و آزمایش</button>
+				<button type="submit" name="do" value="detect" class="button button-primary">ذخیره و پیدا کردن خودکار شماره‌ی ترمینال</button>
+				<button type="submit" name="do" value="test" class="button">ذخیره و آزمایش</button>
 				<button type="submit" name="do" value="save" class="button">فقط ذخیره</button>
 			</p>
-			<p class="description">آزمایش فقط می‌خواند (آخرین تراکنش این ترمینال)؛ پولی جابه‌جا نمی‌شود.</p>
+			<p class="description">«پیدا کردن» و «آزمایش» فقط از زرین‌پال می‌خوانند (فهرست درگاه‌ها و آخرین تراکنش)؛ پولی جابه‌جا نمی‌شود. آزمایش بررسی می‌کند که شماره‌ی ترمینال واقعاً مال درگاه همین مرچنت کد باشد.</p>
 		</form>
 		<?php
 	}

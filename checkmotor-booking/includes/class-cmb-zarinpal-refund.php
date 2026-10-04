@@ -139,6 +139,103 @@ class CMB_Zarinpal_Refund {
 	}
 
 	/**
+	 * درگاه‌های حساب زرین‌پالِ این توکن (کوئری Terminals در مستندات API).
+	 * id همان «شماره‌ی ترمینال» است و key همان مرچنت کد.
+	 *
+	 * @return array[]|WP_Error [{ id, status, domain, key, name }]
+	 */
+	public static function terminals() {
+		$data = self::call( 'query { Terminals { id, status, domain, key, name } }', array(), false );
+
+		if ( is_wp_error( $data ) ) {
+			return $data;
+		}
+
+		$out = array();
+
+		foreach ( isset( $data['Terminals'] ) ? (array) $data['Terminals'] : array() as $t ) {
+			if ( ! is_array( $t ) || empty( $t['id'] ) ) {
+				continue;
+			}
+
+			$out[] = array(
+				'id'     => preg_replace( '/\D/', '', (string) $t['id'] ),
+				'status' => isset( $t['status'] ) ? (string) $t['status'] : '',
+				'domain' => isset( $t['domain'] ) ? (string) $t['domain'] : '',
+				'key'    => isset( $t['key'] ) ? strtolower( trim( (string) $t['key'] ) ) : '',
+				'name'   => isset( $t['name'] ) ? (string) $t['name'] : '',
+			);
+		}
+
+		return $out;
+	}
+
+	/**
+	 * شماره‌ی ترمینالِ درگاه همین سایت: درگاهی که مرچنت کدش همان مرچنت
+	 * کد تنظیمات است؛ وگرنه درگاهی با دامنه‌ی همین سایت.
+	 *
+	 * @return array|WP_Error { id, status, domain, key, name, by: key|domain|only }
+	 */
+	public static function detect_terminal( $merchant, $host ) {
+		$list = self::terminals();
+
+		if ( is_wp_error( $list ) ) {
+			return $list;
+		}
+
+		if ( ! $list ) {
+			return self::error( 'final', 'در حساب زرین‌پالِ این توکن هیچ درگاهی پیدا نشد؛ توکن را از همان حسابی بسازید که درگاه این سایت در آن است.' );
+		}
+
+		$merchant = strtolower( trim( (string) $merchant ) );
+
+		foreach ( $list as $t ) {
+			if ( '' !== $merchant && $t['key'] === $merchant ) {
+				return $t + array( 'by' => 'key' );
+			}
+		}
+
+		$host  = self::bare_host( $host );
+		$match = array();
+
+		foreach ( $list as $t ) {
+			if ( '' !== $host && self::bare_host( $t['domain'] ) === $host ) {
+				$match[] = $t;
+			}
+		}
+
+		if ( 1 === count( $match ) ) {
+			return $match[0] + array( 'by' => 'domain' );
+		}
+
+		// فقط یک درگاه، و چیزی خلافش نمی‌گوید
+		if ( 1 === count( $list ) && ( '' === $merchant || '' === $list[0]['key'] ) ) {
+			return $list[0] + array( 'by' => 'only' );
+		}
+
+		return self::error( 'final', 'هیچ درگاهی در حساب زرین‌پالِ این توکن با مرچنت کد یا دامنه‌ی این سایت نمی‌خواند. درگاه‌های این حساب: ' . self::describe( $list ) . '.' );
+	}
+
+	/** «1915487 (example.com)، …» برای پیام‌ها. */
+	public static function describe( array $list ) {
+		$parts = array();
+
+		foreach ( array_slice( $list, 0, 5 ) as $t ) {
+			$parts[] = $t['id'] . ( '' !== $t['domain'] ? ' (' . $t['domain'] . ')' : '' );
+		}
+
+		return implode( '، ', $parts ) . ( count( $list ) > 5 ? '، …' : '' );
+	}
+
+	protected static function bare_host( $host ) {
+		$host = strtolower( trim( (string) $host ) );
+		$host = preg_replace( '#^[a-z]+://#', '', $host );
+		$host = preg_replace( '#[/:].*$#', '', $host );
+
+		return preg_replace( '/^www\./', '', $host );
+	}
+
+	/**
 	 * آیا این تراکنش در زرین‌پال استرداد شده است؟
 	 *
 	 * @return bool|WP_Error
