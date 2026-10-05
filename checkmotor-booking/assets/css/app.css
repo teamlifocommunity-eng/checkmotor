@@ -136,7 +136,7 @@ html.cmb-html, body.cmb-body, #cmb-app {
 }
 
 /* فیلدی که فوکوس می‌گیرد زیر نوار پایین نرود */
-html.cmb-html { scroll-padding-bottom: calc(var(--bar-h) + var(--nav-h) + var(--safe-b)); }
+html.cmb-html { scroll-padding-bottom: calc(var(--bar-full, var(--bar-h)) + var(--nav-h) + var(--safe-b)); }
 
 /* هرچه قالب سایت بیرون از ریشه‌ی اپ گذاشته، پنهان شود */
 body.cmb-body > *:not(#cmb-app):not(#cmb-panel):not(script):not(style):not(noscript):not(link) {
@@ -179,14 +179,15 @@ body.cmb-body > *:not(#cmb-app):not(#cmb-panel):not(script):not(style):not(noscr
 /* صفحه‌ی ویزارد: نوار ناوبری ندارد ولی نوار کنش ثابت دارد.
    نوار کنش حدود ۷۶px است؛ قبلاً فقط ۴۴px فاصله می‌گذاشتیم و
    آخرین فیلد فرم زیر آن گم می‌شد. */
-.cmb-shell--bar { padding-bottom: calc(var(--bar-h) + var(--safe-b) + var(--s5)); }
+/* --bar-full: ارتفاع واقعی نوار (app.js، syncBar)؛ فالبک همان ۷۸px قدیم */
+.cmb-shell--bar { padding-bottom: calc(var(--bar-full, calc(var(--bar-h) + var(--safe-b))) + var(--s5)); }
 
 /* صفحه‌ای که نه نوار ناوبری دارد نه نوار کنش (رسید، ورود) */
 .cmb-shell--bare { padding-bottom: calc(var(--safe-b) + var(--s7)); }
 
 /* صفحه‌ای که هم نوار ناوبری دارد هم نوار پرداخت بالای آن (کیف پول،
    پرداخت ناموفق) */
-.cmb-shell--navbar { padding-bottom: calc(var(--nav-h) + var(--bar-h) + var(--safe-b) + var(--s5)); }
+.cmb-shell--navbar { padding-bottom: calc(var(--nav-h) + var(--bar-full, var(--bar-h)) + var(--safe-b) + var(--s5)); }
 
 .cmb-page { padding: 0 var(--pad); }
 
@@ -522,6 +523,14 @@ select.cmb-in {
 .cmb-actionbar__v { font-size: var(--t-cl); font-weight: 700; margin-top: 1px; }
 .cmb-actionbar .cmb-btn { width: auto; flex: 0 0 auto; padding: 0 var(--s6); }
 
+/* گام آخر رزرو: ردیف تیک پذیرش بالای دکمه‌ی پرداخت */
+.cmb-actionbar--terms { padding-top: var(--s2); }
+.cmb-actionbar--terms .cmb-actionbar__in { flex-direction: column; align-items: stretch; gap: var(--s2); }
+.cmb-actionbar--terms .cmb-btn { width: 100%; }
+.cmb-termsrow { display: flex; align-items: center; gap: var(--s2); }
+.cmb-termsrow .cmb-check { flex: 1; min-width: 0; }
+.cmb-termsrow .cmb-link { flex: 0 0 auto; white-space: nowrap; padding: 10px 4px; }
+
 /* ═══ گام‌ها ═══ */
 
 .cmb-steps {
@@ -690,12 +699,12 @@ select.cmb-in {
 
 .cmb-toasts {
   position: fixed; z-index: 90;
-  left: 0; right: 0; bottom: calc(var(--bar-h) + var(--safe-b) + 12px);
+  left: 0; right: 0; bottom: calc(var(--bar-full, calc(var(--bar-h) + var(--safe-b))) + 12px);
   display: flex; flex-direction: column; align-items: center; gap: var(--s2);
   pointer-events: none; padding: 0 var(--pad);
 }
 /* هم نوار ناوبری هم نوار پرداخت: توست بالای هر دو */
-#cmb-app.has-navbar .cmb-toasts { bottom: calc(var(--nav-h) + var(--bar-h) + var(--safe-b) + 12px); }
+#cmb-app.has-navbar .cmb-toasts { bottom: calc(var(--nav-h) + var(--bar-full, var(--bar-h)) + var(--safe-b) + 12px); }
 .cmb-toast {
   max-width: var(--max-w); width: 100%;
   background: var(--steel-950); color: #fff;
@@ -730,6 +739,22 @@ select.cmb-in {
   animation: cmbsheet .28s cubic-bezier(.2,.8,.2,1);
 }
 @keyframes cmbsheet { from { transform: translateY(100%) } to { transform: none } }
+.cmb-sheet { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.cmb-sheet .cmb-terms { max-height: none; overflow: visible; margin-top: var(--s2); }
+/* برگه‌ی قوانین: متن اسکرول می‌شود، دکمه‌ها همیشه پایین برگه می‌مانند */
+.cmb-sheet--terms { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.cmb-sheet__body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding: var(--s3) var(--pad) var(--s3);
+}
+.cmb-sheet__acts {
+  flex: 0 0 auto; display: flex; gap: var(--s2);
+  padding: var(--s3) var(--pad) calc(var(--s3) + var(--safe-b));
+  background: var(--card); border-top: 1px solid var(--g5);
+}
+.cmb-sheet__acts .cmb-btn { width: auto; flex: 1 1 0; padding: 0 var(--s3); }
+.cmb-sheet__acts .cmb-btn--pri { flex: 2 1 0; }
 .cmb-sheet__grip {
   width: 38px; height: 4px; border-radius: 999px;
   background: var(--g4); margin: 0 auto var(--s4);
@@ -1045,6 +1070,9 @@ select.cmb-in {
   padding: 12px var(--s3); border-radius: var(--r-sm); background: var(--flame-50);
 }
 .cmb-check input { width: 22px; height: 22px; flex: 0 0 22px; margin: 0; accent-color: var(--flame); }
+/* تیک فشرده در نوار پایین */
+.cmb-check--bar { padding: 6px var(--s3); gap: var(--s2); font-size: var(--t-cl); line-height: 1.5; }
+.cmb-check--bar input { width: 24px; height: 24px; flex: 0 0 24px; }
 
 .cmb-paynote { border: 1.5px solid var(--warn-bg); }
 .cmb-paynote .cmb-svc__t { display: flex; align-items: center; gap: 8px; color: var(--warn); }

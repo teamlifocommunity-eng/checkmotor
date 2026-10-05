@@ -823,11 +823,10 @@ function stepPay() {
       '</div>';
   }
 
+  // تیک پذیرش در نوار ثابت پایین است (کنار دکمه‌ی پرداخت)، نه اینجا
   html += '<div class="cmb-card">' +
     '<div class="cmb-svc__t">قوانین و مقررات رزرو</div>' +
     termsHtml(q.terms) +
-    '<label class="cmb-check cmb-mt4"><input type="checkbox" id="cmb-terms"' + (S.termsOk ? ' checked' : '') + '>' +
-    '<span>قوانین رزرو را خواندم و می‌پذیرم.</span></label>' +
     '</div>';
 
   if (S.pay.sandbox) {
@@ -843,13 +842,41 @@ function stepPay() {
   var label = w.full ? 'پرداخت ' + esc(q.wallet.useFa) + ' از کیف پول'
     : 'پرداخت ' + esc(w.use > 0 ? q.wallet.gatewayFa : q.depositFa);
 
-  html += '<div class="cmb-actionbar"><div class="cmb-actionbar__in">' +
+  /* تیک پذیرش و دکمه‌ی پرداخت با هم در نوار ثابت پایین‌اند: مشتری بدون
+     اسکرول تیک می‌زند و پرداخت می‌کند. «مشاهده‌ی قوانین» متن کامل را
+     در یک برگه باز می‌کند و همان‌جا هم می‌شود پذیرفت. */
+  html += '<div class="cmb-actionbar cmb-actionbar--terms"><div class="cmb-actionbar__in">' +
+    '<div class="cmb-termsrow">' +
+      '<label class="cmb-check cmb-check--bar"><input type="checkbox" id="cmb-terms"' + (S.termsOk ? ' checked' : '') + '>' +
+      '<span>قوانین رزرو را خواندم و می‌پذیرم</span></label>' +
+      '<button type="button" class="cmb-link" data-terms-open>مشاهده‌ی قوانین</button>' +
+    '</div>' +
     '<button class="cmb-btn cmb-btn--pri" style="width:100%" data-pay' + (S.busy || !S.termsOk || S.redirecting ? ' disabled' : '') + '>' +
     (S.redirecting ? '<span class="cmb-spin"></span> در حال انتقال به درگاه…'
       : (S.busy ? '<span class="cmb-spin"></span> در حال ثبت…' : label)) + '</button>' +
     '</div></div>';
 
   return html;
+}
+
+/** برگه‌ی متن کامل قوانین، با دکمه‌ی پذیرش. */
+function termsSheet() {
+  var q = S.quote;
+  if (S.sheet !== 'terms' || !q) { return ''; }
+
+  return '<div class="cmb-scrim" data-sheet-close></div>' +
+    '<div class="cmb-sheet cmb-sheet--terms" role="dialog" aria-modal="true" aria-label="قوانین و مقررات رزرو">' +
+      '<div class="cmb-sheet__body">' +
+        '<div class="cmb-sheet__grip"></div>' +
+        '<div class="cmb-sheet__t">قوانین و مقررات رزرو</div>' +
+        termsHtml(q.terms) +
+      '</div>' +
+      // دکمه‌ها بیرون از بخش اسکرولی‌اند: با متن بلند هم همیشه پایین برگه دیده می‌شوند
+      '<div class="cmb-sheet__acts">' +
+        '<button class="cmb-btn cmb-btn--pri" data-terms-accept>' + (S.termsOk ? 'تأیید' : 'می‌پذیرم') + '</button>' +
+        '<button class="cmb-btn cmb-btn--ghost" data-sheet-close>بستن</button>' +
+      '</div>' +
+    '</div>';
 }
 
 function field(key, label, type, ph, value, req) {
@@ -1432,6 +1459,23 @@ function row(ic, title, value, attr, val2) {
    فرم یعنی پریدن مکان‌نما و بالا رفتن صفحه. */
 var rafId = 0;
 
+/**
+ * ارتفاع واقعی نوار ثابت پایین را در --bar-full می‌گذارد تا فاصله‌ی پایین
+ * صفحه و جای پیام‌ها با آن بخواند. نوار حالا دو ردیف است و بسته به عرض
+ * گوشی (برچسب دو خطی) یا اندازه‌ی متن آیفون ارتفاعش فرق می‌کند؛ عدد ثابت
+ * یا محتوا را زیر نوار گم می‌کند یا فاصله‌ی اضافه می‌گذارد.
+ */
+function syncBar() {
+  var de = document.documentElement;
+  var bar = document.querySelector('#cmb-app > .cmb-actionbar');
+
+  if (bar) {
+    de.style.setProperty('--bar-full', Math.ceil(bar.getBoundingClientRect().height) + 'px');
+  } else {
+    de.style.removeProperty('--bar-full');
+  }
+}
+
 function paint() {
   if (rafId) { return; }
 
@@ -1509,6 +1553,7 @@ function render() {
           '<img src="' + esc(S.lightbox) + '" alt="">' +
         '</div>'
       : '') +
+    termsSheet() +
     '<div id="cmb-toasts" class="cmb-toasts"></div>';
 
   /* نوار پرداخت از پوسته بیرون می‌آید و فرزند مستقیم ریشه می‌شود (کنار
@@ -1519,6 +1564,8 @@ function render() {
   if (ab) {
     root.insertBefore(ab, root.querySelector('.cmb-shell').nextSibling);
   }
+
+  syncBar();
 
   /* اگر فیلدی کد تایید نیست، همان جایی که بود برمی‌گردد. کادرهای
      کد تایید قاعده‌ی خودشان را دارند (پرش خودکار به خانه‌ی بعد). */
@@ -1733,6 +1780,7 @@ function startBooking() {
 
 function goStep(n) {
   S.step = n;
+  S.sheet = null;
   window.scrollTo(0, 0);
   paint();
 }
@@ -1793,6 +1841,7 @@ function loadQuote(force) {
   S.quote = null;
   S.quoteFor = key;
   S.termsOk = false;
+  S.sheet = null;
   S.useWallet = true;
   paint();
 
@@ -2261,6 +2310,11 @@ function bind() {
       return;
     }
 
+    // برگه‌ی متن کامل قوانین
+    if (up('[data-terms-open]')) { e.preventDefault(); S.sheet = 'terms'; paint(); return; }
+    if (up('[data-terms-accept]')) { e.preventDefault(); S.termsOk = true; S.sheet = null; paint(); return; }
+    if (up('[data-sheet-close]')) { e.preventDefault(); S.sheet = null; paint(); return; }
+
     if ((el = up('[data-svc]'))) {
       e.preventDefault();
       var id = Number(el.getAttribute('data-svc'));
@@ -2375,6 +2429,7 @@ function bind() {
     }
 
     if (e.key === 'Escape' && S.lightbox) { S.lightbox = ''; paint(); return; }
+    if (e.key === 'Escape' && S.sheet) { S.sheet = null; paint(); return; }
 
     if (e.key === 'Enter' && $('#cmb-phone') && document.activeElement === $('#cmb-phone')) {
       e.preventDefault();
@@ -2400,6 +2455,12 @@ function bind() {
     if (digits.length === 5) { setTimeout(verifyOtp, 120); }
     else if (inputs[digits.length]) { inputs[digits.length].focus(); }
   });
+
+  /* ارتفاع نوار پایین با چرخش گوشی، تغییر اندازه و آمدن فونت عوض می‌شود */
+  window.addEventListener('resize', syncBar);
+  window.addEventListener('orientationchange', syncBar);
+
+  if (document.fonts && document.fonts.ready) { document.fonts.ready.then(syncBar); }
 
   /* مقادیر فرم قبل از رندر مجدد از بین نروند */
   document.addEventListener('change', function (e) {
