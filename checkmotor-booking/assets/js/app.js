@@ -966,6 +966,7 @@ function viewPay() {
   }
 
   var icon = I.alert, tone = 'bad', title = 'پرداخت انجام نشد';
+  var bar = '';
 
   if (R.state === 'checking') { icon = I.clock; tone = 'wait'; title = 'در انتظار نتیجه‌ی پرداخت'; }
   if (R.state === 'refund') { icon = I.card; tone = 'wait'; title = 'پرداخت رسید ولی نوبت ثبت نشد'; }
@@ -994,11 +995,17 @@ function viewPay() {
 
     if (left > 0) { out += note('info', I.clock, 'جا تا ' + fa(left) + ' دقیقه‌ی دیگر برایتان نگه داشته می‌شود.'); }
 
-    out += (R.canRetry
-        ? '<button class="cmb-btn cmb-btn--pri cmb-mt4" data-pay-retry="' + R.id + '" data-token="' + esc(R.token) + '"' + (S.payBusy || S.redirecting ? ' disabled' : '') + '>' +
-          (S.redirecting ? '<span class="cmb-spin"></span> در حال انتقال به درگاه…' : 'پرداخت دوباره') + '</button>'
-        : '') +
-      '<button class="cmb-btn cmb-btn--ghost cmb-mt3" data-pay-abandon="' + R.id + '" data-token="' + esc(R.token) + '"' + (S.payBusy ? ' disabled' : '') + '>انصراف و آزاد کردن جا</button>';
+    out += '<button class="cmb-btn cmb-btn--ghost cmb-mt4" data-pay-abandon="' + R.id + '" data-token="' + esc(R.token) + '"' + (S.payBusy ? ' disabled' : '') + '>انصراف و آزاد کردن جا</button>';
+
+    // «پرداخت دوباره» در نوار ثابت پایین، بالای نوار ناوبری
+    if (R.canRetry) {
+      bar = '<div class="cmb-actionbar cmb-actionbar--nav"><div class="cmb-actionbar__in">' +
+        '<div class="cmb-actionbar__sum"><div class="cmb-actionbar__k">مبلغ پرداخت</div>' +
+        '<div class="cmb-actionbar__v">' + esc(b.pay ? (b.pay.gateway > 0 ? b.pay.gatewayFa : b.pay.depositFa) : '') + '</div></div>' +
+        '<button class="cmb-btn cmb-btn--pri" data-pay-retry="' + R.id + '" data-token="' + esc(R.token) + '"' + (S.payBusy || S.redirecting ? ' disabled' : '') + '>' +
+          (S.redirecting ? '<span class="cmb-spin"></span> انتقال به درگاه…' : 'پرداخت دوباره') + '</button>' +
+        '</div></div>';
+    }
   } else if (R.state === 'checking') {
     out += '<button class="cmb-btn cmb-btn--pri cmb-mt4" data-reload>بررسی دوباره</button>';
   } else {
@@ -1010,7 +1017,7 @@ function viewPay() {
   }
 
   out += '<button class="cmb-btn cmb-btn--ghost cmb-mt3" data-tab="mine">نوبت‌های من</button></div>';
-  return out;
+  return out + bar;
 }
 
 /* ═══ نوبت‌های من ═══ */
@@ -1300,6 +1307,7 @@ function walletRow(x) {
 
 function viewWallet() {
   var W = S.wallet || {};
+  var bar = '';
   var html = topBar('کیف پول', '', false) + '<div class="cmb-page cmb-mt4">';
 
   html += topupCard();
@@ -1339,9 +1347,15 @@ function viewWallet() {
       '<label class="cmb-field cmb-mt3"><span class="cmb-field__l">یا مبلغ دلخواه (تومان)</span>' +
       '<input class="cmb-in cmb-num" id="cmb-topup" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="' + esc(String(t.min)) + '" value="' + (amt ? esc(String(amt)) : '') + '"></label>' +
       '<div class="cmb-hint">از ' + esc(t.minFa) + ' تا ' + esc(t.maxFa) + '. پس از پرداخت به همین صفحه برمی‌گردید.</div>' +
-      '<button class="cmb-btn cmb-btn--pri cmb-mt3" style="width:100%" data-topup' + (S.topupBusy || S.redirecting ? ' disabled' : '') + '>' +
-        topupLabel() + '</button>' +
       '</div>';
+
+    // دکمه‌ی پرداخت در نوار ثابت پایین، بالای نوار ناوبری
+    bar = '<div class="cmb-actionbar cmb-actionbar--nav"><div class="cmb-actionbar__in">' +
+      '<div class="cmb-actionbar__sum"><div class="cmb-actionbar__k">مبلغ شارژ</div>' +
+      '<div class="cmb-actionbar__v" id="cmb-topup-v">' + topupAmountText() + '</div></div>' +
+      '<button class="cmb-btn cmb-btn--pri" data-topup' + (S.topupBusy || S.redirecting ? ' disabled' : '') + '>' +
+        topupLabel() + '</button>' +
+      '</div></div>';
 
     if (S.pay.sandbox) { html += note('warn', I.alert, 'درگاه در حالت آزمایشی است و پول واقعی جابه‌جا نمی‌شود.'); }
   }
@@ -1357,14 +1371,19 @@ function viewWallet() {
   html += note('info', I.info, 'موجودی کیف پول قابل برداشت یا انتقال به کارت بانکی نیست و فقط برای پرداخت بیعانه‌ی نوبت‌های بعدی در همین سایت استفاده می‌شود.');
   html += '</div>';
 
-  return html;
+  return html + bar;
 }
 
 function topupLabel() {
-  if (S.redirecting) { return '<span class="cmb-spin"></span> در حال انتقال به درگاه…'; }
+  if (S.redirecting) { return '<span class="cmb-spin"></span> انتقال به درگاه…'; }
   if (S.topupBusy) { return '<span class="cmb-spin"></span> …'; }
 
-  return 'شارژ با درگاه' + (S.topupAmount ? ' — ' + money(S.topupAmount) + ' تومان' : '');
+  return 'شارژ با درگاه';
+}
+
+/** مبلغ انتخاب‌شده‌ی شارژ، برای نوار پایین. */
+function topupAmountText() {
+  return S.topupAmount ? money(S.topupAmount) + ' تومان' : 'مبلغ را انتخاب کنید';
 }
 
 /** شارژ: درخواست به سرور و رفتن به درگاه. */
@@ -1470,11 +1489,17 @@ function render() {
   // فاصله‌ی پایین باید با نواری که واقعاً روی صفحه هست بخواند،
   // وگرنه آخرین بخش محتوا زیر نوار ثابت گم می‌شود.
   var wizard = (S.page === 'book' && !S.receipt);
+  var bar = inner.indexOf('cmb-actionbar') !== -1;
   var shellClass = 'cmb-shell';
 
   if (wizard) {
-    shellClass += inner.indexOf('cmb-actionbar') !== -1 ? ' cmb-shell--bar' : ' cmb-shell--bare';
+    shellClass += bar ? ' cmb-shell--bar' : ' cmb-shell--bare';
+  } else if (bar) {
+    // نوار پرداخت بالای نوار ناوبری (کیف پول، پرداخت ناموفق)
+    shellClass += ' cmb-shell--navbar';
   }
+
+  root.classList.toggle('has-navbar', !wizard && bar);
 
   root.innerHTML = '<div class="' + shellClass + '">' + inner + '</div>' +
     (wizard ? '' : nav()) +
@@ -1485,6 +1510,15 @@ function render() {
         '</div>'
       : '') +
     '<div id="cmb-toasts" class="cmb-toasts"></div>';
+
+  /* نوار پرداخت از پوسته بیرون می‌آید و فرزند مستقیم ریشه می‌شود (کنار
+     نوار ناوبری)، تا هیچ والدی جای «ثابت» بودنش را عوض نکند و دکمه‌ی
+     پرداخت همیشه پایین صفحه‌ی دید بماند، بی‌اسکرول. */
+  var ab = root.querySelector('.cmb-shell .cmb-actionbar');
+
+  if (ab) {
+    root.insertBefore(ab, root.querySelector('.cmb-shell').nextSibling);
+  }
 
   /* اگر فیلدی کد تایید نیست، همان جایی که بود برمی‌گردد. کادرهای
      کد تایید قاعده‌ی خودشان را دارند (پرش خودکار به خانه‌ی بعد). */
@@ -2310,8 +2344,8 @@ function bind() {
     if (e.target.id === 'cmb-topup') {
       S.topupAmount = Number(en(e.target.value).replace(/\D/g, '')) || 0;
       $$('.cmb-chip[data-topup-preset]').forEach(function (c) { c.classList.toggle('is-on', Number(c.getAttribute('data-topup-preset')) === S.topupAmount); });
-      var tb = $('[data-topup]');
-      if (tb) { tb.innerHTML = topupLabel(); }
+      var tv = document.getElementById('cmb-topup-v');
+      if (tv) { tv.textContent = topupAmountText(); }
       return;
     }
 

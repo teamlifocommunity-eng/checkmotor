@@ -113,10 +113,30 @@ html.cmb-html, body.cmb-body {
   color: var(--ink) !important; background: var(--bg) !important;
   direction: rtl !important; text-align: right !important;
   width: auto !important; max-width: none !important; min-width: 0 !important;
-  overflow-x: hidden !important;
+  /* clip، نه hidden: وقتی html و body هر دو overflow-x: hidden دارند،
+     overflow-y در body «auto» حساب می‌شود و body ظرف اسکرول می‌شود؛
+     آن وقت در سافاری آیفون نوار ثابت پایین (دکمه‌ی پرداخت) و سربرگ
+     چسبان با صفحه اسکرول می‌شوند. clip ظرف اسکرول نمی‌سازد. */
+  overflow-x: clip !important;
   -webkit-text-size-adjust: 100% !important; text-size-adjust: 100% !important;
   -webkit-font-smoothing: antialiased !important;
 }
+
+/* مرورگرهای قدیمی که clip را نمی‌شناسند (سافاری پیش از ۱۶) */
+@supports not (overflow: clip) {
+  html.cmb-html, body.cmb-body { overflow-x: hidden !important; }
+}
+
+/* استایل قالب سایت (wp_head) نباید ریشه‌ی صفحه را «قاب» عنصرهای ثابت
+   کند: transform، filter، will-change و contain روی هر والدی، position:
+   fixed را به absolute تبدیل می‌کنند و نوار پرداخت ته صفحه می‌افتد. */
+html.cmb-html, body.cmb-body, #cmb-app {
+  transform: none !important; filter: none !important; perspective: none !important;
+  will-change: auto !important; contain: none !important;
+}
+
+/* فیلدی که فوکوس می‌گیرد زیر نوار پایین نرود */
+html.cmb-html { scroll-padding-bottom: calc(var(--bar-h) + var(--nav-h) + var(--safe-b)); }
 
 /* هرچه قالب سایت بیرون از ریشه‌ی اپ گذاشته، پنهان شود */
 body.cmb-body > *:not(#cmb-app):not(#cmb-panel):not(script):not(style):not(noscript):not(link) {
@@ -163,6 +183,10 @@ body.cmb-body > *:not(#cmb-app):not(#cmb-panel):not(script):not(style):not(noscr
 
 /* صفحه‌ای که نه نوار ناوبری دارد نه نوار کنش (رسید، ورود) */
 .cmb-shell--bare { padding-bottom: calc(var(--safe-b) + var(--s7)); }
+
+/* صفحه‌ای که هم نوار ناوبری دارد هم نوار پرداخت بالای آن (کیف پول،
+   پرداخت ناموفق) */
+.cmb-shell--navbar { padding-bottom: calc(var(--nav-h) + var(--bar-h) + var(--safe-b) + var(--s5)); }
 
 .cmb-page { padding: 0 var(--pad); }
 
@@ -475,14 +499,22 @@ select.cmb-in {
 }
 .cmb-link:disabled { color: var(--ink-3); }
 
-/* نوار کنش چسبیده به پایین */
+/* نوار کنش چسبیده به پایین (دکمه‌ی پرداخت و ادامه).
+   فرزند مستقیم #cmb-app است، نه داخل پوسته (render در app.js)؛
+   لایه‌ی جدا (translateZ) تا سافاری آیفون هنگام اسکرول جابه‌جایش نکند. */
 .cmb-actionbar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 45;
+  transform: translateZ(0);
   background: rgba(255,255,255,.92);
   backdrop-filter: saturate(180%) blur(18px);
   -webkit-backdrop-filter: saturate(180%) blur(18px);
   border-top: 1px solid var(--g5);
   padding: var(--s3) var(--pad) calc(var(--s3) + var(--safe-b));
+}
+/* بالای نوار ناوبری؛ فاصله‌ی safe-area را خود ناوبری دارد */
+.cmb-actionbar--nav {
+  bottom: calc(var(--nav-h) + var(--safe-b));
+  padding-bottom: var(--s3);
 }
 .cmb-actionbar__in { max-width: var(--max-w); margin: 0 auto; display: flex; gap: var(--s3); align-items: center; }
 .cmb-actionbar__sum { flex: 1; min-width: 0; }
@@ -510,6 +542,7 @@ select.cmb-in {
 
 .cmb-nav {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+  transform: translateZ(0);
   background: rgba(255,255,255,.92);
   backdrop-filter: saturate(180%) blur(18px);
   -webkit-backdrop-filter: saturate(180%) blur(18px);
@@ -661,6 +694,8 @@ select.cmb-in {
   display: flex; flex-direction: column; align-items: center; gap: var(--s2);
   pointer-events: none; padding: 0 var(--pad);
 }
+/* هم نوار ناوبری هم نوار پرداخت: توست بالای هر دو */
+#cmb-app.has-navbar .cmb-toasts { bottom: calc(var(--nav-h) + var(--bar-h) + var(--safe-b) + 12px); }
 .cmb-toast {
   max-width: var(--max-w); width: 100%;
   background: var(--steel-950); color: #fff;
@@ -774,7 +809,7 @@ select.cmb-in {
   /* نوارهای پایین باید هم‌عرض ستون باشند، نه تمام‌عرض پنجره */
   .cmb-nav, .cmb-actionbar {
     left: 50%; right: auto;
-    transform: translateX(-50%);
+    transform: translate3d(-50%, 0, 0);
     width: 100%; max-width: var(--max-w);
     border-inline: 1px solid var(--g5);
   }
