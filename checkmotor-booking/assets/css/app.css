@@ -524,12 +524,13 @@ select.cmb-in {
 .cmb-actionbar .cmb-btn { width: auto; flex: 0 0 auto; padding: 0 var(--s6); }
 
 /* گام آخر رزرو: ردیف تیک پذیرش بالای دکمه‌ی پرداخت */
-.cmb-actionbar--terms { padding-top: var(--s2); }
-.cmb-actionbar--terms .cmb-actionbar__in { flex-direction: column; align-items: stretch; gap: var(--s2); }
+.cmb-actionbar--terms { padding-top: var(--s4); }
+.cmb-actionbar--terms .cmb-actionbar__in { flex-direction: column; align-items: stretch; gap: var(--s4); }
 .cmb-actionbar--terms .cmb-btn { width: 100%; }
-.cmb-termsrow { display: flex; align-items: center; gap: var(--s2); }
+.cmb-termsrow { display: flex; align-items: center; gap: var(--s3); }
 .cmb-termsrow .cmb-check { flex: 1; min-width: 0; }
-.cmb-termsrow .cmb-link { flex: 0 0 auto; white-space: nowrap; padding: 10px 4px; }
+/* لینک «مشاهده‌ی قوانین»: سطح لمس کامل (۴۴px) */
+.cmb-termsrow .cmb-link { flex: 0 0 auto; white-space: nowrap; min-height: var(--tap); padding: 0 var(--s2); display: flex; align-items: center; }
 
 /* ═══ گام‌ها ═══ */
 
@@ -1070,9 +1071,12 @@ select.cmb-in {
   padding: 12px var(--s3); border-radius: var(--r-sm); background: var(--flame-50);
 }
 .cmb-check input { width: 22px; height: 22px; flex: 0 0 22px; margin: 0; accent-color: var(--flame); }
-/* تیک فشرده در نوار پایین */
-.cmb-check--bar { padding: 6px var(--s3); gap: var(--s2); font-size: var(--t-cl); line-height: 1.5; }
-.cmb-check--bar input { width: 24px; height: 24px; flex: 0 0 24px; }
+/* تیک پذیرش در نوار پایین: جادار و راحت برای لمس */
+.cmb-check--bar {
+  min-height: 60px; padding: 14px var(--s4); gap: var(--s3);
+  font-size: var(--t-bd); line-height: 1.6; border-radius: var(--r);
+}
+.cmb-check--bar input { width: 28px; height: 28px; flex: 0 0 28px; }
 
 .cmb-paynote { border: 1.5px solid var(--warn-bg); }
 .cmb-paynote .cmb-svc__t { display: flex; align-items: center; gap: 8px; color: var(--warn); }
