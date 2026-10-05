@@ -2,9 +2,9 @@
 /**
  * سرویس پرداخت زرین‌پال (REST نسخه‌ی ۴).
  *
- * درخواست پرداخت، تأیید، فهرست پرداخت‌های تأییدنشده، برگرداندن پرداختِ
- * تازه (reverse) و استعلام وضعیت (inquiry). هیچ‌کدام وضعیتی نگه
- * نمی‌دارند؛ ذخیره و تصمیم با CMB_Payments است.
+ * درخواست پرداخت، تأیید و فهرست پرداخت‌های تأییدنشده. هیچ‌کدام وضعیتی
+ * نگه نمی‌دارند؛ ذخیره و تصمیم با CMB_Payments است. (برگشت وجه از
+ * زرین‌پال استفاده نمی‌شود؛ هر برگشتی به کیف پول مشتری می‌رود.)
  *
  * مبلغ‌ها همیشه به ریال فرستاده می‌شوند (currency = IRR)، تا جای
  * هیچ تبدیلی در درگاه باقی نماند.
@@ -142,56 +142,6 @@ class CMB_Zarinpal {
 	}
 
 	/**
-	 * برگرداندن کامل پرداختی که کمتر از ۳۰ دقیقه از آن گذشته.
-	 *
-	 * @return true|WP_Error
-	 */
-	public static function reverse( $merchant, $sandbox, $authority ) {
-		$res = self::call(
-			$sandbox,
-			'/pg/v4/payment/reverse.json',
-			array(
-				'merchant_id' => (string) $merchant,
-				'authority'   => (string) $authority,
-			)
-		);
-
-		if ( is_wp_error( $res ) ) {
-			return $res;
-		}
-
-		$code = isset( $res['code'] ) ? (int) $res['code'] : 0;
-
-		return 100 === $code ? true : self::error( $code, isset( $res['message'] ) ? $res['message'] : '' );
-	}
-
-	/**
-	 * وضعیت یک پرداخت در زرین‌پال: VERIFIED، PAID (تأییدنشده)، IN_BANK
-	 * (هنوز در صفحه‌ی بانک)، FAILED یا REVERSED.
-	 *
-	 * @return array|WP_Error { code, status }
-	 */
-	public static function inquiry( $merchant, $sandbox, $authority ) {
-		$res = self::call(
-			$sandbox,
-			'/pg/v4/payment/inquiry.json',
-			array(
-				'merchant_id' => (string) $merchant,
-				'authority'   => (string) $authority,
-			)
-		);
-
-		if ( is_wp_error( $res ) ) {
-			return $res;
-		}
-
-		return array(
-			'code'   => isset( $res['code'] ) ? (int) $res['code'] : 0,
-			'status' => isset( $res['status'] ) ? strtoupper( (string) $res['status'] ) : '',
-		);
-	}
-
-	/**
 	 * فراخوانی یک نقطه‌ی پایانی.
 	 *
 	 * زرین‌پال در پاسخ موفق { data: {...}, errors: [] } و در خطا
@@ -295,10 +245,6 @@ class CMB_Zarinpal {
 			-53  => 'این پرداخت متعلق به این مرچنت کد نیست.',
 			-54  => 'شناسه‌ی پرداخت (Authority) نامعتبر است.',
 			-55  => 'تراکنش یافت نشد.',
-			-60  => 'بانک برگشت فوری این تراکنش را نپذیرفت.',
-			-61  => 'تراکنش در وضعیت موفق نیست (شاید قبلاً برگشت خورده باشد).',
-			-62  => 'برگشت فوری نیاز به ثبت آی‌پی سرور سایت در پنل زرین‌پال دارد (تنظیمات درگاه ← آی‌پی).',
-			-63  => 'بیش از ۳۰ دقیقه از پرداخت گذشته و برگشت فوری دیگر ممکن نیست.',
 		);
 
 		if ( isset( $map[ (int) $code ] ) ) {

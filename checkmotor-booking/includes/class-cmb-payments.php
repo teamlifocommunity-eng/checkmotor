@@ -34,20 +34,8 @@ class CMB_Payments {
 	/** فاصله‌ی بررسی دوباره‌ی پرداخت بی‌جواب، دقیقه پس از ساخت. */
 	const CHECKS = array( 3, 6, 15, 60, 360, 1440 );
 
-	/** حداقل مبلغ برگشت در زرین‌پال: ۲۰٬۰۰۰ ریال. */
-	const MIN_REFUND_RIAL = 20000;
-
 	/** حداکثر تلاش پرداخت برای یک نوبت. */
 	const MAX_ATTEMPTS = 5;
-
-	/** نسخه‌ی اسکیمایی که برگشت خودکار لازم دارد (refund_after_gmt). */
-	const AUTO_SCHEMA = '1.5.0';
-
-	/** دلیل‌هایی که پیش از برگشت خودکار صبر می‌کنند (لغوِ قابل بازگرداندن). */
-	const DELAYED_REASONS = array( 'customer', 'shop' );
-
-	/** فاصله‌ی تلاش دوباره پس از خطای موقت، دقیقه. */
-	const REFUND_RETRY = array( 5, 15, 60 );
 
 	/* ------------------------------------------------------------------
 	 * پیکربندی
@@ -92,23 +80,6 @@ class CMB_Payments {
 	 */
 	public static function enabled() {
 		return (bool) CMB_Settings::get( 'pay_enabled', 0 ) && self::schema_ready() && '' !== self::merchant();
-	}
-
-	/**
-	 * پولی که باید به مشتری برگردد کجا می‌رود: wallet (کیف پول در همین
-	 * سایت) یا card (صف برگشت به کارت با API زرین‌پال).
-	 *
-	 * زرین‌پال برای این درگاه استرداد نمی‌دهد، پس کیف پول پیش‌فرض است.
-	 * کد کارت دست‌نخورده مانده و فقط با این فیلتر برمی‌گردد:
-	 *     add_filter( 'cmb_refund_to', function () { return 'card'; } );
-	 */
-	public static function refund_to() {
-		return 'card' === apply_filters( 'cmb_refund_to', 'wallet' ) ? 'card' : 'wallet';
-	}
-
-	/** برگشت‌ها به کیف پول می‌روند (و جدولش ساخته شده). */
-	public static function wallet_mode() {
-		return class_exists( 'CMB_Wallet' ) && CMB_Wallet::ready();
 	}
 
 	/** لحظه‌ی جاری به وقت سایت، برای ستون‌های DATETIME (از ساعت مرجع افزونه). */
@@ -164,32 +135,17 @@ class CMB_Payments {
 	}
 
 	public static function default_terms() {
-		if ( self::wallet_mode() ) {
-			return implode(
-				"\n",
-				array(
-					'۱. برای ثبت نوبت، پرداخت {deposit} بیعانه الزامی است. نوبت فقط پس از پرداخت موفق ثبت و قطعی می‌شود.',
-					'۲. هنگام مراجعه، بیعانه از کل هزینه‌ی خدمات کسر می‌شود.',
-					'۳. تا {hours} ساعت پیش از زمان نوبت می‌توانید نوبت را از «نوبت‌های من» لغو کنید. در این صورت {refund} همان لحظه به کیف پول شما در همین سایت برمی‌گردد و {kept} به‌عنوان هزینه‌ی لغو نزد مجموعه می‌ماند.',
-					'۴. کمتر از {hours} ساعت مانده به نوبت، لغو آنلاین ممکن نیست.',
-					'۵. اگر نوبت را لغو نکنید و در زمان نوبت مراجعه نکنید، کل بیعانه ({deposit}) نزد مجموعه می‌ماند و بازگردانده نمی‌شود.',
-					'۶. اگر مجموعه نوبت شما را لغو کند، {shop_refund} به کیف پول شما برمی‌گردد.',
-					'۷. موجودی کیف پول قابل برداشت یا انتقال به کارت بانکی نیست و فقط برای پرداخت بیعانه‌ی نوبت‌های بعدی در همین سایت استفاده می‌شود.',
-					'۸. پرداخت تکراری، یا پرداختی که بعد از پر شدن ظرفیت یا پایان مهلت پرداخت برسد، کامل به کیف پول شما برمی‌گردد.',
-				)
-			);
-		}
-
 		return implode(
 			"\n",
 			array(
 				'۱. برای ثبت نوبت، پرداخت {deposit} بیعانه الزامی است. نوبت فقط پس از پرداخت موفق ثبت و قطعی می‌شود.',
 				'۲. هنگام مراجعه، بیعانه از کل هزینه‌ی خدمات کسر می‌شود.',
-				'۳. تا {hours} ساعت پیش از زمان نوبت می‌توانید نوبت را از «نوبت‌های من» لغو کنید. در این صورت {refund} به همان کارتی که با آن پرداخت کرده‌اید بازگردانده می‌شود و {kept} به‌عنوان هزینه‌ی لغو نزد مجموعه می‌ماند.',
+				'۳. تا {hours} ساعت پیش از زمان نوبت می‌توانید نوبت را از «نوبت‌های من» لغو کنید. در این صورت {refund} همان لحظه به کیف پول شما در همین سایت برمی‌گردد و {kept} به‌عنوان هزینه‌ی لغو نزد مجموعه می‌ماند.',
 				'۴. کمتر از {hours} ساعت مانده به نوبت، لغو آنلاین ممکن نیست.',
 				'۵. اگر نوبت را لغو نکنید و در زمان نوبت مراجعه نکنید، کل بیعانه ({deposit}) نزد مجموعه می‌ماند و بازگردانده نمی‌شود.',
-				'۶. اگر مجموعه نوبت شما را لغو کند، {shop_refund} به شما بازگردانده می‌شود.',
-				'۷. بازگشت وجه معمولاً ظرف ۳ روز کاری انجام می‌شود.',
+				'۶. اگر مجموعه نوبت شما را لغو کند، {shop_refund} به کیف پول شما برمی‌گردد.',
+				'۷. موجودی کیف پول قابل برداشت یا انتقال به کارت بانکی نیست و فقط برای پرداخت بیعانه‌ی نوبت‌های بعدی در همین سایت استفاده می‌شود.',
+				'۸. پرداخت تکراری، یا پرداختی که بعد از پر شدن ظرفیت یا پایان مهلت پرداخت برسد، کامل به کیف پول شما برمی‌گردد.',
 			)
 		);
 	}
@@ -227,12 +183,11 @@ class CMB_Payments {
 
 	/**
 	 * متن قوانینی که مدیر خودش نوشته هنوز از برگشت به کارت می‌گوید؟
-	 * (متن پیش‌فرض خودش با حالت کیف پول عوض می‌شود.)
 	 */
 	public static function terms_mention_card() {
 		$own = trim( (string) CMB_Settings::get( 'pay_terms_text', '' ) );
 
-		return self::wallet_mode() && '' !== $own && false !== mb_strpos( $own, 'کارت' ) && false === mb_strpos( $own, 'کیف پول' );
+		return '' !== $own && false !== mb_strpos( $own, 'کارت' ) && false === mb_strpos( $own, 'کیف پول' );
 	}
 
 	/** گرد کردن به هزار تومان پایین‌تر. */
@@ -704,7 +659,7 @@ class CMB_Payments {
 	}
 
 	/**
-	 * پول آمد: نوبت تأیید شود، یا اگر دیگر ممکن نیست، پول در صف برگشت.
+	 * پول آمد: نوبت تأیید شود، یا اگر دیگر ممکن نیست، پول به کیف پول.
 	 */
 	protected static function settle( $payment ) {
 		if ( ! $payment ) {
@@ -723,8 +678,8 @@ class CMB_Payments {
 		$full      = (int) $payment->amount_rial;
 
 		if ( ! $booking ) {
-			// نوبت ۰ یعنی آزمون پرداخت و برگشت از صفحه‌ی راه‌اندازی؛ کل مبلغ همین حالا برمی‌گردد
-			self::refund_due( $payment, $full, 0 === (int) $payment->booking_id ? self::selftest_reason( $payment->id ) : 'no_booking', 0, false );
+			// نوبتش حذف شده: کل مبلغ به کیف پول صاحب پرداخت
+			self::refund_due( $payment, $full, 'no_booking', 0, false );
 			cmb_unlock( $lock_name, $lock );
 			return;
 		}
@@ -767,12 +722,9 @@ class CMB_Payments {
 			}
 
 			CMB_Wallet::release( $booking->id );
-			self::refund_due( $payment, $full, $outcome, 0, true );
 
-			// در حالت کیف پول، پیامک واریز به کیف پول همین را می‌گوید
-			if ( ! self::wallet_mode() ) {
-				self::notify_late( CMB_Bookings::get( $booking->id ), $outcome );
-			}
+			// پیامک واریز به کیف پول دلیلش را هم می‌گوید
+			self::refund_due( $payment, $full, $outcome, 0, true );
 		}
 
 		cmb_unlock( $lock_name, $lock );
@@ -890,35 +842,17 @@ class CMB_Payments {
 		);
 	}
 
-	/**
-	 * پیامک به مشتری وقتی پولش آمد ولی نوبت تأیید نشد.
-	 */
-	protected static function notify_late( $booking, $reason ) {
-		if ( ! $booking ) {
-			return;
-		}
-
-		$text = sprintf(
-			"چک موتور\n%s عزیز، پرداخت شما برای نوبت %s رسید ولی %s کل مبلغ (%s) به کارت شما بازگردانده می‌شود.",
-			$booking->customer_name,
-			$booking->tracking_code,
-			'slot_gone' === $reason ? 'ظرفیت آن زمان دیگر خالی نبود؛' : 'نوبت دیگر فعال نبود؛',
-			number_format( (int) $booking->deposit_amount ) . ' تومان'
-		);
-
-		cmb_after_response(
-			function () use ( $booking, $text ) {
-				CMB_SMS::send_event( $booking->phone, 'pattern_refund_late', array(), $text );
-			}
-		);
-	}
-
 	/* ------------------------------------------------------------------
 	 * برگشت وجه
 	 * --------------------------------------------------------------- */
 
 	/**
-	 * گذاشتن پرداخت در صف برگشت وجه.
+	 * برگشت یک پرداخت درگاه به کیف پول صاحبش (پرداخت تکراری، پرداخت دیر،
+	 * پرداخت بعد از انصراف، نوبت حذف‌شده).
+	 *
+	 * اگر واریز ممکن نشد (صاحب پرداخت معلوم نبود، یا جدول کیف پول هنوز
+	 * ساخته نشده)، پرداخت در صف «برگشت‌های مانده» می‌ماند تا پول گم نشود:
+	 * با ساخت جدول خودکار، وگرنه از پنل به کیف پول می‌رود.
 	 *
 	 * @param int  $amount_rial  ۰ یعنی برگشتی نیست (کل مبلغ نزد مجموعه).
 	 * @param bool $touch_booking وضعیت پرداختِ خود نوبت هم عوض شود؟
@@ -933,60 +867,37 @@ class CMB_Payments {
 		}
 
 		if ( in_array( $payment->refund_status, array( 'processing', 'done' ), true ) ) {
-			return new WP_Error( 'cmb_refund_locked', 'برگشت وجه این پرداخت قبلاً انجام شده یا در حال انجام است و قابل تغییر نیست.', array( 'status' => 409 ) );
+			return new WP_Error( 'cmb_refund_locked', 'برگشت وجه این پرداخت قبلاً انجام شده است و قابل تغییر نیست.', array( 'status' => 409 ) );
 		}
 
 		$amount_rial = max( 0, min( (int) $payment->amount_rial, (int) $amount_rial ) );
+		$error       = '';
 
-		/* کیف پول: همین حالا واریز می‌شود. اگر نشد (صاحب پرداخت معلوم
-		   نبود) مثل قبل در صف می‌ماند تا مدیر ببیند؛ پول گم نمی‌شود. */
-		if ( $amount_rial > 0 && self::wallet_mode() && ! self::is_selftest_reason( $reason ) ) {
+		if ( $amount_rial > 0 && CMB_Wallet::ready() ) {
 			$res = CMB_Wallet::refund_payment( $payment, (int) ( $amount_rial / 10 ), $reason, $by, $touch_booking );
 
 			if ( true === $res || 'cmb_refund_locked' === $res->get_error_code() ) {
 				return $res;
 			}
 
-			$payment = self::get_payment( $payment->id );
+			$error = $res->get_error_message();
 		}
 
 		if ( $amount_rial > 0 ) {
-			$fields = array(
-				'refund_status'      => 'due',
-				'refund_reason'      => $reason,
-				'refund_amount_rial' => $amount_rial,
-				'refund_by'          => (int) $by,
-				'refund_due_at'      => self::now_local(),
-				'refund_error'       => '',
+			self::update_payment(
+				$payment->id,
+				array(
+					'refund_status'      => 'due',
+					'refund_reason'      => $reason,
+					'refund_amount_rial' => $amount_rial,
+					'refund_by'          => (int) $by,
+					'refund_due_at'      => self::now_local(),
+					'refund_error'       => cmb_substr( $error, 0, 250 ),
+				)
 			);
 
-			$after = null;
-
-			if ( self::auto_schema() ) {
-				/* زمان برگشت خودکار. ویرایش مبلغِ برگشتی که هنوز در انتظار
-				   است ساعتش را از نو شروع نمی‌کند. */
-				$keep = 'due' === $payment->refund_status && ! empty( $payment->refund_after_gmt ) && $reason === $payment->refund_reason;
-				$wait = in_array( $reason, self::DELAYED_REASONS, true ) ? self::refund_delay() * MINUTE_IN_SECONDS : 0;
-				$after = $keep ? strtotime( $payment->refund_after_gmt . ' UTC' ) : cmb_now()->getTimestamp() + $wait;
-
-				$fields['refund_after_gmt'] = gmdate( 'Y-m-d H:i:s', $after );
-
-				if ( ! $keep ) {
-					$fields['refund_tries'] = 0;
-				}
-			}
-
-			self::update_payment( $payment->id, $fields );
-
-			// بدون تأخیر: همین که پاسخ به کاربر رسید
-			if ( null !== $after && $after <= cmb_now()->getTimestamp() && self::auto_on() ) {
-				$pid = (int) $payment->id;
-
-				cmb_after_response(
-					function () use ( $pid ) {
-						CMB_Payments::process_refunds( $pid );
-					}
-				);
+			if ( '' !== $error ) {
+				cmb_log( 'Refund left in queue: ' . $error, array( 'payment' => (int) $payment->id ) );
 			}
 		} else {
 			self::update_payment(
@@ -1013,7 +924,7 @@ class CMB_Payments {
 	}
 
 	/**
-	 * برداشتن برگشتِ معوق (مثلاً با بازگرداندن نوبت لغوشده).
+	 * برداشتن برگشتی که هنوز در صف مانده (با بازگرداندن نوبت لغوشده).
 	 *
 	 * @return true|WP_Error
 	 */
@@ -1026,17 +937,15 @@ class CMB_Payments {
 			return new WP_Error( 'cmb_refund_locked', 'بیعانه‌ی این نوبت به مشتری برگشت داده شده است؛ بازگرداندن نوبت ممکن نیست. نوبت تازه ثبت شود.', array( 'status' => 409 ) );
 		}
 
-		$fields = array(
-			'refund_status'      => '',
-			'refund_reason'      => '',
-			'refund_amount_rial' => 0,
+		self::update_payment(
+			$payment->id,
+			array(
+				'refund_status'      => '',
+				'refund_reason'      => '',
+				'refund_amount_rial' => 0,
+				'refund_error'       => '',
+			)
 		);
-
-		if ( self::auto_schema() ) {
-			$fields['refund_after_gmt'] = null;
-		}
-
-		self::update_payment( $payment->id, $fields );
 
 		self::update_booking(
 			$payment->booking_id,
@@ -1050,15 +959,18 @@ class CMB_Payments {
 	}
 
 	/**
-	 * برگشت بیعانه‌ی نوبتِ لغوشده (لغو مشتری یا مجموعه): کیف پول، یا در
-	 * حالت کارت صف برگشتِ پرداختِ اصلی.
+	 * برگشت بیعانه‌ی نوبتِ لغوشده (لغو مشتری یا مجموعه) به کیف پول.
+	 *
+	 * تا جدول کیف پول ساخته نشده (فاصله‌ی به‌روزرسانی افزونه تا اولین
+	 * باز کردن پیشخوان) برگشت در صف می‌ماند و با ساخت جدول به کیف پول
+	 * می‌رود.
 	 *
 	 * @param int $amount تومان؛ ۰ یعنی کل بیعانه نزد مجموعه می‌ماند.
 	 *
 	 * @return true|WP_Error
 	 */
 	public static function refund_booking( $booking, $amount, $reason, $by = 0 ) {
-		if ( self::wallet_mode() ) {
+		if ( CMB_Wallet::ready() ) {
 			return CMB_Wallet::refund_booking( $booking, $amount, $reason, $by );
 		}
 
@@ -1072,14 +984,15 @@ class CMB_Payments {
 	}
 
 	/**
-	 * ثبت «برگشت انجام شد» توسط مدیر (از پنل زرین‌پال یا کارت‌به‌کارت).
+	 * مدیر یک برگشتِ مانده را خودش تعیین تکلیف کرده و می‌بندد، بی‌واریز به
+	 * کیف پول (مثلاً برگشتی قدیمی که زرین‌پال پیش از کیف پول انجامش داده
+	 * بود، یا آزمونی که پول خود مدیر بود).
 	 *
 	 * @return true|WP_Error
 	 */
-	public static function mark_refunded( $payment_id, $ref, $by, $send_sms = true ) {
+	public static function mark_refunded( $payment_id, $ref, $by ) {
 		$payment = self::get_payment( $payment_id );
 
-		// processing هم: وقتی جواب زرین‌پال نامعلوم مانده و مدیر در پنل زرین‌پال دیده انجام شده
 		if ( ! $payment || ! in_array( $payment->refund_status, array( 'due', 'failed', 'processing' ), true ) ) {
 			return new WP_Error( 'cmb_refund_state', 'این برگشت در صف نیست؛ صفحه را تازه کنید.', array( 'status' => 409 ) );
 		}
@@ -1102,47 +1015,13 @@ class CMB_Payments {
 			self::update_booking( $booking->id, array( 'pay_status' => 'refunded' ) );
 		}
 
-		cmb_log( 'Refund marked done', array( 'payment' => (int) $payment->id, 'by' => (int) $by ) );
-
-		if ( $send_sms && $booking ) {
-			$amount = (int) ( $payment->refund_amount_rial / 10 );
-
-			cmb_after_response(
-				function () use ( $booking, $amount ) {
-					self::notify_refund( $booking, $amount );
-				}
-			);
-		}
+		cmb_log( 'Refund closed by hand', array( 'payment' => (int) $payment->id, 'by' => (int) $by ) );
 
 		return true;
 	}
 
 	/**
-	 * تغییر مبلغ برگشتی که هنوز انجام نشده.
-	 *
-	 * @param int $amount تومان.
-	 *
-	 * @return true|WP_Error
-	 */
-	public static function edit_refund( $payment_id, $amount, $by ) {
-		$payment = self::get_payment( $payment_id );
-
-		if ( ! $payment || 'due' !== $payment->refund_status ) {
-			return new WP_Error( 'cmb_refund_state', 'مبلغ فقط پیش از انجام برگشت قابل تغییر است.', array( 'status' => 409 ) );
-		}
-
-		$valid = self::validate_refund_amount( $amount, (int) $payment->amount_rial / 10 );
-
-		if ( is_wp_error( $valid ) ) {
-			return $valid;
-		}
-
-		return self::refund_due( $payment, (int) $amount * 10, $payment->refund_reason, $by, 'duplicate' !== $payment->refund_reason );
-	}
-
-	/**
-	 * مبلغ برگشت: بین ۰ و مبلغ پرداخت؛ اگر بیشتر از صفر، حداقل
-	 * ۲٬۰۰۰ تومان (حداقل برگشت در زرین‌پال).
+	 * مبلغ برگشت: بین ۰ و مبلغ پرداخت.
 	 *
 	 * @return true|WP_Error
 	 */
@@ -1151,10 +1030,6 @@ class CMB_Payments {
 
 		if ( $amount < 0 || $amount > (int) $paid ) {
 			return new WP_Error( 'cmb_refund_amount', sprintf( 'مبلغ برگشت باید بین ۰ و %s باشد.', cmb_toman( $paid ) ), array( 'status' => 400 ) );
-		}
-
-		if ( $amount > 0 && $amount * 10 < self::MIN_REFUND_RIAL && ! self::wallet_mode() ) {
-			return new WP_Error( 'cmb_refund_amount', 'کمترین مبلغ برگشت در زرین‌پال ۲,۰۰۰ تومان است. ۰ بگذارید یا مبلغ را بیشتر کنید.', array( 'status' => 400 ) );
 		}
 
 		return true;
@@ -1170,31 +1045,10 @@ class CMB_Payments {
 	}
 
 	/**
-	 * پیامک «برگشت وجه انجام شد».
+	 * برگشت‌های مانده برای پنل: ردیف‌های صف کارتِ پیش از کیف پول، و
+	 * برگشتی که واریزش به کیف پول ممکن نشد.
 	 *
-	 * متغیرهای پترن: {0} نام مشتری، {1} مبلغ (تومان)، {2} کد پیگیری نوبت
-	 */
-	public static function notify_refund( $booking, $amount ) {
-		$args = array(
-			$booking->customer_name,
-			number_format( (int) $amount ),
-			$booking->tracking_code,
-		);
-
-		$fallback = sprintf(
-			"چک موتور\n%s عزیز، %s تومان بابت نوبت %s به کارت شما بازگردانده شد.",
-			$args[0],
-			$args[1],
-			$args[2]
-		);
-
-		CMB_SMS::send_event( $booking->phone, 'pattern_refund', $args, $fallback );
-	}
-
-	/**
-	 * صف برگشت وجه برای پنل.
-	 *
-	 * @param string $which open (در صف و ناموفق) | done
+	 * @param string $which open (مانده) | done
 	 */
 	public static function refund_queue( $which = 'open', $limit = 100 ) {
 		global $wpdb;
@@ -1261,17 +1115,15 @@ class CMB_Payments {
 	}
 
 	protected static function refund_row( $r ) {
-		$reasons  = self::refund_reasons();
-		$paid_at  = $r->paid_at ? (string) $r->paid_at : (string) $r->created_at;
-		$deadline = strtotime( substr( $paid_at, 0, 10 ) . ' +60 days' );
-		$left     = (int) floor( ( $deadline - strtotime( cmb_today() ) ) / DAY_IN_SECONDS );
-		$service  = CMB_Services::get_service( $r->service_id );
+		$reasons = self::refund_reasons();
+		$paid_at = $r->paid_at ? (string) $r->paid_at : (string) $r->created_at;
+		$service = CMB_Services::get_service( $r->service_id );
 
 		return array(
 			'id'          => (int) $r->id,
 			'bookingId'   => (int) $r->booking_id,
 			'code'        => (string) $r->tracking_code,
-			'name'        => (int) $r->booking_id ? (string) $r->customer_name : 'آزمون پرداخت و برگشت (مدیر)',
+			'name'        => (int) $r->booking_id ? (string) $r->customer_name : 'آزمون پرداخت و برگشت (پول خود مدیر)',
 			'phone'       => (string) $r->phone,
 			'service'     => $service ? $service->title : '',
 			'dateFa'      => $r->booking_date ? cmb_jalali_date( $r->booking_date, 'numeric' ) : '',
@@ -1280,9 +1132,7 @@ class CMB_Payments {
 			'amount'      => (int) ( $r->refund_amount_rial / 10 ),
 			'amountFa'    => cmb_toman( $r->refund_amount_rial / 10 ),
 			'refId'       => (string) $r->ref_id,
-			'card'        => self::card_tail( $r->card_pan ),
 			'paidAtFa'    => cmb_jalali_date( substr( $paid_at, 0, 10 ), 'numeric' ) . ' ' . cmb_fa_num( substr( $paid_at, 11, 5 ) ),
-			'daysLeft'    => $left,
 			'status'      => (string) $r->refund_status,
 			'reason'      => (string) $r->refund_reason,
 			'reasonLabel' => isset( $reasons[ $r->refund_reason ] ) ? $reasons[ $r->refund_reason ] : (string) $r->refund_reason,
@@ -1290,18 +1140,14 @@ class CMB_Payments {
 			'ref'         => (string) $r->refund_ref,
 			'doneAtFa'    => $r->refund_done_at ? cmb_jalali_date( substr( $r->refund_done_at, 0, 10 ), 'numeric' ) : '',
 			'sandbox'     => (bool) $r->sandbox,
-			// برگشت خودکار: چند دقیقه‌ی دیگر، با چه روشی، چندمین تلاش
-			'auto'        => self::auto_on(),
-			'autoIn'      => ( 'due' === $r->refund_status && ! empty( $r->refund_after_gmt ) )
-				? (int) ceil( max( 0, strtotime( $r->refund_after_gmt . ' UTC' ) - cmb_now()->getTimestamp() ) / MINUTE_IN_SECONDS )
-				: -1,
-			'tries'       => isset( $r->refund_tries ) ? (int) $r->refund_tries : 0,
+			// نوبتش هست، پس صاحبش معلوم است و به کیف پولش می‌رود؛ وگرنه فقط بستنی است
+			'canWallet'   => (int) $r->booking_id > 0 && null !== $r->tracking_code,
 			'method'      => (string) $r->refund_method,
 			'methodLabel' => self::done_label( (string) $r->refund_method ),
 		);
 	}
 
-	/** روش انجام برگشت برای نمایش. */
+	/** روش انجام برگشت برای نمایش (روش‌های کارت برای ردیف‌های پیش از کیف پول). */
 	public static function done_label( $method ) {
 		$map = array(
 			'manual'   => 'دستی',
@@ -1315,846 +1161,16 @@ class CMB_Payments {
 		return isset( $map[ $method ] ) ? $map[ $method ] : '';
 	}
 
-	/** «۶۰۳۷۹۹******۱۲۳۴» → «۱۲۳۴» */
-	public static function card_tail( $pan ) {
-		$digits = preg_replace( '/\D/', '', (string) $pan );
-
-		return strlen( $digits ) >= 4 ? substr( $digits, -4 ) : '';
-	}
-
-	/* ------------------------------------------------------------------
-	 * برگشت خودکار با API زرین‌پال
-	 * --------------------------------------------------------------- */
-
-	public static function auto_schema() {
-		return version_compare( (string) get_option( 'cmb_db_version', '0' ), self::AUTO_SCHEMA, '>=' );
-	}
-
-	public static function refund_mode() {
-		return 'auto' === CMB_Settings::get( 'pay_refund_mode', 'manual' ) ? 'auto' : 'manual';
-	}
-
-	/** برگشت خودکار روشن است (پرداخت‌های آزمایشی بدون توکن هم شبیه‌سازی می‌شوند). */
-	public static function auto_on() {
-		return self::auto_schema() && 'auto' === self::refund_mode() && ! self::wallet_mode();
-	}
-
-	public static function refund_delay() {
-		return max( 0, min( 1440, (int) CMB_Settings::get( 'pay_refund_delay', 30 ) ) );
-	}
-
-	public static function refund_method() {
-		return 'CARD' === CMB_Settings::get( 'zp_refund_method', 'PAYA' ) ? 'CARD' : 'PAYA';
-	}
-
-	public static function method_label( $method ) {
-		return 'CARD' === $method ? 'کارت (فوری)' : 'پایا (چرخه‌ی بعدی)';
-	}
-
-	/* ------------------------------------------------------------------
-	 * برگشت فوری (reverse)
-	 *
-	 * طبق مستندات زرین‌پال: کل مبلغ یک پرداخت موفق را تا ۳۰ دقیقه بعد
-	 * برمی‌گرداند، بی‌کارمزد و بدون کیف پول و سرویس استرداد؛ فقط آی‌پی
-	 * سرور سایت باید در پنل زرین‌پال ثبت باشد (وگرنه ‎-62). اگر نشد،
-	 * همان لحظه استرداد (AddRefund) جایش را می‌گیرد.
-	 * --------------------------------------------------------------- */
-
-	/** دقیقه؛ دو دقیقه کمتر از سقف ۳۰ دقیقه‌ی زرین‌پال. */
-	const REVERSE_WINDOW = 28;
-
-	public static function reverse_on() {
-		return (bool) CMB_Settings::get( 'zp_reverse', 1 );
-	}
-
-	/** این برگشت را می‌شود با reverse انجام داد؟ (فقط کامل، فقط تازه) */
-	public static function can_reverse( $p ) {
-		if ( ! self::reverse_on() || 'selftest' === $p->refund_reason ) {
-			return false;
-		}
-
-		if ( '' === (string) $p->authority || (int) $p->refund_amount_rial !== (int) $p->amount_rial ) {
-			return false;
-		}
-
-		return self::in_reverse_window( $p );
-	}
-
-	protected static function in_reverse_window( $p ) {
-		$paid = empty( $p->paid_at ) ? 0 : strtotime( (string) $p->paid_at );
-
-		if ( ! $paid ) {
-			return false;
-		}
-
-		$age = strtotime( self::now_local() ) - $paid;
-
-		return $age >= -60 && $age <= self::REVERSE_WINDOW * MINUTE_IN_SECONDS;
-	}
-
-	/**
-	 * یک تلاش reverse.
-	 *
-	 * @return string|null نتیجه (done | processing)، یا null یعنی «نشد؛
-	 *                     با استرداد ادامه بده».
-	 */
-	protected static function try_reverse( $p ) {
-		self::update_payment( $p->id, array( 'refund_method' => 'reverse' ) );
-
-		$res = CMB_Zarinpal::reverse( self::merchant(), false, $p->authority );
-		$p   = self::get_payment( $p->id );
-
-		if ( true === $res ) {
-			self::update_payment( $p->id, array( 'raw' => self::append_raw( $p, 'reverse', array( 'code' => 100 ) ) ) );
-			CMB_Pay_Setup::record( 'reverse', true, 'برگشت فوری انجام شد.', 100 );
-
-			return self::finish_refund( self::get_payment( $p->id ), 'reverse', 'برگشت فوری · ' . $p->authority );
-		}
-
-		$data = $res->get_error_data();
-		$code = is_array( $data ) && isset( $data['zp_code'] ) ? (int) $data['zp_code'] : 0;
-		$msg  = $res->get_error_message();
-
-		// جوابی نرسید: معلوم نیست برگشت خورده یا نه؛ ۱۰ دقیقه بعد استعلام
-		if ( 'cmb_zp_http' === $res->get_error_code() ) {
-			self::update_payment(
-				$p->id,
-				array(
-					'refund_error'     => 'جواب برگشت فوری از زرین‌پال نرسید؛ چند دقیقه‌ی دیگر خودکار استعلام می‌شود.',
-					'refund_after_gmt' => gmdate( 'Y-m-d H:i:s', cmb_now()->getTimestamp() + 10 * MINUTE_IN_SECONDS ),
-					'raw'              => self::append_raw( $p, 'reverse', array( 'error' => cmb_substr( $msg, 0, 120 ) ) ),
-				)
-			);
-
-			return 'processing';
-		}
-
-		self::update_payment( $p->id, array( 'raw' => self::append_raw( $p, 'reverse', array( 'code' => $code, 'message' => cmb_substr( $msg, 0, 160 ) ) ) ) );
-
-		// ‎-61: شاید قبلاً برگشت خورده باشد (مثلاً جواب تلاش قبلی گم شد)
-		if ( -61 === $code ) {
-			$q = CMB_Zarinpal::inquiry( self::merchant(), false, $p->authority );
-
-			if ( ! is_wp_error( $q ) && 'REVERSED' === $q['status'] ) {
-				return self::finish_refund( self::get_payment( $p->id ), 'reverse', 'برگشت فوری · ' . $p->authority );
-			}
-		}
-
-		// ‎-63 (گذشتن ۳۰ دقیقه) و ‎-60 (بانک نپذیرفت) ایراد راه‌اندازی نیستند
-		if ( ! in_array( $code, array( -60, -61, -63 ), true ) ) {
-			CMB_Pay_Setup::record( 'reverse', false, $msg, $code );
-		}
-
-		self::update_payment( $p->id, array( 'refund_method' => '' ) );
-
-		return null;
-	}
-
-	/**
-	 * برگشت‌هایی که وقتشان رسیده را انجام می‌دهد.
-	 *
-	 * با قفل نام‌دار تا دو درخواست هم‌زمان (بازدید اپ، کرون، دکمه‌ی پنل)
-	 * با هم کار نکنند؛ تازه هر ردیف هم با به‌روزرسانی شرطی برداشته می‌شود.
-	 *
-	 * @param int  $only_id فقط همین پرداخت.
-	 * @param bool $force   حتی با برگشت دستی (فقط برای آزمون‌های صفحه‌ی
-	 *                      راه‌اندازی، که باید پیش از روشن کردن خودکار
-	 *                      آزموده شوند).
-	 *
-	 * @return array شناسه‌ی پرداخت => نتیجه (done | failed | due | processing)
-	 */
-	public static function process_refunds( $only_id = 0, $force = false ) {
-		global $wpdb;
-
-		if ( ! self::auto_on() && ! ( $force && $only_id && self::auto_schema() ) ) {
-			return array();
-		}
-
-		$lock = cmb_lock( 'cmb_refunds', 1 );
-
-		if ( 'busy' === $lock ) {
-			return array();
-		}
-
-		$table = cmb_table( 'payments' );
-		$now   = cmb_now_gmt();
-		$only  = $only_id ? $wpdb->prepare( ' AND id = %d', (int) $only_id ) : '';
-		$out   = array();
-
-		// پاسخ‌های نامعلوم قبلی، پیش از هر برگشت تازه
-		$stuck = $wpdb->get_results(
-			$wpdb->prepare( "SELECT * FROM {$table} WHERE refund_status = 'processing' AND refund_after_gmt IS NOT NULL AND refund_after_gmt <= %s{$only} ORDER BY id ASC LIMIT 10", $now ) // phpcs:ignore
-		);
-
-		foreach ( (array) $stuck as $p ) {
-			$out[ (int) $p->id ] = self::recover_refund( $p );
-		}
-
-		$rows = $wpdb->get_results(
-			$wpdb->prepare( "SELECT * FROM {$table} WHERE refund_status = 'due' AND refund_after_gmt IS NOT NULL AND refund_after_gmt <= %s{$only} ORDER BY refund_after_gmt ASC LIMIT 10", $now ) // phpcs:ignore
-		);
-
-		foreach ( (array) $rows as $p ) {
-			$out[ (int) $p->id ] = self::run_refund( $p );
-		}
-
-		cmb_unlock( 'cmb_refunds', $lock );
-
-		return $out;
-	}
-
-	/**
-	 * یک برگشت.
-	 */
-	protected static function run_refund( $p ) {
-		global $wpdb;
-
-		$table = cmb_table( 'payments' );
-
-		// برداشتن ردیف: فقط یک اجرا می‌تواند due را processing کند
-		$took = $wpdb->query(
-			$wpdb->prepare(
-				"UPDATE {$table} SET refund_status = 'processing', refund_tries = refund_tries + 1, updated_at = %s WHERE id = %d AND refund_status = 'due'", // phpcs:ignore
-				self::now_local(),
-				(int) $p->id
-			)
-		);
-
-		if ( ! $took ) {
-			return 'skipped';
-		}
-
-		$p = self::get_payment( $p->id );
-
-		// درگاه آزمایشی: کل مسیر اجرا و فقط خودِ برگشت شبیه‌سازی می‌شود
-		if ( (int) $p->sandbox ) {
-			return self::finish_refund( $p, 'sandbox', self::sandbox_note( $p ) );
-		}
-
-		// اول برگشت فوری (کامل و تا ۲۸ دقیقه بعد از پرداخت)، بعد استرداد
-		if ( '' === (string) $p->zp_session_id && self::can_reverse( $p ) ) {
-			$fast = self::try_reverse( $p );
-
-			if ( null !== $fast ) {
-				return $fast;
-			}
-
-			$p = self::get_payment( $p->id );
-		}
-
-		// توکن هست ولی شماره‌ی ترمینال نه: از فهرست درگاه‌های زرین‌پال پیدایش کن
-		if ( '' === CMB_Zarinpal_Refund::terminal() && '' !== CMB_Zarinpal_Refund::token() ) {
-			$found = CMB_Zarinpal_Refund::detect_terminal( self::merchant(), wp_parse_url( home_url(), PHP_URL_HOST ) );
-
-			if ( ! is_wp_error( $found ) ) {
-				CMB_Settings::update( array( 'zp_terminal_id' => $found['id'] ) );
-			}
-		}
-
-		if ( ! CMB_Zarinpal_Refund::configured() ) {
-			$fast = self::last_event( $p, 'reverse' );
-
-			return self::fail_refund(
-				$p,
-				( $fast && isset( $fast['message'] ) ? 'برگشت فوری نشد: ' . $fast['message'] . ' و برای استرداد ' : 'برگشت خودکار تنظیم نشده است: ' )
-					. 'توکن دسترسی یا شماره‌ی ترمینال زرین‌پال در تنظیمات نیست.'
-			);
-		}
-
-		if ( '' === (string) $p->ref_id ) {
-			return self::fail_refund( $p, 'شماره‌ی پیگیری این پرداخت ثبت نشده؛ برگشت را از پنل زرین‌پال انجام دهید.' );
-		}
-
-		$session = (string) $p->zp_session_id;
-
-		if ( '' === $session ) {
-			$found = CMB_Zarinpal_Refund::find_session( $p->ref_id, (int) $p->amount_rial );
-
-			if ( is_wp_error( $found ) ) {
-				return self::refund_error( $p, $found, false );
-			}
-
-			$session = $found;
-			self::update_payment( $p->id, array( 'zp_session_id' => cmb_substr( $session, 0, 40 ) ) );
-
-			// تراکنش با همین ترمینال پیدا شد: شماره‌ی ترمینال درست است
-			CMB_Pay_Setup::record( 'api', true, 'تراکنش یک پرداخت با همین شماره‌ی ترمینال پیدا شد؛ توکن و ترمینال درست است.', 'ok' );
-		}
-
-		return self::send_refund( self::get_payment( $p->id ), $session );
-	}
-
-	/**
-	 * فراخوانی AddRefund و ثبت نتیجه.
-	 */
-	protected static function send_refund( $p, $session ) {
-		$booking = $p->booking_id ? CMB_Bookings::get( $p->booking_id ) : null;
-		$method  = self::refund_method();
-
-		if ( $booking ) {
-			$desc = ( 'duplicate' === $p->refund_reason ? 'بازگشت پرداخت تکراری نوبت ' : 'بازگشت بیعانه نوبت ' ) . $booking->tracking_code;
-		} else {
-			$desc = 'آزمون برگشت سیستم رزرو چک موتور';
-		}
-
-		$res = CMB_Zarinpal_Refund::add_refund( $session, (int) $p->refund_amount_rial, $method, $desc );
-
-		if ( is_wp_error( $res ) ) {
-			return self::refund_error( $p, $res, true );
-		}
-
-		CMB_Pay_Setup::record( 'refund', true, 'استرداد ' . cmb_toman( $p->refund_amount_rial / 10 ) . ' ثبت شد.', 'ok' );
-
-		return self::finish_refund(
-			$p,
-			'api-' . $method,
-			trim( 'ZP#' . $res['id'] . ( '' !== $res['status'] ? ' · ' . $res['status'] : '' ) )
-		);
-	}
-
-	/**
-	 * جواب قبلی نامعلوم بود (قطع ارتباط وسط AddRefund): اول می‌پرسیم
-	 * انجام شده یا نه؛ اگر نه، یک بار دیگر. زرین‌پال برای هر تراکنش فقط
-	 * یک برگشت می‌پذیرد، پس تلاش دوباره پول را دو بار برنمی‌گرداند.
-	 */
-	protected static function recover_refund( $p ) {
-		if ( (int) $p->sandbox ) {
-			return self::finish_refund( $p, 'sandbox', self::sandbox_note( $p ) );
-		}
-
-		if ( (int) $p->refund_tries >= 6 ) {
-			return self::fail_refund( $p, 'نتیجه‌ی برگشت از زرین‌پال معلوم نشد. در پنل زرین‌پال ← تراکنش‌ها بررسی کنید و اگر انجام شده «ثبت انجام‌شده» را بزنید.' );
-		}
-
-		// جواب reverse نرسیده بود: از زرین‌پال می‌پرسیم برگشت خورده یا نه
-		if ( 'reverse' === (string) $p->refund_method && '' === (string) $p->zp_session_id ) {
-			self::update_payment( $p->id, array( 'refund_tries' => (int) $p->refund_tries + 1 ) );
-
-			$q = CMB_Zarinpal::inquiry( self::merchant(), false, $p->authority );
-
-			if ( is_wp_error( $q ) ) {
-				self::update_payment( $p->id, array( 'refund_after_gmt' => gmdate( 'Y-m-d H:i:s', cmb_now()->getTimestamp() + 10 * MINUTE_IN_SECONDS ) ) );
-				return 'processing';
-			}
-
-			if ( 'REVERSED' === $q['status'] ) {
-				return self::finish_refund( self::get_payment( $p->id ), 'reverse', 'برگشت فوری · ' . $p->authority );
-			}
-
-			// برنگشته: دوباره (اگر هنوز در ۲۸ دقیقه است reverse، وگرنه استرداد)
-			self::update_payment(
-				$p->id,
-				array(
-					'refund_method' => '',
-					'refund_status' => 'due',
-				)
-			);
-
-			return self::run_refund( self::get_payment( $p->id ) );
-		}
-
-		if ( '' === (string) $p->zp_session_id ) {
-			// هنوز AddRefund فرستاده نشده بود
-			self::update_payment( $p->id, array( 'refund_status' => 'due' ) );
-			return self::run_refund( self::get_payment( $p->id ) );
-		}
-
-		self::update_payment( $p->id, array( 'refund_tries' => (int) $p->refund_tries + 1 ) );
-
-		$done = CMB_Zarinpal_Refund::is_refunded( $p->zp_session_id );
-
-		if ( true === $done ) {
-			return self::finish_refund( $p, 'api-' . self::refund_method(), 'ZP · استرداد شده' );
-		}
-
-		if ( is_wp_error( $done ) ) {
-			self::update_payment( $p->id, array( 'refund_after_gmt' => gmdate( 'Y-m-d H:i:s', cmb_now()->getTimestamp() + 10 * MINUTE_IN_SECONDS ) ) );
-			return 'processing';
-		}
-
-		return self::send_refund( self::get_payment( $p->id ), $p->zp_session_id );
-	}
-
-	/**
-	 * خطای زرین‌پال ⇒ وضعیت بعدی.
-	 *
-	 * @param bool $sent آیا AddRefund فرستاده شده بود؟
-	 */
-	protected static function refund_error( $p, WP_Error $error, $sent ) {
-		$kind = CMB_Zarinpal_Refund::kind( $error );
-
-		// خطاهای ماندگار، ایراد راه‌اندازی‌اند (توکن، سرویس استرداد، موجودی)
-		if ( 'auth' === $kind ) {
-			CMB_Pay_Setup::record( 'api', false, $error->get_error_message(), 'auth' );
-		}
-
-		if ( 'auth' === $kind || 'final' === $kind ) {
-			CMB_Pay_Setup::record( 'refund', false, $error->get_error_message(), $kind );
-		}
-
-		if ( 'already' === $kind ) {
-			return self::finish_refund( $p, 'api-' . self::refund_method(), 'ZP · پیش‌تر استرداد شده بود' );
-		}
-
-		if ( 'unknown' === $kind && $sent ) {
-			self::update_payment(
-				$p->id,
-				array(
-					'refund_error'     => 'جواب زرین‌پال نرسید؛ چند دقیقه‌ی دیگر خودکار بررسی می‌شود.',
-					'refund_after_gmt' => gmdate( 'Y-m-d H:i:s', cmb_now()->getTimestamp() + 10 * MINUTE_IN_SECONDS ),
-				)
-			);
-
-			return 'processing';
-		}
-
-		if ( 'retry' === $kind || 'unknown' === $kind ) {
-			$tries = (int) $p->refund_tries;
-
-			if ( $tries <= count( self::REFUND_RETRY ) ) {
-				self::update_payment(
-					$p->id,
-					array(
-						'refund_status'    => 'due',
-						'refund_error'     => $error->get_error_message(),
-						'refund_after_gmt' => gmdate( 'Y-m-d H:i:s', cmb_now()->getTimestamp() + self::REFUND_RETRY[ max( 0, $tries - 1 ) ] * MINUTE_IN_SECONDS ),
-					)
-				);
-
-				return 'due';
-			}
-		}
-
-		return self::fail_refund( $p, $error->get_error_message() );
-	}
-
-	protected static function fail_refund( $p, $message ) {
-		self::update_payment(
-			$p->id,
-			array(
-				'refund_status' => 'failed',
-				'refund_error'  => cmb_substr( (string) $message, 0, 250 ),
-			)
-		);
-
-		cmb_log( 'Automatic refund failed: ' . $message, array( 'payment' => (int) $p->id ) );
-
-		return 'failed';
-	}
-
-	protected static function finish_refund( $p, $method, $ref ) {
-		self::update_payment(
-			$p->id,
-			array(
-				'refund_status'  => 'done',
-				'refund_method'  => $method,
-				'refund_ref'     => cmb_substr( (string) $ref, 0, 80 ),
-				'refund_done_at' => self::now_local(),
-				'refund_error'   => '',
-			)
-		);
-
-		$booking = $p->booking_id ? CMB_Bookings::get( $p->booking_id ) : null;
-
-		if ( $booking && 'duplicate' !== $p->refund_reason ) {
-			self::update_booking( $booking->id, array( 'pay_status' => 'refunded' ) );
-		}
-
-		cmb_log( 'Refund done automatically', array( 'payment' => (int) $p->id, 'method' => $method ) );
-
-		if ( $booking ) {
-			$amount = (int) ( $p->refund_amount_rial / 10 );
-
-			cmb_after_response(
-				function () use ( $booking, $amount ) {
-					CMB_Payments::notify_refund( $booking, $amount );
-				}
-			);
-		}
-
-		return 'done';
-	}
-
 	/**
 	 * کِی و چطور پول به مشتری می‌رسد، به زبان مشتری.
-	 *
-	 * @param string $reason دلیل برگشت (customer، shop، duplicate، …)
 	 */
-	public static function refund_eta( $reason = 'customer' ) {
-		if ( self::wallet_mode() ) {
-			return 'همان لحظه به کیف پول شما در همین سایت برمی‌گردد و برای بیعانه‌ی نوبت بعدی قابل استفاده است';
-		}
-
-		if ( ! self::auto_on() ) {
-			return 'معمولاً ظرف ۳ روز کاری به همان کارتی که با آن پرداخت کرده‌اید برمی‌گردد';
-		}
-
-		$delay = in_array( $reason, self::DELAYED_REASONS, true ) ? self::refund_delay() : 0;
-		$when  = $delay > 0 ? 'حدود ' . cmb_fa_num( $delay ) . ' دقیقه‌ی دیگر' : 'همین حالا';
-
-		// برگشت‌های سیستمی (نه لغو مشتری یا مجموعه) کامل و تازه‌اند: برگشت فوری
-		if ( ! in_array( $reason, self::DELAYED_REASONS, true ) && self::reverse_on() ) {
-			return 'همین حالا خودکار به همان کارتی که با آن پرداخت کرده‌اید برمی‌گردد';
-		}
-
-		return 'CARD' === self::refund_method()
-			? $when . ' خودکار به همان کارتی که با آن پرداخت کرده‌اید برمی‌گردد'
-			: $when . ' خودکار با پایا به حسابتان برگشت داده می‌شود (معمولاً تا یک روز کاری می‌رسد)';
-	}
-
-	/**
-	 * «برگشت خودکار همین حالا» از پنل: صبر را کنار می‌گذارد و اگر قبلاً
-	 * ناموفق بود (مثلاً موجودی کم بود و حالا شارژ شده) دوباره می‌فرستد.
-	 *
-	 * @return string|WP_Error نتیجه.
-	 */
-	public static function run_now( $payment_id ) {
-		if ( ! self::auto_on() ) {
-			return new WP_Error( 'cmb_refund_manual', 'برگشت خودکار در تنظیمات خاموش است؛ برگشت را از پنل زرین‌پال انجام دهید و «ثبت انجام‌شده» را بزنید.', array( 'status' => 409 ) );
-		}
-
-		$p = self::get_payment( $payment_id );
-
-		if ( ! $p || ! in_array( $p->refund_status, array( 'due', 'failed' ), true ) ) {
-			return new WP_Error( 'cmb_refund_state', 'این برگشت در صف نیست؛ صفحه را تازه کنید.', array( 'status' => 409 ) );
-		}
-
-		self::update_payment(
-			$p->id,
-			array(
-				'refund_status'    => 'due',
-				'refund_after_gmt' => cmb_now_gmt(),
-				'refund_tries'     => 'failed' === $p->refund_status ? 0 : (int) $p->refund_tries,
-			)
-		);
-
-		$res = self::process_refunds( $p->id );
-
-		return isset( $res[ (int) $p->id ] ) ? $res[ (int) $p->id ] : 'busy';
-	}
-
-	/* ------------------------------------------------------------------
-	 * آزمون‌های پرداخت و برگشت (صفحه‌ی راه‌اندازی زرین‌پال)
-	 * --------------------------------------------------------------- */
-
-	const SELFTEST_RIAL = 20000;
-
-	/** fast: برگشت فوری (reverse)؛ refund: استرداد (AddRefund). */
-	const SELFTEST_PATHS = array( 'fast', 'refund' );
-
-	/**
-	 * وضعیت آزمون‌ها: { fast: {pid, token, started, returned}, refund: {…} }.
-	 * قالب 1.34.0 (یک آزمون) همان آزمون استرداد حساب می‌شود.
-	 */
-	public static function selftest_state() {
-		$state = get_option( 'cmb_pay_selftest' );
-
-		if ( ! is_array( $state ) ) {
-			return array();
-		}
-
-		if ( isset( $state['pid'] ) ) {
-			return array( 'refund' => $state );
-		}
-
-		return array_intersect_key( $state, array_flip( self::SELFTEST_PATHS ) );
-	}
-
-	/** دلیل برگشتِ پرداخت آزمون، از روی اینکه کدام آزمون ساختش. */
-	protected static function selftest_reason( $payment_id ) {
-		foreach ( self::selftest_state() as $path => $st ) {
-			if ( isset( $st['pid'] ) && (int) $st['pid'] === (int) $payment_id ) {
-				return 'fast' === $path ? 'selftest_fast' : 'selftest';
-			}
-		}
-
-		return 'selftest';
+	public static function refund_eta() {
+		return 'همان لحظه به کیف پول شما در همین سایت برمی‌گردد و برای بیعانه‌ی نوبت بعدی قابل استفاده است';
 	}
 
 	/** صفحه‌ی «راه‌اندازی زرین‌پال» در پیشخوان. */
 	public static function setup_url( $anchor = '' ) {
 		return admin_url( 'admin.php?page=cmb-zarinpal' . ( '' !== $anchor ? '#' . $anchor : '' ) );
-	}
-
-	/**
-	 * مدیر ۲,۰۰۰ تومان می‌پردازد و همان مسیرِ برگشت مشتری‌ها کل مبلغ را
-	 * برمی‌گرداند. fast: برگشت فوری (اگر نشد، استرداد)؛ refund: فقط
-	 * استرداد، تا سرویس استرداد و کیف پول هم آزموده شوند. نوبتی ساخته
-	 * نمی‌شود (booking_id = 0). با درگاه آزمایشی بدون پول اجرا می‌شود.
-	 *
-	 * @return string|WP_Error نشانی درگاه.
-	 */
-	public static function selftest_start( $path = 'refund' ) {
-		global $wpdb;
-
-		$path = in_array( $path, self::SELFTEST_PATHS, true ) ? $path : 'refund';
-
-		if ( ! self::schema_ready() ) {
-			return new WP_Error( 'cmb_pay_schema', 'ساختار دیتابیس هنوز به‌روز نشده است.' );
-		}
-
-		$merchant = self::merchant();
-
-		if ( '' === $merchant ) {
-			return new WP_Error( 'cmb_pay_off', 'مرچنت کد زرین‌پال وارد نشده است.' );
-		}
-
-		$sandbox = self::sandbox();
-		$now     = self::now_local();
-		$token   = wp_generate_password( 32, false, false );
-
-		$wpdb->insert(
-			cmb_table( 'payments' ),
-			array_merge(
-				array(
-					'booking_id'  => 0,
-					'user_id'     => get_current_user_id(),
-					'sandbox'     => $sandbox ? 1 : 0,
-					'amount_rial' => self::SELFTEST_RIAL,
-					'status'      => 'created',
-					'ip'          => cmb_get_ip(),
-					'created_at'  => $now,
-					'created_gmt' => cmb_now_gmt(),
-					'updated_at'  => $now,
-				),
-				CMB_Wallet::schema_ready() ? array( 'kind' => 'selftest' ) : array()
-			)
-		);
-
-		$pid = (int) $wpdb->insert_id;
-
-		if ( ! $pid ) {
-			return new WP_Error( 'cmb_db_error', 'ثبت پرداخت آزمایشی ناموفق بود.' );
-		}
-
-		$state          = self::selftest_state();
-		$state[ $path ] = array(
-			'pid'     => $pid,
-			'token'   => $token,
-			'started' => cmb_now()->getTimestamp(),
-		);
-
-		update_option( 'cmb_pay_used', 1, false );
-		update_option( 'cmb_pay_selftest', $state, false );
-
-		$res = CMB_Zarinpal::request(
-			$merchant,
-			$sandbox,
-			self::SELFTEST_RIAL,
-			add_query_arg(
-				array(
-					't' => $token,
-					'p' => $path,
-				),
-				cmb_app_url( 'pay/selftest' )
-			),
-			'fast' === $path ? 'آزمون برگشت فوری سیستم رزرو چک موتور' : 'آزمون استرداد سیستم رزرو چک موتور'
-		);
-
-		$payment = self::get_payment( $pid );
-
-		if ( is_wp_error( $res ) ) {
-			self::update_payment(
-				$pid,
-				array(
-					'status'     => 'error',
-					'gw_message' => cmb_substr( $res->get_error_message(), 0, 250 ),
-					'raw'        => self::append_raw( $payment, 'request', array( 'error' => $res->get_error_message() ) ),
-				)
-			);
-
-			return $res;
-		}
-
-		self::update_payment(
-			$pid,
-			array(
-				'authority'      => $res['authority'],
-				'status'         => 'requested',
-				'checks'         => 0,
-				'next_check_gmt' => gmdate( 'Y-m-d H:i:s', cmb_now()->getTimestamp() + self::CHECKS[0] * MINUTE_IN_SECONDS ),
-				'raw'            => self::append_raw( $payment, 'request', array( 'code' => (int) $res['code'] ) ),
-			)
-		);
-
-		return CMB_Zarinpal::start_url( $res['authority'], $sandbox );
-	}
-
-	/**
-	 * بازگشت از درگاه در آزمون: verify، و اگر برگشت خودکار روشن است همان
-	 * لحظه برگشت؛ بعد به صفحه‌ی راه‌اندازی با کارت نتیجه.
-	 */
-	protected static function handle_selftest() {
-		nocache_headers();
-
-		// phpcs:disable WordPress.Security.NonceVerification -- توکن تصادفیِ همین آزمون جای nonce است
-		$path  = ( isset( $_GET['p'] ) && 'fast' === $_GET['p'] ) ? 'fast' : 'refund';
-		$token = isset( $_GET['t'] ) ? preg_replace( '/[^A-Za-z0-9]/', '', (string) wp_unslash( $_GET['t'] ) ) : '';
-		$auth  = isset( $_GET['Authority'] ) ? preg_replace( '/[^A-Za-z0-9]/', '', (string) wp_unslash( $_GET['Authority'] ) ) : '';
-		// phpcs:enable
-
-		$all   = self::selftest_state();
-		$state = isset( $all[ $path ] ) ? $all[ $path ] : null;
-		$back  = add_query_arg( 'cmb_selftest', $path, self::setup_url( 'test-' . $path ) );
-
-		if ( ! is_array( $state ) || empty( $state['token'] ) || ! hash_equals( (string) $state['token'], $token ) ) {
-			wp_safe_redirect( $back );
-			exit;
-		}
-
-		$payment = self::get_payment( (int) $state['pid'] );
-
-		if ( $payment && '' !== $auth && $auth === (string) $payment->authority ) {
-			self::verify_payment( $payment, 'return' );
-
-			/* برگشتش همین حالا، تا کارت نتیجه کامل باشد (آزمون صبر ندارد).
-			   حتی با برگشت دستی: آزمون برای پیش از روشن کردن خودکار است. */
-			self::process_refunds( (int) $payment->id, true );
-		}
-
-		$all[ $path ]['returned'] = cmb_now()->getTimestamp();
-		update_option( 'cmb_pay_selftest', $all, false );
-
-		wp_safe_redirect( $back );
-		exit;
-	}
-
-	/**
-	 * نتیجه‌ی آخرین آزمون یک مسیر، مرحله‌به‌مرحله.
-	 *
-	 * @param string $path fast | refund
-	 *
-	 * @return array|null { ok, back, sandbox, steps[[ok|bad|wait, title, text]], when, summary }
-	 */
-	public static function selftest_result( $path = 'refund' ) {
-		$all   = self::selftest_state();
-		$state = isset( $all[ $path ] ) ? $all[ $path ] : null;
-
-		if ( ! is_array( $state ) || empty( $state['pid'] ) ) {
-			return null;
-		}
-
-		$p = self::get_payment( (int) $state['pid'] );
-
-		if ( ! $p ) {
-			return null;
-		}
-
-		$steps   = array();
-		$sandbox = (bool) $p->sandbox;
-		$paid    = 'paid' === $p->status;
-		$done    = 'done' === $p->refund_status;
-		$fast_ok = false;
-
-		// ۱. پرداخت
-		if ( $paid ) {
-			$steps[] = array( 'ok', 'پرداخت ۲,۰۰۰ تومان', 'تأیید شد؛ شماره پیگیری ' . $p->ref_id . ( $sandbox ? ' (آزمایشی)' : '' ) );
-		} elseif ( 'requested' === $p->status ) {
-			$steps[] = array( 'wait', 'پرداخت ۲,۰۰۰ تومان', empty( $state['returned'] ) ? 'هنوز از درگاه برنگشته‌اید.' : 'جواب درگاه هنوز نیامده؛ چند دقیقه‌ی دیگر خودکار بررسی می‌شود.' );
-		} else {
-			$steps[] = array( 'bad', 'پرداخت ۲,۰۰۰ تومان', $p->gw_message ? $p->gw_message : 'پرداخت انجام نشد.' );
-		}
-
-		$manual_wait = array( 'wait', 'برگشت', 'در صف «بازگشت وجه» پنل مانده. آزمون را دوباره بگیرید، یا از پنل زرین‌پال برگردانید و در پنل رزرو «ثبت انجام‌شده» بزنید.' );
-
-		// ۲. برگشت فوری (فقط آزمون fast)
-		if ( $paid && 'fast' === $path ) {
-			$event = self::last_event( $p, 'reverse' );
-
-			if ( $sandbox && $done ) {
-				$fast_ok = true;
-				$steps[] = array( 'ok', 'برگشت فوری ۲,۰۰۰ تومان', 'شبیه‌سازی شد (درگاه آزمایشی پول جابه‌جا نمی‌کند).' );
-			} elseif ( $done && 'reverse' === $p->refund_method ) {
-				$fast_ok = true;
-				$steps[] = array( 'ok', 'برگشت فوری ۲,۰۰۰ تومان', 'انجام شد — بی‌کارمزد، به همان کارت.' );
-			} elseif ( $event && isset( $event['code'] ) && 100 !== (int) $event['code'] ) {
-				$steps[] = array( 'bad', 'برگشت فوری ۲,۰۰۰ تومان', CMB_Zarinpal::message( (int) $event['code'], isset( $event['message'] ) ? $event['message'] : '' ) . ' (کد ' . (int) $event['code'] . ') — به‌جایش استرداد امتحان شد:' );
-			} elseif ( 'processing' === $p->refund_status ) {
-				$steps[] = array( 'wait', 'برگشت فوری ۲,۰۰۰ تومان', $p->refund_error ? $p->refund_error : 'در حال انجام…' );
-			} elseif ( ! self::reverse_on() ) {
-				$steps[] = array( 'bad', 'برگشت فوری ۲,۰۰۰ تومان', 'برگشت فوری در قدم ۳ خاموش است؛ استرداد امتحان شد:' );
-			} elseif ( 'due' === $p->refund_status && ! self::auto_on() ) {
-				$steps[] = $manual_wait;
-			} elseif ( $done || 'failed' === $p->refund_status ) {
-				$steps[] = array( 'bad', 'برگشت فوری ۲,۰۰۰ تومان', 'فرستاده نشد؛ بیش از ' . cmb_fa_num( self::REVERSE_WINDOW ) . ' دقیقه از پرداخت گذشته بود. استرداد امتحان شد:' );
-			}
-		}
-
-		// ۳ و ۴. پیدا کردن تراکنش و استرداد (آزمون refund، یا وقتی برگشت فوری نشد)
-		if ( $paid && ! $fast_ok && ( 'refund' === $path || 'reverse' !== $p->refund_method ) ) {
-			if ( $sandbox ) {
-				$steps[] = array( 'ok', 'پیدا کردن تراکنش در زرین‌پال', 'در درگاه آزمایشی لازم نیست.' );
-			} elseif ( '' !== (string) $p->zp_session_id ) {
-				$steps[] = array( 'ok', 'پیدا کردن تراکنش در زرین‌پال', 'شناسه‌ی تراکنش ' . $p->zp_session_id );
-			} elseif ( 'failed' === $p->refund_status ) {
-				$steps[] = array( 'bad', 'پیدا کردن تراکنش در زرین‌پال', $p->refund_error );
-			}
-
-			if ( $done ) {
-				$steps[] = array( 'ok', 'استرداد ۲,۰۰۰ تومان', self::done_label( $p->refund_method ) . ( $p->refund_ref ? ' — ' . $p->refund_ref : '' ) );
-			} elseif ( 'failed' === $p->refund_status && '' !== (string) $p->zp_session_id ) {
-				$steps[] = array( 'bad', 'استرداد ۲,۰۰۰ تومان', $p->refund_error );
-			} elseif ( 'processing' === $p->refund_status ) {
-				$steps[] = array( 'wait', 'استرداد ۲,۰۰۰ تومان', $p->refund_error ? $p->refund_error : 'در حال انجام…' );
-			} elseif ( 'due' === $p->refund_status ) {
-				$steps[] = self::auto_on()
-					? array( 'wait', 'استرداد ۲,۰۰۰ تومان', $p->refund_error ? $p->refund_error : 'در صف برگشت خودکار.' )
-					: $manual_wait;
-			}
-		}
-
-		$all_ok = true;
-
-		foreach ( $steps as $st ) {
-			if ( 'ok' !== $st[0] ) {
-				$all_ok = false;
-			}
-		}
-
-		if ( 'fast' === $path ) {
-			$ok = $paid && $fast_ok;
-		} else {
-			$ok = $all_ok && count( $steps ) >= 3;
-		}
-
-		if ( $ok ) {
-			$summary = 'fast' === $path
-				? 'برگشت فوری کار می‌کند؛ برگشت‌های کاملِ تازه (پرداخت تکراری، پرداخت دیر) بی‌کارمزد و همان لحظه برمی‌گردند.'
-				: 'استرداد کار می‌کند؛ برگشت خودکار برای لغو مشتری‌ها آماده است.';
-		} elseif ( $done ) {
-			$summary = 'پول برگشت، ولی ' . ( 'fast' === $path ? 'نه با برگشت فوری. ایراد قدم ۳ را برطرف کنید و دوباره آزمون بگیرید.' : 'یکی از مرحله‌ها ایراد داشت.' );
-		} else {
-			$summary = '';
-		}
-
-		return array(
-			'ok'      => $ok,
-			'back'    => $done,
-			'sandbox' => $sandbox,
-			'steps'   => $steps,
-			'summary' => $summary,
-			'when'    => cmb_jalali_date( substr( (string) $p->created_at, 0, 10 ), 'numeric' ) . ' ' . substr( (string) $p->created_at, 11, 5 ),
-			'at'      => isset( $state['started'] ) ? (int) $state['started'] : 0,
-		);
-	}
-
-	/** آخرین رویداد یک نوع از لاگ ردیف پرداخت. */
-	protected static function last_event( $p, $event ) {
-		$log  = json_decode( (string) $p->raw, true );
-		$last = null;
-
-		foreach ( is_array( $log ) ? $log : array() as $row ) {
-			if ( isset( $row['e'], $row['d'] ) && $event === $row['e'] && is_array( $row['d'] ) ) {
-				$last = $row['d'];
-			}
-		}
-
-		return $last;
-	}
-
-	/** متن ref برگشت شبیه‌سازی‌شده، با مسیری که در سایت واقعی می‌رفت. */
-	protected static function sandbox_note( $p ) {
-		return ( self::can_reverse( $p ) ? 'شبیه‌سازی برگشت فوری' : 'شبیه‌سازی استرداد' ) . ' — پولی جابه‌جا نشد';
 	}
 
 	/* ------------------------------------------------------------------
@@ -2229,11 +1245,6 @@ class CMB_Payments {
 		set_transient( 'cmb_pay_rc', 1, 2 * MINUTE_IN_SECONDS );
 
 		$out['expired'] = self::expire_stale( true );
-
-		// برگشت‌هایی که وقتشان رسیده (و آن‌هایی که جوابشان نامعلوم ماند)
-		if ( self::auto_on() ) {
-			$out['refunds'] = count( self::process_refunds() );
-		}
 
 		if ( '' === self::merchant() ) {
 			return $out;
@@ -2329,11 +1340,6 @@ class CMB_Payments {
 
 		if ( 'pay/tick' === $route ) {
 			self::handle_tick();
-			return true;
-		}
-
-		if ( 'pay/selftest' === $route ) {
-			self::handle_selftest();
 			return true;
 		}
 
@@ -2477,7 +1483,7 @@ class CMB_Payments {
 			return $out + array(
 				'state'    => $checking ? 'checking' : 'failed',
 				'message'  => $checking
-					? 'نتیجه‌ی پرداخت هنوز از درگاه نرسیده. اگر پول از حسابتان کم شده، چند دقیقه‌ی دیگر خودکار بررسی می‌شود و نوبت ثبت می‌شود؛ وگرنه کل مبلغ ' . ( self::wallet_mode() ? 'به کیف پولتان برمی‌گردد.' : 'بازگردانده می‌شود.' )
+					? 'نتیجه‌ی پرداخت هنوز از درگاه نرسیده. اگر پول از حسابتان کم شده، چند دقیقه‌ی دیگر خودکار بررسی می‌شود و نوبت ثبت می‌شود؛ وگرنه کل مبلغ به کیف پولتان برمی‌گردد.'
 					: ( $last && $last->gw_message ? $last->gw_message . ' ' : 'پرداخت انجام نشد. ' ) . 'نوبت هنوز برایتان نگه داشته شده است.',
 				'canRetry' => $attempts < self::MAX_ATTEMPTS,
 				'holdLeft' => max( 0, strtotime( $booking->hold_until_gmt . ' UTC' ) - cmb_now()->getTimestamp() ),
@@ -2487,9 +1493,7 @@ class CMB_Payments {
 		if ( in_array( $booking->pay_status, array( 'refund_due', 'refunding', 'refunded' ), true ) && 'expired' === $booking->status ) {
 			return $out + array(
 				'state'   => 'refund',
-				'message' => self::wallet_mode()
-					? sprintf( 'پرداخت شما رسید ولی نوبت دیگر قابل ثبت نبود؛ %s به کیف پول شما برگشت و برای نوبت بعدی قابل استفاده است.', cmb_toman( $booking->refund_amount ) )
-					: sprintf( 'پرداخت شما رسید ولی نوبت دیگر قابل ثبت نبود؛ %s به کارت شما بازگردانده می‌شود.', cmb_toman( $booking->refund_amount ) ),
+				'message' => sprintf( 'پرداخت شما رسید ولی نوبت دیگر قابل ثبت نبود؛ %s به کیف پول شما برگشت و برای نوبت بعدی قابل استفاده است.', cmb_toman( $booking->refund_amount ) ),
 			);
 		}
 
@@ -2629,17 +1633,15 @@ class CMB_Payments {
 		$labels = array(
 			'unpaid'     => 'پرداخت نشده',
 			'paid'       => 'پرداخت شده',
-			'refund_due' => 'در صف بازگشت وجه',
+			'refund_due' => 'در صف برگشت به کیف پول',
 			'refunding'  => 'در حال بازگشت وجه',
 			'refunded'   => 'وجه بازگردانده شد',
 			'kept'       => 'نزد مجموعه ماند',
 		);
 
-		$to_wallet = self::wallet_mode();
-
-		/* برگشتِ کیف پولی: برگشتی که روی کارت انجام شده (پیش از کیف
-		   پول) همان برچسب قبلی را دارد. */
-		if ( $to_wallet && 'refunded' === $booking->pay_status ) {
+		/* برگشتی که پیش از کیف پول روی کارت انجام شده بود، همان برچسب
+		   قبلی را دارد. */
+		if ( 'refunded' === $booking->pay_status ) {
 			$main = self::main_payment( $booking->id );
 
 			if ( ! $main || 'wallet' === $main->refund_method || '' === (string) $main->refund_method ) {
@@ -2657,7 +1659,6 @@ class CMB_Payments {
 			'walletFa'     => cmb_toman( $wallet ),
 			'gateway'      => $deposit - $wallet,
 			'gatewayFa'    => cmb_toman( $deposit - $wallet ),
-			'toWallet'     => $to_wallet,
 			'deposit'      => $deposit,
 			'depositFa'    => cmb_toman( $deposit ),
 			'status'       => (string) $booking->pay_status,

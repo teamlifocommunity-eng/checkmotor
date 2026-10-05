@@ -788,9 +788,7 @@ class CMB_Bookings {
 		);
 
 		if ( isset( $booking->pay_status ) && 'paid' === $booking->pay_status ) {
-			$hint .= CMB_Payments::wallet_mode()
-				? ' — با لغو، ' . number_format( (int) $booking->cancel_refund_amount ) . ' تومان به کیف پولتان برمی‌گردد'
-				: ' — با لغو، ' . number_format( (int) $booking->cancel_refund_amount ) . ' تومان بازگردانده می‌شود';
+			$hint .= ' — با لغو، ' . number_format( (int) $booking->cancel_refund_amount ) . ' تومان به کیف پولتان برمی‌گردد';
 		}
 
 		return $hint;
@@ -943,9 +941,9 @@ class CMB_Bookings {
 
 		if ( 'cancelled' === $from && in_array( $pay, array( 'refund_due', 'refunding', 'refunded', 'kept' ), true ) ) {
 			/* برگشتِ کیف پولی پس گرفتنی است (CMB_Wallet::reclaim)؛ برگشتی که
-			   به کارت رفته نه. */
+			   پیش از کیف پول به کارت رفته بود نه. */
 			$locked = 'refunding' === $pay
-				|| ( 'refunded' === $pay && ! ( CMB_Payments::wallet_mode() && CMB_Wallet::cancel_credit( $booking->id ) > 0 ) );
+				|| ( 'refunded' === $pay && CMB_Wallet::cancel_credit( $booking->id ) < 1 );
 
 			if ( $locked ) {
 				return new WP_Error( 'cmb_refund_locked', 'بیعانه‌ی این نوبت به مشتری برگشت داده شده است؛ بازگرداندن نوبت ممکن نیست. نوبت تازه ثبت شود.', array( 'status' => 409 ) );
@@ -1021,15 +1019,12 @@ class CMB_Bookings {
 			return true;
 		}
 
-		$pay    = isset( $booking->pay_status ) ? (string) $booking->pay_status : '';
-		$main   = in_array( $pay, array( 'paid', 'refund_due', 'kept' ), true ) ? CMB_Payments::main_payment( $booking->id ) : null;
-		$wallet = CMB_Payments::wallet_mode();
+		$pay  = isset( $booking->pay_status ) ? (string) $booking->pay_status : '';
+		$main = 'refund_due' === $pay ? CMB_Payments::main_payment( $booking->id ) : null;
 
-		/* بیعانه دارد؟ در حالت کیف پول نوبت ممکن است تمامش با کیف پول
-		   پرداخت شده باشد و ردیف پرداختی نداشته باشد. */
-		$deposit = $wallet
-			? ( ! empty( $booking->deposit_amount ) && in_array( $pay, array( 'paid', 'refund_due', 'kept', 'refunded' ), true ) )
-			: (bool) $main;
+		/* بیعانه دارد؟ نوبت ممکن است تمامش با کیف پول پرداخت شده باشد و
+		   ردیف پرداختی نداشته باشد. */
+		$deposit = ! empty( $booking->deposit_amount ) && in_array( $pay, array( 'paid', 'refund_due', 'kept', 'refunded' ), true );
 
 		// بازگردانی: جا باید هنوز باشد (مگر مدیر عمداً بخواهد)
 		if ( 'cancelled' === $booking->status && 'confirmed' === $status && empty( $args['force'] ) ) {
@@ -1053,8 +1048,8 @@ class CMB_Bookings {
 		$refund = null;
 
 		if ( 'cancelled' === $status && $deposit && 'paid' === $pay ) {
-			// کیف پول: کل بیعانه، چه از درگاه آمده باشد چه از کیف پول
-			$paid   = $wallet ? (int) $booking->deposit_amount : (int) ( $main->amount_rial / 10 );
+			// کل بیعانه، چه از درگاه آمده باشد چه از کیف پول
+			$paid   = (int) $booking->deposit_amount;
 			$refund = ( isset( $args['refund'] ) && '' !== $args['refund'] && null !== $args['refund'] )
 				? (int) cmb_en_num( (string) $args['refund'] )
 				: CMB_Payments::shop_refund_default( $paid );
@@ -1066,7 +1061,8 @@ class CMB_Bookings {
 			}
 		}
 
-		if ( 'cancelled' === $booking->status && 'confirmed' === $status && $main && 'refund_due' === $pay ) {
+		// برگشتی که هنوز در صف مانده بود (واریز به کیف پول ممکن نشده بود) برداشته می‌شود
+		if ( 'cancelled' === $booking->status && 'confirmed' === $status && $main ) {
 			$cleared = CMB_Payments::clear_refund( $main );
 
 			if ( is_wp_error( $cleared ) ) {
@@ -1081,7 +1077,7 @@ class CMB_Bookings {
 
 		/* بازگرداندن نوبتی که بیعانه‌اش به کیف پول برگشته بود: همان مبلغ
 		   از کیف پول پس گرفته می‌شود، اگر مشتری هنوز خرجش نکرده. */
-		if ( 'cancelled' === $booking->status && 'confirmed' === $status && $wallet && 'refunded' === $pay ) {
+		if ( 'cancelled' === $booking->status && 'confirmed' === $status && 'refunded' === $pay ) {
 			$taken = CMB_Wallet::reclaim( $booking, get_current_user_id() );
 
 			if ( is_wp_error( $taken ) ) {

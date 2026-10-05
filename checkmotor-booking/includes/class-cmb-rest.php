@@ -433,14 +433,14 @@ class CMB_Rest {
 
 		$message = 'نوبت شما لغو شد و ظرفیت آزاد شد.';
 
-		if ( ! empty( $result['pay'] ) && 'refunded' === $result['pay']['status'] && CMB_Payments::wallet_mode() ) {
+		if ( ! empty( $result['pay'] ) && 'refunded' === $result['pay']['status'] ) {
 			$message = sprintf(
 				'نوبت شما لغو شد. %s به کیف پول شما برگشت؛ موجودی: %s. برای بیعانه‌ی نوبت بعدی قابل استفاده است.',
 				$result['pay']['refundFa'],
 				cmb_toman( CMB_Wallet::balance( cmb_get_user_phone( $user_id ) ) )
 			);
 		} elseif ( ! empty( $result['pay'] ) && 'refund_due' === $result['pay']['status'] ) {
-			$message = sprintf( 'نوبت شما لغو شد. %s %s.', $result['pay']['refundFa'], CMB_Payments::refund_eta( 'customer' ) );
+			$message = sprintf( 'نوبت شما لغو شد. %s %s.', $result['pay']['refundFa'], CMB_Payments::refund_eta() );
 		} elseif ( ! empty( $result['pay'] ) && 'kept' === $result['pay']['status'] ) {
 			$message = 'نوبت شما لغو شد. طبق قوانین رزرو، مبلغی از بیعانه بازگردانده نمی‌شود.';
 		}

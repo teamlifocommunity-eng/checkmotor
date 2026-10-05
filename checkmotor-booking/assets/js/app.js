@@ -804,7 +804,7 @@ function stepPay() {
     (q.priceFa ? kv('هزینه‌ی خدمت', q.priceFa) + kv('باقی‌مانده هنگام مراجعه', q.remainingFa) : '') +
     '<div class="cmb-deposit__rows">' +
       '<div class="cmb-deposit__row ok">' + I.check + '<div>لغو تا <b>' + esc(q.cancelUntilFa) + '</b>: ' + esc(q.refundFa) +
-        (S.pay.wallet ? ' همان لحظه به کیف پولتان در همین سایت برمی‌گردد.' : ' به کارتتان برمی‌گردد.') + '</div></div>' +
+        ' همان لحظه به کیف پولتان در همین سایت برمی‌گردد.</div></div>' +
       '<div class="cmb-deposit__row bad">' + I.alert + '<div>بعد از آن لغو آنلاین ممکن نیست؛ اگر نیایید کل بیعانه نزد مجموعه می‌ماند.</div></div>' +
     '</div>' +
     '</div>';
@@ -1004,7 +1004,7 @@ function viewPay() {
   } else {
     out += '<button class="cmb-btn cmb-btn--pri cmb-mt4" data-start>نوبت تازه</button>';
 
-    if (R.state === 'refund' && S.pay.wallet) {
+    if (R.state === 'refund') {
       out += '<button class="cmb-btn cmb-btn--soft cmb-mt3" data-tab="wallet">' + I.wallet + ' دیدن کیف پول</button>';
     }
   }
@@ -1036,9 +1036,7 @@ function cancelBox(b) {
 
     return '<div class="cmb-bk__foot">' +
       '<div class="cmb-bk__ask">' + (b.pay && b.pay.status === 'paid'
-        ? (S.pay.wallet
-          ? 'این نوبت لغو شود؟ ' + esc(b.pay.cancelRefundFa) + ' از بیعانه همان لحظه به کیف پولتان برمی‌گردد (برای بیعانه‌ی نوبت بعدی؛ قابل برداشت به کارت نیست). بقیه طبق قوانین نزد مجموعه می‌ماند. لغو برگشت‌پذیر نیست.'
-          : 'این نوبت لغو شود؟ ' + esc(b.pay.cancelRefundFa) + ' از بیعانه ' + esc(S.pay.eta || 'به کارت شما برمی‌گردد') + ' و بقیه طبق قوانین نزد مجموعه می‌ماند. لغو برگشت‌پذیر نیست.')
+        ? 'این نوبت لغو شود؟ ' + esc(b.pay.cancelRefundFa) + ' از بیعانه همان لحظه به کیف پولتان برمی‌گردد (برای بیعانه‌ی نوبت بعدی؛ قابل برداشت به کارت نیست). بقیه طبق قوانین نزد مجموعه می‌ماند. لغو برگشت‌پذیر نیست.'
         : 'این نوبت لغو شود؟ ظرفیت آزاد می‌شود و برگشت‌پذیر نیست.') + '</div>' +
       '<div class="cmb-bk__acts">' +
         '<button class="cmb-btn cmb-btn--sm cmb-btn--danger"' + (busy ? ' disabled' : '') +
@@ -1065,7 +1063,7 @@ function payLine(b) {
     txt += ' — پرداخت شد' + (p.wallet > 0 ? ' (' + (p.gateway > 0 ? p.walletFa + ' از کیف پول' : 'از کیف پول') + ')' : '') +
       (p.remainingFa ? '؛ باقی‌مانده هنگام مراجعه ' + p.remainingFa : '');
   }
-  else if (p.status === 'refund_due' || p.status === 'refunding') { txt += ' — بازگشت ' + p.refundFa + (S.pay.auto ? ' خودکار انجام می‌شود' : ' در صف انجام است'); }
+  else if (p.status === 'refund_due' || p.status === 'refunding') { txt += ' — ' + p.refundFa + ' به کیف پول شما برمی‌گردد'; }
   else if (p.status === 'refunded') {
     txt += String(p.statusLabel || '').indexOf('کیف پول') !== -1
       ? ' — ' + p.refundFa + ' به کیف پول شما برگشت'

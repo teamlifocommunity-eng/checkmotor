@@ -11,10 +11,9 @@ var NONCE = C.nonce || '';
 var NURL  = C.nonceUrl || '/wp-admin/admin-ajax.php?action=cmb_nonce';
 
 var VIEWS = ['summary', 'board', 'bookings', 'customers', 'services', 'closures', 'settings', 'refunds'];
-var PAY = C.pay || { on: false, used: false, canRefund: false, shopPct: 100, auto: false, delay: 0, methodFa: '', reverse: false, setup: null, wallet: false };
+var PAY = C.pay || { on: false, used: false, canRefund: false, shopPct: 100, setup: null };
 
 /* برگشت‌ها به کیف پول مشتری می‌رود، نه کارت: بخش «بیعانه و کیف پول» */
-var WALLET = !!PAY.wallet;
 
 
 /* وضعیت‌ها ثابت‌اند و نباید از پاسخ سرور خوانده شوند.
@@ -50,7 +49,7 @@ var S = {
   fetching: false,
   sched: null, schedFull: '', health: null, sweeping: false,
   closures: null, closeForm: { date: '', block: '', reason: '' },
-  refunds: null, refWhich: WALLET ? 'wallet' : 'open', refEdit: null,   // صف بازگشت وجه
+  refunds: null, refWhich: 'wallet', refEdit: null,   // بیعانه و کیف پول؛ refunds = برگشت‌های مانده
   wallets: null, walQ: '', walFilter: 'balance', walPage: 1,             // کیف پول مشتری‌ها
   payReview: null, simFor: 0,                      // بررسی مبلغ‌های هر خدمت
   payReport: null, repDays: 30, repSandbox: false,  // گزارش
@@ -231,8 +230,8 @@ var NAV = [
   { k: 'settings', t: 'تنظیمات شیفت', ic: I.cog }
 ];
 
-// «بازگشت وجه» فقط وقتی پرداخت بیعانه روشن است یا روزی بوده
-if (PAY.used) { NAV.splice(4, 0, WALLET ? { k: 'refunds', t: 'بیعانه و کیف پول', ic: I.wallet } : { k: 'refunds', t: 'بیعانه و برگشت', ic: I.card }); }
+// «بیعانه و کیف پول» فقط وقتی پرداخت بیعانه روشن است یا روزی بوده
+if (PAY.used) { NAV.splice(4, 0, { k: 'refunds', t: 'بیعانه و کیف پول', ic: I.wallet }); }
 
 function side() {
   var up = S.summary && S.summary.counts ? S.summary.counts.upcoming : 0;
@@ -1044,7 +1043,7 @@ function svcModal() {
         '<button type="button" class="pn-seg__b' + (Number(s.active) === 0 ? ' is-on' : '') + '" data-svc-active="0">غیرفعال</button>' +
       '</div>' +
       '<div class="pn-hint">' + (Number(s.active) === 2
-        ? 'فقط مدیران و مسئولان رزرو این خدمت را در اپ می‌بینند (با نشان «آزمایشی») — برای امتحان مسیر واقعی رزرو، پرداخت و برگشت' + (WALLET ? ' به کیف پول. بهتر است سهمیه‌ی جداگانه و بیعانه‌ی ۱,۰۰۰ تومان داشته باشد.' : '. بهتر است سهمیه‌ی جداگانه و بیعانه‌ی ۲,۰۰۰ تومان داشته باشد.')
+        ? 'فقط مدیران و مسئولان رزرو این خدمت را در اپ می‌بینند (با نشان «آزمایشی») — برای امتحان مسیر واقعی رزرو، پرداخت و برگشت به کیف پول. بهتر است سهمیه‌ی جداگانه و بیعانه‌ی ۱,۰۰۰ تومان داشته باشد.'
         : (Number(s.active) === 1 ? 'در اپ برای همه‌ی مشتری‌ها قابل رزرو است.' : 'در اپ دیده نمی‌شود.')) + '</div>' +
     '</div>' +
 
@@ -1056,90 +1055,52 @@ function svcModal() {
     '</div>';
 }
 
-/* ═══ بازگشت وجه ═══ */
+/* ═══ بیعانه و کیف پول ═══ */
 
 /**
- * صف برگشت بیعانه به مشتری.
- *
- * برگشت در زرین‌پال انجام می‌شود (پنل زرین‌پال ← تراکنش ← استرداد
- * وجه)؛ اینجا فهرست کارهای مانده است و ثبتِ اینکه انجام شد.
+ * کیف پول مشتری‌ها، بررسی مبلغ‌ها و گزارش؛ و «برگشت‌های مانده» (صف کارتِ
+ * پیش از کیف پول، یا برگشتی که واریزش به کیف پول ممکن نشد) فقط وقتی
+ * چیزی در آن مانده باشد.
  */
 function viewRefunds() {
   var R = S.refunds;
-  var html = WALLET
-    ? head('بیعانه و کیف پول', 'کیف پول مشتری‌ها، بررسی مبلغ‌ها و گزارش',
-      '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>')
-    : head('بیعانه و برگشت', 'برگشت بیعانه به کارت مشتری، بررسی مبلغ‌ها و گزارش',
-      '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>');
+  var html = head('بیعانه و کیف پول', 'کیف پول مشتری‌ها، بررسی مبلغ‌ها و گزارش',
+    '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>');
 
   var tab = function (k, t) {
     return '<button class="pn-tabs__b' + (S.refWhich === k ? ' is-on' : '') + '" data-ref-which="' + k + '">' + t + '</button>';
   };
 
-  if (WALLET) {
-    // صف قدیمی کارت فقط وقتی چیزی در آن مانده
-    var legacy = (S.summary && S.summary.counts && S.summary.counts.refunds) || (S.wallets && S.wallets.legacy) || (R && R.open) || 0;
+  var left = (S.summary && S.summary.counts && S.summary.counts.refunds) || (S.wallets && S.wallets.legacy) || (R && R.open) || 0;
 
-    html += '<div class="pn-tabs pn-reftabs">' +
-      tab('wallet', 'کیف پول') +
-      (legacy || S.refWhich === 'open' ? tab('open', 'صف قدیمی' + (legacy ? ' (' + fa(legacy) + ')' : '')) : '') +
-      tab('review', 'بررسی خدمات') +
-      tab('report', 'گزارش') +
-      '</div>';
-  } else {
-    html += '<div class="pn-tabs pn-reftabs">' +
-      tab('open', 'در صف' + (R && R.open ? ' (' + fa(R.open) + ')' : '')) +
-      tab('done', 'انجام‌شده') +
-      tab('review', 'بررسی خدمات') +
-      tab('report', 'گزارش') +
-      '</div>';
-  }
+  html += '<div class="pn-tabs pn-reftabs">' +
+    tab('wallet', 'کیف پول') +
+    (left || S.refWhich === 'open' ? tab('open', 'برگشت‌های مانده' + (left ? ' (' + fa(left) + ')' : '')) : '') +
+    tab('review', 'بررسی خدمات') +
+    tab('report', 'گزارش') +
+    '</div>';
 
   // فقط مدیر سایت: راه‌اندازی زرین‌پال تا کامل نشده، یادآوری می‌شود
   if (PAY.setup && PAY.setup.ready < PAY.setup.total && S.refWhich !== 'report') {
     html += note('warn', I.alert, '<b>راه‌اندازی زرین‌پال: ' + fa(PAY.setup.ready) + ' از ' + fa(PAY.setup.total) + ' آماده.</b> ' +
-      esc(PAY.setup.text) + ' <a href="' + esc(PAY.setup.url) + '" target="_blank" rel="noopener">' + (WALLET ? 'باز کردن صفحه‌ی راه‌اندازی' : 'باز کردن صفحه‌ی راه‌اندازی و آزمون‌ها') + '</a>');
+      esc(PAY.setup.text) + ' <a href="' + esc(PAY.setup.url) + '" target="_blank" rel="noopener">باز کردن صفحه‌ی راه‌اندازی</a>');
   }
 
   if (S.refWhich === 'review') { return html + viewPayReview(); }
   if (S.refWhich === 'report') { return html + viewPayReport(); }
   if (S.refWhich === 'wallet') { return html + viewWallets(); }
 
-  if (WALLET && S.refWhich === 'open') {
-    html += note('info', I.info, '<b>برگشت‌های پیش از کیف پول</b> که خودکار منتقل نشدند (مثلاً در زرین‌پال در حال انجام بودند). ' +
-      'اگر در پنل زرین‌پال انجام شده، «ثبت انجام‌شده» بزنید؛ وگرنه «انتقال به کیف پول» تا همان مبلغ به کیف پول مشتری برود.');
-  }
-
-  if (S.refWhich === 'open' && PAY.auto) {
-    html += note('info', I.info, 'برگشت خودکار روشن است: هر برگشت ' +
-      (PAY.delay ? fa(PAY.delay) + ' دقیقه بعد از لغو' : 'بلافاصله') + ' با ' + esc(PAY.methodFa) +
-      ' از طریق زرین‌پال انجام می‌شود.' +
-      (PAY.reverse ? ' برگشت‌های کامل تا ۳۰ دقیقه بعد از پرداخت (مثل پرداخت تکراری یا پرداخت دیر) همان لحظه با «برگشت فوری» و بی‌کارمزد برمی‌گردند.' : '') +
-      ' ردیف‌های ناموفق با دلیلشان این‌جا می‌مانند تا دوباره بفرستید یا دستی انجام دهید.');
-  }
-
-  if (S.refWhich === 'open' && !WALLET) {
-    html += '<details class="pn-card pn-guide"><summary class="pn-card__t">' + I.info + ' راهنمای برگشت وجه در زرین‌پال</summary>' +
-      '<ol class="pn-steps">' +
-        '<li>وارد پنل زرین‌پال شوید و به «تراکنش‌ها» بروید.</li>' +
-        '<li>تراکنش را با <b>شماره پیگیری (ref_id)</b> همین ردیف پیدا کنید.</li>' +
-        '<li>«استرداد وجه» را بزنید و <b>همین مبلغ</b> را وارد کنید (روش «کارت» فوری است، «پایا» چرخه‌ی بعدی).</li>' +
-        '<li>شماره پیگیری استرداد را اینجا بنویسید و «ثبت انجام‌شده» را بزنید؛ برای مشتری پیامک می‌رود.</li>' +
-      '</ol>' +
-      '<div class="pn-hint">برگشت از موجودی کیف پول زرین‌پال شما برداشت می‌شود و هر تراکنش فقط یک بار و تا ۲ ماه بعد از پرداخت قابل استرداد است (کارمزد حدود ۱,۵۰۰ تومان). اگر سرویس «استرداد وجه» در حسابتان فعال نیست، با تیکت به پشتیبانی زرین‌پال درخواست دهید. بعد از ۲ ماه فقط کارت‌به‌کارت ممکن است.</div>' +
-      '</details>';
-  }
+  html += note('info', I.info, '<b>برگشت‌هایی که به کیف پول نرفته‌اند:</b> مانده از پیش از کیف پول (مثلاً در زرین‌پال در حال انجام بودند)، یا صاحب پرداخت معلوم نبود. ' +
+    '«انتقال به کیف پول» همان مبلغ را به کیف پول مشتری می‌برد؛ اگر پول قبلاً جور دیگری به مشتری برگشته، «ثبت انجام‌شده» بزنید.');
 
   if (!R) { return html + skel(3); }
 
-  if (!R.items.length) {
-    return html + empty(S.refWhich === 'open' ? (WALLET ? 'صف قدیمی خالی است' : 'برگشت وجهی در صف نیست') : 'هنوز برگشتی ثبت نشده', '');
-  }
+  if (!R.items.length) { return html + empty('برگشت مانده‌ای نیست', ''); }
 
   html += '<div class="pn-refunds">' + R.items.map(function (x) { return refundCard(x, R.canRefund); }).join('') + '</div>';
 
-  if (!R.canRefund && S.refWhich === 'open') {
-    html += note('info', I.info, 'ثبت «انجام شد» فقط برای مدیر سایت مجاز است. مدیر می‌تواند این دسترسی را در تنظیمات پرداخت به مسئولان رزرو هم بدهد.');
+  if (!R.canRefund) {
+    html += note('info', I.info, 'تعیین تکلیف این ردیف‌ها فقط برای مدیر سایت مجاز است. مدیر می‌تواند این دسترسی را در تنظیمات پرداخت به مسئولان رزرو هم بدهد.');
   }
 
   return html;
@@ -1155,7 +1116,7 @@ function viewWallets() {
     html += '<div class="pn-stats pn-stats--rep">' +
       stat('جمع موجودی کیف پول‌ها', W.totals.liabilityFa, I.wallet, '') +
       stat('کیف پول دارای موجودی', fa(W.totals.wallets), I.users, '') +
-      (W.legacy ? stat('صف قدیمی', fa(W.legacy), I.alert, 'hot') : '') +
+      (W.legacy ? stat('برگشت‌های مانده', fa(W.legacy), I.alert, 'hot') : '') +
       '</div>';
 
     html += note('info', I.info, 'هر برگشت (لغو به‌موقع مشتری، لغو از طرف مجموعه، پرداخت تکراری یا دیر) همان لحظه به کیف پول مشتری می‌رود و او با آن بیعانه‌ی نوبت بعدی را می‌پردازد. ' +
@@ -1346,10 +1307,7 @@ function viewPayReview() {
     '<div class="pn-chipline">' +
       chip(st.enabled ? 'پرداخت بیعانه روشن' : 'پرداخت بیعانه خاموش', st.enabled ? 'ok' : 'warn') +
       chip(st.sandbox ? 'درگاه آزمایشی' : 'درگاه واقعی', st.sandbox ? 'warn' : '') +
-      (st.wallet
-        ? chip('برگشت به کیف پول مشتری', 'ok')
-        : chip('برگشت ' + (st.auto ? 'خودکار' : 'دستی'), st.auto ? 'ok' : 'warn') +
-          (st.auto ? chip('روش: ' + esc(st.methodFa)) + chip('تأخیر: ' + (st.delay ? fa(st.delay) + ' دقیقه' : 'ندارد')) : '')) +
+      chip('برگشت به کیف پول مشتری', 'ok') +
       chip('مهلت لغو مشتری: ' + fa(st.hours) + ' ساعت') +
       chip('لغو از طرف مجموعه: ' + fa(st.shopPct) + '٪ بیعانه') +
     '</div>' +
@@ -1426,41 +1384,15 @@ function viewPayReport() {
 
   if (!R || !R.totals) { return html + skel(2); }
 
-  var t = R.totals;
-
-  if (R.mode === 'wallet') { return html + walletReport(R); }
-
-  if (!t.paidCount) {
-    return html + empty('در این بازه پرداختی نبوده', S.repSandbox ? '' : 'پرداخت‌های درگاه آزمایشی حساب نشده‌اند.');
+  // جدول کیف پول هنوز ساخته نشده (پیش از اولین باز کردن پیشخوان بعد از به‌روزرسانی)
+  if (typeof R.totals.liability === 'undefined') {
+    return html + empty('گزارش هنوز آماده نیست', 'یک بار پیشخوان وردپرس را باز کنید تا دیتابیس به‌روز شود.');
   }
 
-  html += '<div class="pn-stats pn-stats--rep">' +
-    stat('بیعانه‌ی پرداخت‌شده (' + fa(t.paidCount) + ')', t.paidFa, I.card, '') +
-    stat('برگشت داده‌شده (' + fa(t.refundedCount) + ')', t.refundedFa, I.check, 'ok') +
-    stat('در صف برگشت (' + fa(t.pendingCount) + ')', t.pendingFa, I.clock, '') +
-    stat('برگشت ناموفق (' + fa(t.failedCount) + ')', t.failedFa, I.alert, t.failedCount ? 'hot' : '') +
-    stat('نزد مجموعه', t.keptFa, I.gauge, '') +
-    stat('کارمزد درگاه', t.feesFa, I.tag, '') +
-    '</div>';
-
-  var table = function (title, rows, cols) {
-    if (!rows.length) { return ''; }
-    return '<div class="pn-card"><div class="pn-card__t">' + title + '</div><div class="pn-tablewrap"><table class="pn-table pn-table--rep"><thead><tr>' +
-      cols.map(function (c) { return '<th>' + c[0] + '</th>'; }).join('') + '</tr></thead><tbody>' +
-      rows.map(function (r) { return '<tr>' + cols.map(function (c) { return '<td data-label="' + esc(c[0]) + '">' + esc(r[c[1]]) + '</td>'; }).join('') + '</tr>'; }).join('') +
-      '</tbody></table></div></div>';
-  };
-
-  html += table('به تفکیک خدمت', R.services, [['خدمت', 'title'], ['تعداد', 'countFa'], ['پرداخت‌شده', 'paidFa'], ['برگشت داده‌شده', 'refundedFa'], ['در صف یا ناموفق', 'openFa']]);
-  html += table('برگشت‌ها به تفکیک دلیل', R.reasons, [['دلیل', 'label'], ['تعداد', 'countFa'], ['مبلغ', 'sumFa']]);
-  html += table('برگشت‌های انجام‌شده به تفکیک روش', R.methods, [['روش', 'label'], ['تعداد', 'countFa'], ['مبلغ', 'sumFa']]);
-
-  if (t.tests) { html += note('info', I.info, fa(t.tests) + ' آزمون پرداخت و برگشت ۲,۰۰۰ تومانی در این بازه بوده که جزو درآمد حساب نشده است.'); }
-
-  return html + '<div class="pn-hint">مبنای بازه، زمان پرداخت است؛ برگشت هر پرداخت در همان سطر حساب می‌شود، هر وقت انجام شده باشد.</div>';
+  return html + walletReport(R);
 }
 
-/** گزارش در حالت کیف پول. */
+/** گزارش بیعانه و کیف پول. */
 function walletReport(R) {
   var t = R.totals;
   var html = '';
@@ -1503,14 +1435,12 @@ function walletReport(R) {
 }
 
 function refundCard(x, can) {
-  var late = x.daysLeft < 0;
-  var soon = !late && x.daysLeft < 15;
   var ed = S.refEdit && S.refEdit.id === x.id ? S.refEdit : null;
 
-  var html = '<div class="pn-card pn-refund' + (late ? ' is-late' : '') + '">' +
+  var html = '<div class="pn-card pn-refund">' +
     '<div class="pn-refund__hd">' +
       '<div><div class="pn-refund__name">' + esc(x.name) + '</div>' +
-      '<div class="pn-refund__sub"><a href="tel:' + esc(x.phone) + '">' + fa(esc(x.phone)) + '</a> · <span class="pn-code">' + esc(x.code) + '</span>' +
+      '<div class="pn-refund__sub"><a href="tel:' + esc(x.phone) + '">' + fa(esc(x.phone)) + '</a>' + (x.code ? ' · <span class="pn-code">' + esc(x.code) + '</span>' : '') +
         (x.sandbox ? ' · <span class="pn-badge pn-badge--expired">آزمایشی</span>' : '') + '</div></div>' +
       '<div class="pn-refund__amount">' + esc(x.amountFa) + '</div>' +
     '</div>' +
@@ -1518,79 +1448,27 @@ function refundCard(x, can) {
       kvs('دلیل', x.reasonLabel) +
       kvs('پرداخت‌شده', x.paidFa) +
       kvs('شماره پیگیری پرداخت', x.refId ? fa(x.refId) : '—') +
-      kvs('کارت', x.card ? 'انتهای ' + fa(x.card) : '—') +
       kvs('زمان پرداخت', fa(x.paidAtFa)) +
-      (x.status === 'done'
-        ? kvs('انجام شد', fa(x.doneAtFa) + (x.methodLabel ? ' — ' + x.methodLabel : '')) + kvs('پیگیری برگشت', x.ref ? fa(x.ref) : '—')
-        : kvs('مهلت زرین‌پال', late ? 'گذشته' : fa(x.daysLeft) + ' روز')) +
     '</div>';
 
-  if (x.status !== 'done' && WALLET) {
-    if (x.status === 'processing') { html += note('warn', I.clock, 'جواب زرین‌پال درباره‌ی این برگشت معلوم نشد. در پنل زرین‌پال ← تراکنش‌ها ببینید انجام شده یا نه.'); }
-    if (x.error) { html += note('bad', I.alert, esc(x.error)); }
+  if (x.status === 'processing') { html += note('warn', I.clock, 'این برگشت پیش از کیف پول به زرین‌پال فرستاده شده بود و جوابش معلوم نشد. در پنل زرین‌پال ← تراکنش‌ها ببینید پول برگشته یا نه.'); }
+  if (x.error) { html += note('bad', I.alert, esc(x.error)); }
 
-    if (can) {
-      if (ed && ed.mode === 'done') {
-        html += '<div class="pn-refund__form">' +
-          '<label class="pn-field"><span class="pn-field__l">شماره پیگیری استرداد (اختیاری)</span>' +
-          '<input class="pn-in num" id="rf-ref" dir="ltr" value="' + esc(ed.ref || '') + '"></label>' +
-          '<label class="pn-check"><input type="checkbox" id="rf-sms"> پیامک «مبلغ به کارت بازگردانده شد» برای مشتری</label>' +
-          '<div class="pn-refund__acts">' +
-            '<button class="pn-btn pn-btn--pri" data-ref-done-yes="' + x.id + '"' + (S.busy ? ' disabled' : '') + '>تأیید: در زرین‌پال برگشت داده شده</button>' +
-            '<button class="pn-btn pn-btn--soft" data-ref-cancel>انصراف</button>' +
-          '</div></div>';
-      } else {
-        html += '<div class="pn-refund__acts">' +
-          '<button class="pn-btn pn-btn--pri" data-ref-wallet="' + x.id + '"' + (S.busy ? ' disabled' : '') + '>' + I.wallet + ' انتقال ' + esc(x.amountFa) + ' به کیف پول</button>' +
-          '<button class="pn-btn pn-btn--soft" data-ref-done="' + x.id + '">در زرین‌پال انجام شده (ثبت)</button>' +
-          '</div>';
-      }
-    }
-  } else if (x.status !== 'done') {
-    if (late) {
-      html += note('bad', I.alert, 'بیش از ۲ ماه از پرداخت گذشته و زرین‌پال دیگر استرداد نمی‌کند. مبلغ را کارت‌به‌کارت به مشتری برگردانید و بعد «ثبت انجام‌شده» را بزنید.');
-    } else if (soon) {
-      html += note('warn', I.clock, 'فقط ' + fa(x.daysLeft) + ' روز تا پایان مهلت استرداد در زرین‌پال مانده است.');
-    }
+  if (!can) { return html + '</div>'; }
 
-    if (x.status === 'due' && x.auto && x.autoIn >= 0) {
-      html += note('info', I.clock, 'برگشت خودکار ' + (x.autoIn > 0 ? 'حدود ' + fa(x.autoIn) + ' دقیقه‌ی دیگر' : 'در اولین فرصت') +
-        (x.autoIn > 0 ? '؛ تا آن موقع با «بازگردانی» نوبت لغو نمی‌شود.' : '.'));
-    } else if (x.status === 'processing') {
-      html += note('warn', I.clock, 'در حال انجام در زرین‌پال…');
-    }
-
-    if (x.error) { html += note('bad', I.alert, esc(x.error) + (x.tries > 1 ? ' (تلاش ' + fa(x.tries) + ')' : '')); }
-
-    if (!can) {
-      // فقط دیدن
-    } else if (ed && ed.mode === 'done') {
-      html += '<div class="pn-refund__form">' +
-        '<label class="pn-field"><span class="pn-field__l">شماره پیگیری استرداد (اختیاری)</span>' +
-        '<input class="pn-in num" id="rf-ref" dir="ltr" value="' + esc(ed.ref || '') + '"></label>' +
-        '<label class="pn-check"><input type="checkbox" id="rf-sms" checked> پیامک «مبلغ بازگردانده شد» برای مشتری</label>' +
-        '<div class="pn-refund__acts">' +
-          '<button class="pn-btn pn-btn--pri" data-ref-done-yes="' + x.id + '"' + (S.busy ? ' disabled' : '') + '>تأیید: ' + esc(x.amountFa) + ' برگشت داده شد</button>' +
-          '<button class="pn-btn pn-btn--soft" data-ref-cancel>انصراف</button>' +
-        '</div></div>';
-    } else if (ed && ed.mode === 'amount') {
-      html += '<div class="pn-refund__form">' +
-        '<label class="pn-field"><span class="pn-field__l">مبلغ تازه‌ی برگشت (تومان)</span>' +
-        '<input class="pn-in num" id="rf-amount" inputmode="numeric" dir="ltr" value="' + Number(x.amount) + '"></label>' +
-        '<div class="pn-refund__acts">' +
-          '<button class="pn-btn pn-btn--pri" data-ref-amount-yes="' + x.id + '"' + (S.busy ? ' disabled' : '') + '>ذخیره‌ی مبلغ</button>' +
-          '<button class="pn-btn pn-btn--soft" data-ref-cancel>انصراف</button>' +
-        '</div></div>';
-    } else {
-      html += '<div class="pn-refund__acts">' +
-        (x.auto && x.status !== 'processing'
-          ? '<button class="pn-btn pn-btn--pri" data-ref-auto="' + x.id + '"' + (S.busy ? ' disabled' : '') + '>' +
-            (S.busy === 'auto' + x.id ? '<span class="pn-spin"></span> …' : 'برگشت خودکار همین حالا') + '</button>'
-          : '') +
-        '<button class="pn-btn ' + (x.auto ? 'pn-btn--soft' : 'pn-btn--pri') + '" data-ref-done="' + x.id + '">ثبت انجام‌شده (دستی)</button>' +
-        (x.status === 'due' ? '<button class="pn-btn pn-btn--soft" data-ref-amount="' + x.id + '">ویرایش مبلغ</button>' : '') +
-        '</div>';
-    }
+  if (ed) {
+    html += '<div class="pn-refund__form">' +
+      '<label class="pn-field"><span class="pn-field__l">شماره پیگیری یا توضیح (اختیاری)</span>' +
+      '<input class="pn-in" id="rf-ref" value="' + esc(ed.ref || '') + '"></label>' +
+      '<div class="pn-refund__acts">' +
+        '<button class="pn-btn pn-btn--pri" data-ref-done-yes="' + x.id + '"' + (S.busy ? ' disabled' : '') + '>تأیید: پول قبلاً به مشتری برگشته</button>' +
+        '<button class="pn-btn pn-btn--soft" data-ref-cancel>انصراف</button>' +
+      '</div></div>';
+  } else {
+    html += '<div class="pn-refund__acts">' +
+      (x.canWallet ? '<button class="pn-btn pn-btn--pri" data-ref-wallet="' + x.id + '"' + (S.busy ? ' disabled' : '') + '>' + I.wallet + ' انتقال ' + esc(x.amountFa) + ' به کیف پول</button>' : '') +
+      '<button class="pn-btn pn-btn--soft" data-ref-done="' + x.id + '">ثبت انجام‌شده</button>' +
+      '</div>';
   }
 
   return html + '</div>';
@@ -1613,45 +1491,13 @@ function openPendingSvc() {
   }
 }
 
-/** «برگشت خودکار همین حالا». */
-function refundAuto(id) {
-  if (S.busy) { return; }
-
-  S.busy = 'auto' + id;
-  paint();
-
-  post('panel/refund', { id: id, action: 'auto' }).then(function (r) {
-    S.busy = false;
-
-    if (r.success === false) { toast(r.message || 'انجام نشد.', 'bad'); paint(); return; }
-
-    var msg = {
-      done: ['برگشت انجام شد و برای مشتری پیامک رفت.', 'ok'],
-      failed: [r.error || 'زرین‌پال برگشت را نپذیرفت.', 'bad'],
-      due: ['زرین‌پال موقتاً پاسخ نداد؛ چند دقیقه‌ی دیگر خودکار دوباره امتحان می‌شود.', 'bad'],
-      processing: ['جواب زرین‌پال نرسید؛ چند دقیقه‌ی دیگر خودکار بررسی می‌شود.', 'bad'],
-      busy: ['برگشت دیگری همین حالا در حال انجام است؛ چند ثانیه بعد دوباره بزنید.', 'bad']
-    }[r.outcome] || ['انجام شد.', 'ok'];
-
-    toast(msg[0], msg[1]);
-
-    S.refunds = { items: r.items, open: r.open, canRefund: true, which: 'open' };
-    if (S.summary && S.summary.counts) { S.summary.counts.refunds = r.open; shellKey = ''; }
-    paint();
-  });
-}
-
 function refundAction(id, action) {
   var body = { id: id, action: action };
 
   if (action === 'wallet') {
     if (!window.confirm('این مبلغ به کیف پول مشتری منتقل شود؟ برای مشتری پیامک کیف پول می‌رود.')) { return; }
-  } else if (action === 'done') {
-    body.ref = val('#rf-ref').trim();
-    body.sms = checked('#rf-sms') ? 1 : 0;
   } else {
-    body.amount = en(val('#rf-amount')).replace(/\D/g, '');
-    if (body.amount === '') { toast('مبلغ را وارد کنید.', 'bad'); return; }
+    body.ref = val('#rf-ref').trim();
   }
 
   S.busy = true;
@@ -1663,10 +1509,10 @@ function refundAction(id, action) {
     if (r.success === false) { toast(r.message || 'انجام نشد.', 'bad'); paint(); return; }
 
     S.refEdit = null;
-    toast(action === 'wallet' ? 'به کیف پول مشتری منتقل شد.' : (action === 'done' ? 'برگشت وجه ثبت شد.' : 'مبلغ برگشت به‌روز شد.'), 'ok');
+    toast(action === 'wallet' ? 'به کیف پول مشتری منتقل شد.' : 'ثبت شد.', 'ok');
     S.wallets = null;
+    S.refunds = { items: r.items, open: r.open, canRefund: true, which: 'open' };
 
-    if (S.refWhich === 'open') { S.refunds = { items: r.items, open: r.open, canRefund: true, which: 'open' }; }
     if (S.summary && S.summary.counts) { S.summary.counts.refunds = r.open; shellKey = ''; }
     paint();
   });
@@ -1720,10 +1566,9 @@ function amountWarn() {
   var msg = '';
 
   if (depEl && dep > 0 && dep < 1000) { msg = 'بیعانه باید ۰ یا دست‌کم ۱,۰۰۰ تومان باشد؛ زرین‌پال پرداخت کمتر را نمی‌پذیرد.'; }
-  else if (!WALLET && ref !== null && ref > 0 && ref < 2000) { msg = 'برگشتی باید ۰ یا دست‌کم ۲,۰۰۰ تومان باشد؛ زرین‌پال کمتر را برنمی‌گرداند.'; }
   else if (ref !== null && dep && ref > dep) { msg = 'برگشتی از بیعانه (' + money(dep) + ') بیشتر است.'; }
 
-  box.innerHTML = msg ? note('bad', I.alert, esc(msg)) : (dep ? '<div class="pn-hint">لغوِ به‌موقع: ' + money(ref === null ? Math.min(dep, (S.svcEdit && S.svcEdit.refundNow) || 0) : ref) + ' تومان ' + (WALLET ? 'به کیف پول مشتری' : 'به مشتری') + '، بقیه نزد مجموعه.</div>' : '');
+  box.innerHTML = msg ? note('bad', I.alert, esc(msg)) : (dep ? '<div class="pn-hint">لغوِ به‌موقع: ' + money(ref === null ? Math.min(dep, (S.svcEdit && S.svcEdit.refundNow) || 0) : ref) + ' تومان به کیف پول مشتری، بقیه نزد مجموعه.</div>' : '');
 }
 
 /* ═══ بستن روز ═══ */
@@ -1815,7 +1660,7 @@ function bookingModal() {
       payHtml += note('ok', I.card, 'بیعانه‌ی ' + esc(p.depositFa) + ' پرداخت شده؛ هنگام مراجعه از صورت‌حساب کسر شود' +
         (p.remainingFa ? '. باقی‌مانده: <b>' + esc(p.remainingFa) + '</b>' : '') + '.');
     } else if (p.status === 'refund_due' || p.status === 'refunding') {
-      payHtml += note('warn', I.card, 'بازگشت ' + esc(p.refundFa) + ' به مشتری در صف «بازگشت وجه» است.');
+      payHtml += note('warn', I.card, esc(p.refundFa) + ' هنوز به کیف پول مشتری نرفته؛ در «بیعانه و کیف پول ← برگشت‌های مانده» است.');
     } else if (p.status === 'refunded') {
       payHtml += String(p.statusLabel || '').indexOf('کیف پول') !== -1
         ? note('info', I.wallet, esc(p.refundFa) + ' به کیف پول مشتری برگشت.' + (b.status === 'cancelled' ? ' با «بازگردانی»، همین مبلغ از کیف پولش پس گرفته می‌شود (اگر خرجش نکرده باشد).' : ''))
@@ -1824,7 +1669,7 @@ function bookingModal() {
       payHtml += note('info', I.card, 'بیعانه نزد مجموعه ماند.');
     }
 
-    if (WALLET && b.phone) {
+    if (b.phone) {
       payHtml += '<div style="margin-top:8px"><button class="pn-btn pn-btn--sm pn-btn--soft" data-wal-open="' + esc(b.phone) + '">' + I.wallet + ' کیف پول این مشتری</button></div>';
     }
   }
@@ -1873,16 +1718,14 @@ function cancelPaidModal(b) {
   return '<div class="pn-modal__hd"><div><div class="pn-modal__t">لغو نوبت ' + esc(b.name) + '</div>' +
       '<div style="font-size:12px;color:var(--ink-3);margin-top:3px">بیعانه‌ی پرداخت‌شده: ' + esc(p.depositFa) + '</div></div>' +
       '<button class="pn-modal__x" data-close>' + I.x + '</button></div>' +
-    '<label class="pn-field"><span class="pn-field__l">' + (WALLET ? 'مبلغی که به کیف پول مشتری برمی‌گردد (تومان)' : 'مبلغی که به مشتری برمی‌گردد (تومان)') + '</span>' +
+    '<label class="pn-field"><span class="pn-field__l">مبلغی که به کیف پول مشتری برمی‌گردد (تومان)</span>' +
       '<input class="pn-in num" id="pn-refund" type="text" inputmode="numeric" dir="ltr" value="' + esc(def) + '"></label>' +
     '<div class="pn-chips" style="margin-bottom:12px">' +
       '<button type="button" class="pn-chip" data-refund-fill="' + p.deposit + '">کل بیعانه</button>' +
       (p.cancelRefund ? '<button type="button" class="pn-chip" data-refund-fill="' + p.cancelRefund + '">مثل لغو مشتری (' + money(p.cancelRefund) + ')</button>' : '') +
       '<button type="button" class="pn-chip" data-refund-fill="0">هیچ</button>' +
     '</div>' +
-    (WALLET
-      ? '<div class="pn-hint">بین ۰ و ' + money(p.deposit) + ' تومان. مبلغ همان لحظه به کیف پول مشتری در سایت می‌رود (اگر بعداً نوبت را بازگردانید، از کیف پولش پس گرفته می‌شود). برای مشتری پیامک لغو و پیامک کیف پول می‌رود.</div>'
-      : '<div class="pn-hint">بین ۰ و ' + money(p.deposit) + ' تومان؛ اگر بیشتر از صفر، دست‌کم ۲,۰۰۰ تومان (کمترین برگشت زرین‌پال). مبلغ در صف «بازگشت وجه» می‌نشیند و تا انجامش قابل ویرایش است. برای مشتری پیامک لغو می‌رود.</div>') +
+    '<div class="pn-hint">بین ۰ و ' + money(p.deposit) + ' تومان. مبلغ همان لحظه به کیف پول مشتری در سایت می‌رود (اگر بعداً نوبت را بازگردانید، از کیف پولش پس گرفته می‌شود). برای مشتری پیامک لغو و پیامک کیف پول می‌رود.</div>' +
     '<div class="pn-modal__ft">' +
       '<button class="pn-btn pn-btn--bad" data-cancel-paid' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '<span class="pn-spin"></span> …' : 'لغو نوبت') + '</button>' +
       '<button class="pn-btn pn-btn--soft" data-cancel-back>بازگشت</button>' +
@@ -2242,10 +2085,10 @@ function setStatus(id, status, extra) {
 
     toast(r.deleted ? 'نوبت حذف شد.'
       : ((ip && ip.status === 'refund_due' && status === 'cancelled')
-        ? 'نوبت لغو شد؛ بازگشت ' + ip.refundFa + ' در صف «بازگشت وجه» است.'
+        ? 'نوبت لغو شد؛ ' + ip.refundFa + ' هنوز به کیف پول مشتری نرفته (بیعانه و کیف پول ← برگشت‌های مانده).'
         : ((ip && ip.status === 'refunded' && status === 'cancelled' && String(ip.statusLabel || '').indexOf('کیف پول') !== -1)
           ? 'نوبت لغو شد؛ ' + ip.refundFa + ' به کیف پول مشتری رفت.'
-          : ((WALLET && payBefore === 'refunded' && status === 'confirmed')
+          : ((payBefore === 'refunded' && status === 'confirmed')
             ? 'نوبت بازگردانده شد و مبلغ برگشتی از کیف پول مشتری پس گرفته شد.'
             : 'وضعیت نوبت به‌روز شد.'))), 'ok');
 
@@ -2260,7 +2103,7 @@ function setStatus(id, status, extra) {
     S.modal = null;
     paint();
 
-    // صف بازگشت وجه ممکن است عوض شده باشد
+    // کیف پول و برگشت‌های مانده ممکن است عوض شده باشند
     if (PAY.used) { S.refunds = null; S.wallets = null; delete S.got['panel/refunds?which=open']; }
 
     // تازه‌سازی در پس‌زمینه، بدون پاک کردن آنچه روی صفحه است
@@ -3093,12 +2936,12 @@ function bind() {
       return;
     }
 
-    /* ── بازگشت وجه ── */
+    /* ── بیعانه و کیف پول ── */
 
     if ((el = up('[data-ref-which]'))) {
       e.preventDefault();
       S.refWhich = el.getAttribute('data-ref-which');
-      if (S.refWhich === 'open' || S.refWhich === 'done') { S.refunds = null; }
+      if (S.refWhich === 'open') { S.refunds = null; }
       S.refEdit = null;
       load('refunds');
       return;
@@ -3128,7 +2971,6 @@ function bind() {
       return;
     }
 
-    if ((el = up('[data-ref-auto]'))) { e.preventDefault(); refundAuto(Number(el.getAttribute('data-ref-auto'))); return; }
     if ((el = up('[data-ref-wallet]'))) { e.preventDefault(); refundAction(Number(el.getAttribute('data-ref-wallet')), 'wallet'); return; }
 
     /* ── کیف پول ── */
@@ -3171,10 +3013,8 @@ function bind() {
     }
 
     if ((el = up('[data-ref-done]'))) { e.preventDefault(); S.refEdit = { id: Number(el.getAttribute('data-ref-done')), mode: 'done' }; paint(); return; }
-    if ((el = up('[data-ref-amount]'))) { e.preventDefault(); S.refEdit = { id: Number(el.getAttribute('data-ref-amount')), mode: 'amount' }; paint(); return; }
     if (up('[data-ref-cancel]')) { e.preventDefault(); S.refEdit = null; paint(); return; }
     if ((el = up('[data-ref-done-yes]'))) { e.preventDefault(); refundAction(Number(el.getAttribute('data-ref-done-yes')), 'done'); return; }
-    if ((el = up('[data-ref-amount-yes]'))) { e.preventDefault(); refundAction(Number(el.getAttribute('data-ref-amount-yes')), 'amount'); return; }
 
     if ((el = up('#sv-days [data-day]'))) {
       e.preventDefault();

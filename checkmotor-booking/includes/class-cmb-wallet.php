@@ -47,9 +47,9 @@ class CMB_Wallet {
 		return version_compare( (string) get_option( 'cmb_db_version', '0' ), self::SCHEMA, '>=' );
 	}
 
-	/** کیف پول جای برگشت به کارت را گرفته و جدولش ساخته شده. */
+	/** جدول کیف پول ساخته شده (بعد از اولین باز کردن پیشخوان پس از به‌روزرسانی). */
 	public static function ready() {
-		return self::schema_ready() && 'wallet' === CMB_Payments::refund_to();
+		return self::schema_ready();
 	}
 
 	/** خرج کیف پول فقط در بیعانه، پس فقط وقتی پرداخت بیعانه روشن است. */

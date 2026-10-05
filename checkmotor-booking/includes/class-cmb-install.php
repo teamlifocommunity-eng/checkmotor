@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CMB_Install {
 
-	const DB_VERSION = '1.6.0';
+	const DB_VERSION = '1.7.0';
 
 	public static function activate() {
 		global $wpdb;
@@ -171,6 +171,32 @@ class CMB_Install {
 		// برگشت‌های مانده در صف کارت ← کیف پول (یک بار، با پیامک)
 		if ( class_exists( 'CMB_Wallet' ) ) {
 			CMB_Wallet::migrate_legacy();
+		}
+
+		self::drop_card_refund();
+	}
+
+	/**
+	 * 1.7.0: برگشت وجه از زرین‌پال کلاً حذف شد (همه‌ی برگشت‌ها به کیف
+	 * پول). توکن دسترسی API استرداد، تنظیمات برگشت به کارت و نتیجه‌ی
+	 * آزمون‌هایش دیگر به کاری نمی‌آیند و نگه داشته نمی‌شوند.
+	 */
+	protected static function drop_card_refund() {
+		delete_option( 'cmb_zp_token' );
+		delete_option( 'cmb_pay_selftest' );
+		delete_transient( 'cmb_server_ip' );
+
+		$old      = array_flip( array( 'pay_refund_mode', 'pay_refund_delay', 'zp_refund_method', 'zp_terminal_id', 'zp_reverse', 'pattern_refund' ) );
+		$settings = get_option( 'cmb_settings' );
+
+		if ( is_array( $settings ) && array_intersect_key( $settings, $old ) ) {
+			update_option( 'cmb_settings', array_diff_key( $settings, $old ) );
+		}
+
+		$setup = get_option( 'cmb_pay_setup' );
+
+		if ( is_array( $setup ) && array_diff_key( $setup, array( 'merchant' => 1 ) ) ) {
+			update_option( 'cmb_pay_setup', array_intersect_key( $setup, array( 'merchant' => 1 ) ), false );
 		}
 	}
 

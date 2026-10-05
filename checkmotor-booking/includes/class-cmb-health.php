@@ -190,8 +190,8 @@ class CMB_Health {
 	}
 
 	/**
-	 * پرداخت بیعانه: پیکربندی درگاه، پرداخت‌های بی‌جواب، برگشت‌های
-	 * معطل، و پولی که آمده ولی نه نوبتی گرفته و نه در صف برگشت است.
+	 * پرداخت بیعانه: پیکربندی درگاه، پرداخت‌های بی‌جواب، کیف پول، و پولی
+	 * که آمده ولی نه نوبتی گرفته و نه به کیف پول برگشته است.
 	 */
 	protected static function check_payments() {
 		global $wpdb;
@@ -229,55 +229,8 @@ class CMB_Health {
 			);
 		}
 
-		$wallet = CMB_Payments::wallet_mode();
-
-		if ( $wallet ) {
+		if ( CMB_Wallet::ready() ) {
 			$out = array_merge( $out, self::check_wallet() );
-		}
-
-		$old = $wallet ? 0 : (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$pt} WHERE refund_status IN ('due','failed') AND paid_at < %s", cmb_now()->modify( '-45 days' )->format( 'Y-m-d H:i:s' ) ) ); // phpcs:ignore
-
-		if ( $old ) {
-			$out[] = self::item(
-				self::BAD,
-				'بازگشت وجه',
-				sprintf( '%s برگشت وجه بیش از ۴۵ روز در صف مانده؛ زرین‌پال فقط تا ۲ ماه بعد از پرداخت استرداد می‌کند.', cmb_fa_num( $old ) ),
-				'از پنل رزرو، بخش «بازگشت وجه»، همین حالا انجامشان دهید.'
-			);
-		}
-
-		// برگشت خودکار
-		if ( CMB_Payments::auto_on() && ! CMB_Payments::sandbox() && ! CMB_Zarinpal_Refund::configured() ) {
-			$out[] = self::item( self::BAD, 'برگشت خودکار', 'روشن است ولی توکن دسترسی یا شماره‌ی ترمینال زرین‌پال تنظیم نشده؛ استردادها شکست می‌خورند.', 'رزرو نوبت ← راه‌اندازی زرین‌پال ← قدم ۴: توکن و ترمینال را وارد کنید و «ذخیره و آزمایش» را بزنید.' );
-		}
-
-		// نتیجه‌ی واقعی آخرین برگشت فوری و استرداد (از صفحه‌ی راه‌اندازی یا خود برگشت‌ها)
-		if ( CMB_Payments::auto_on() && ! CMB_Payments::sandbox() ) {
-			$rev = CMB_Pay_Setup::result( 'reverse' );
-
-			if ( CMB_Payments::reverse_on() && $rev && ! $rev['ok'] && ! $rev['stale'] ) {
-				$out[] = self::item( self::WARN, 'برگشت فوری', 'آخرین برگشت فوری نشد: ' . $rev['msg'] . ' (به‌جایش استرداد با کارمزد انجام می‌شود.)', 'رزرو نوبت ← راه‌اندازی زرین‌پال ← قدم ۳: آی‌پی سرور را در پنل زرین‌پال ثبت کنید.' );
-			}
-
-			$ref = CMB_Pay_Setup::result( 'refund' );
-
-			if ( $ref && ! $ref['ok'] && ! $ref['stale'] ) {
-				$out[] = self::item( self::BAD, 'استرداد', 'آخرین استرداد زرین‌پال نشد: ' . $ref['msg'], 'رزرو نوبت ← راه‌اندازی زرین‌پال ← قدم ۵، بعد «آزمون استرداد».' );
-			}
-		}
-
-		if ( CMB_Payments::auto_schema() && ! $wallet ) {
-			$failed = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$pt} WHERE refund_status = 'failed'" ); // phpcs:ignore
-
-			if ( $failed ) {
-				$out[] = self::item( self::WARN, 'برگشت ناموفق', sprintf( '%s برگشت وجه انجام نشد و منتظر شماست.', cmb_fa_num( $failed ) ), 'پنل رزرو ← بیعانه و برگشت: دلیل هر کدام نوشته شده؛ بعد از رفع، «برگشت خودکار همین حالا» یا «ثبت انجام‌شده» را بزنید.' );
-			}
-
-			$stuck_r = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$pt} WHERE refund_status = 'processing' AND updated_at < %s", cmb_now()->modify( '-1 hour' )->format( 'Y-m-d H:i:s' ) ) ); // phpcs:ignore
-
-			if ( $stuck_r ) {
-				$out[] = self::item( self::WARN, 'برگشت نامعلوم', sprintf( '%s برگشت بیش از یک ساعت است جوابش از زرین‌پال معلوم نشده.', cmb_fa_num( $stuck_r ) ), 'در پنل زرین‌پال ← تراکنش‌ها ببینید انجام شده یا نه، و در پنل رزرو ثبتش کنید.' );
-			}
 		}
 
 		$bad_svc = array();
@@ -289,7 +242,7 @@ class CMB_Health {
 		}
 
 		if ( $bad_svc ) {
-			$out[] = self::item( self::BAD, 'مبلغ‌های بیعانه', 'مبلغ بیعانه یا برگشتیِ این خدمت‌ها با قواعد زرین‌پال جور نیست: ' . implode( '، ', $bad_svc ) . '.', 'پنل رزرو ← بیعانه و برگشت ← بررسی خدمات.' );
+			$out[] = self::item( self::BAD, 'مبلغ‌های بیعانه', 'مبلغ بیعانه یا برگشتیِ این خدمت‌ها با قواعد زرین‌پال جور نیست: ' . implode( '، ', $bad_svc ) . '.', 'پنل رزرو ← بیعانه و کیف پول ← بررسی خدمات.' );
 		}
 
 		// شارژ کیف پول نوبتی ندارد و قرار هم نیست داشته باشد
@@ -305,7 +258,7 @@ class CMB_Health {
 			$out[] = self::item(
 				self::BAD,
 				'پرداخت بی‌نوبت',
-				sprintf( '%s پرداخت موفق هست که نه نوبتی برایش ثبت شده و نه در صف بازگشت وجه است.', cmb_fa_num( $orphan ) ),
+				sprintf( '%s پرداخت موفق هست که نه نوبتی برایش ثبت شده و نه به کیف پول برگشته است.', cmb_fa_num( $orphan ) ),
 				'با پشتیبانی افزونه تماس بگیرید؛ این حالت نباید پیش بیاید.'
 			);
 		}
@@ -314,7 +267,7 @@ class CMB_Health {
 	}
 
 	/**
-	 * کیف پول: موجودی منفی، مبلغِ کنار گذاشته‌ی بی‌صاحب، صف قدیمی کارت،
+	 * کیف پول: موجودی منفی، مبلغِ کنار گذاشته‌ی بی‌صاحب، برگشت‌های مانده،
 	 * قوانینی که هنوز از کارت می‌گویند، و پترن پیامک.
 	 */
 	protected static function check_wallet() {
@@ -341,7 +294,7 @@ class CMB_Health {
 		$legacy = CMB_Payments::count_open_refunds();
 
 		if ( $legacy ) {
-			$out[] = self::item( self::WARN, 'صف قدیمی برگشت به کارت', sprintf( '%s برگشت از پیش از کیف پول هنوز تعیین تکلیف نشده (در حال انجام در زرین‌پال، یا صاحبش معلوم نبود).', cmb_fa_num( $legacy ) ), 'پنل رزرو ← بیعانه و کیف پول ← صف قدیمی: اگر در زرین‌پال انجام شده «ثبت انجام‌شده»، وگرنه «انتقال به کیف پول».' );
+			$out[] = self::item( self::WARN, 'برگشت‌های مانده', sprintf( '%s برگشت هنوز به کیف پول نرفته و تعیین تکلیف نشده (از پیش از کیف پول مانده، یا صاحب پرداخت معلوم نبود).', cmb_fa_num( $legacy ) ), 'پنل رزرو ← بیعانه و کیف پول ← برگشت‌های مانده: «انتقال به کیف پول»، یا اگر پول قبلاً برگشته «ثبت انجام‌شده».' );
 		}
 
 		if ( CMB_Payments::terms_mention_card() ) {

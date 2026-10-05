@@ -925,7 +925,7 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
   .pn-modal__x:hover { background: var(--g6); }
 }
 
-/* ═══ بیعانه و بازگشت وجه ═══ */
+/* ═══ بیعانه و کیف پول ═══ */
 
 .pn-badge--pending { background: var(--warn-bg); color: var(--warn); }
 .pn-badge--expired { background: var(--g6); color: var(--ink-3); }
@@ -940,7 +940,6 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
 
 .pn-refunds { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
 .pn-refund { margin: 0; }
-.pn-refund.is-late { border: 1.5px solid var(--bad-bg); }
 .pn-refund__hd { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s3); }
 .pn-refund__name { font-weight: 800; font-size: 16px; }
 .pn-refund__sub { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; }

@@ -1,6 +1,6 @@
 <?php
 /**
- * بررسی بیعانه و برگشت: جدول خدمات، شبیه‌ساز سناریو، گزارش.
+ * بررسی بیعانه و کیف پول: جدول خدمات، شبیه‌ساز سناریو، گزارش.
  *
  * همه‌ی عددها با همان توابعی ساخته می‌شوند که هنگام رزرو و لغو واقعاً
  * به کار می‌روند (service_deposit، service_refund، shop_refund_default)،
@@ -18,8 +18,6 @@ class CMB_Pay_Review {
 	 */
 	public static function services() {
 		$enabled = CMB_Payments::enabled();
-		$auto    = CMB_Payments::auto_on();
-		$wallet  = CMB_Payments::wallet_mode();
 		$hours   = max( 0, (int) CMB_Settings::get( 'cancel_deadline_hours', 24 ) );
 		$items   = array();
 
@@ -34,26 +32,15 @@ class CMB_Pay_Review {
 		}
 
 		if ( CMB_Payments::sandbox() ) {
-			$global[] = array( 'info', 'درگاه آزمایشی روشن است: پرداخت‌ها و برگشت‌ها شبیه‌سازی می‌شوند و پولی جابه‌جا نمی‌شود.' );
+			$global[] = array( 'info', 'درگاه آزمایشی روشن است: پرداخت‌ها شبیه‌سازی می‌شوند و پولی جابه‌جا نمی‌شود.' );
 		}
 
-		if ( $wallet ) {
-			$global[] = array( 'info', 'هر برگشت همان لحظه به کیف پول مشتری در همین سایت می‌رود و برای بیعانه‌ی نوبت بعدی قابل استفاده است؛ برگشت به کارت انجام نمی‌شود.' );
-		} elseif ( ! $auto ) {
-			$global[] = array( 'warn', 'برگشت پول دستی است؛ هر برگشت در صف می‌ماند تا از پنل زرین‌پال انجامش دهید.' );
-		} elseif ( ! CMB_Payments::sandbox() && ! CMB_Zarinpal_Refund::configured() ) {
-			$global[] = array( 'bad', 'برگشت خودکار روشن است ولی توکن دسترسی یا شماره‌ی ترمینال زرین‌پال تنظیم نشده؛ برگشت‌ها شکست می‌خورند.' );
-		}
+		$global[] = array( 'info', 'هر برگشت همان لحظه به کیف پول مشتری در همین سایت می‌رود و برای بیعانه‌ی نوبت بعدی قابل استفاده است؛ برگشت به کارت انجام نمی‌شود.' );
 
 		return array(
 			'settings' => array(
 				'enabled'   => $enabled,
 				'sandbox'   => CMB_Payments::sandbox(),
-				'wallet'    => $wallet,
-				'auto'      => $auto,
-				'delay'     => CMB_Payments::refund_delay(),
-				'method'    => CMB_Payments::refund_method(),
-				'methodFa'  => CMB_Payments::method_label( CMB_Payments::refund_method() ),
 				'hours'     => $hours,
 				'shopPct'   => (int) CMB_Settings::get( 'pay_shop_refund_percent', 100 ),
 				'defDeposit' => (int) CMB_Settings::get( 'pay_deposit_default', 100000 ),
@@ -80,17 +67,6 @@ class CMB_Pay_Review {
 
 		if ( $deposit > 0 && $deposit < 1000 ) {
 			$warn[] = array( 'bad', 'بیعانه کمتر از ۱,۰۰۰ تومان است و زرین‌پال این پرداخت را نمی‌پذیرد.' );
-		}
-
-		// کیف پول حداقل ندارد؛ فقط استرداد زرین‌پال کمتر از ۲,۰۰۰ تومان را نمی‌پذیرد
-		$card = ! CMB_Payments::wallet_mode();
-
-		if ( $card && $refund > 0 && $refund < 2000 ) {
-			$warn[] = array( 'bad', 'برگشتیِ لغو کمتر از ۲,۰۰۰ تومان است و زرین‌پال آن را برنمی‌گرداند.' );
-		}
-
-		if ( $card && $shop > 0 && $shop < 2000 ) {
-			$warn[] = array( 'bad', 'برگشتیِ لغو از طرف مجموعه کمتر از ۲,۰۰۰ تومان می‌شود؛ درصد را در تنظیمات عوض کنید.' );
 		}
 
 		if ( $deposit > 0 && $raw_ref > $deposit ) {
@@ -149,40 +125,15 @@ class CMB_Pay_Review {
 	 * چه کسی چقدر، کِی و چطور.
 	 */
 	public static function scenarios( $deposit, $refund, $shop, $price, $hours ) {
-		$auto   = CMB_Payments::auto_on();
-		$method = CMB_Payments::method_label( CMB_Payments::refund_method() );
-		$delay  = CMB_Payments::refund_delay();
-
-		$wallet = CMB_Payments::wallet_mode();
-
-		$how = function ( $amount, $reason ) use ( $auto, $method, $delay, $wallet ) {
+		$how = function ( $amount, $reason ) {
 			if ( $amount < 1 ) {
 				return array( 'none', 'برگشتی ندارد' );
 			}
 
-			if ( $wallet ) {
-				return array(
-					'auto',
-					'بلافاصله به کیف پول مشتری در همین سایت، با پیامک؛ برای بیعانه‌ی نوبت بعدی. برداشت به کارت ندارد.'
-						. ( in_array( $reason, CMB_Payments::DELAYED_REASONS, true ) ? ' با «بازگردانی» نوبت، همان مبلغ از کیف پول پس گرفته می‌شود (اگر خرج نشده باشد).' : '' ),
-				);
-			}
-
-			if ( ! $auto ) {
-				return array( 'manual', 'در صف «بازگشت وجه» می‌نشیند تا از پنل زرین‌پال برگردانید و «ثبت انجام‌شده» بزنید.' );
-			}
-
-			$wait = in_array( $reason, CMB_Payments::DELAYED_REASONS, true ) ? $delay : 0;
-
-			// برگشت‌های سیستمی کامل‌اند و همان دقیقه‌های اول بعد از پرداخت انجام می‌شوند
-			if ( ! in_array( $reason, CMB_Payments::DELAYED_REASONS, true ) && CMB_Payments::reverse_on() ) {
-				return array( 'auto', 'بلافاصله، با برگشت فوری زرین‌پال (بی‌کارمزد، به همان کارت). اگر نشد، خودکار با ' . $method . '.' );
-			}
-
 			return array(
 				'auto',
-				( $wait ? cmb_fa_num( $wait ) . ' دقیقه بعد از لغو' : 'بلافاصله' ) . '، خودکار با ' . $method
-					. ( $wait ? '. تا آن موقع با «بازگردانی» نوبت می‌شود جلویش را گرفت.' : '.' ),
+				'بلافاصله به کیف پول مشتری در همین سایت، با پیامک؛ برای بیعانه‌ی نوبت بعدی. برداشت به کارت ندارد.'
+					. ( in_array( $reason, array( 'customer', 'shop' ), true ) ? ' با «بازگردانی» نوبت، همان مبلغ از کیف پول پس گرفته می‌شود (اگر خرج نشده باشد).' : '' ),
 			);
 		};
 
@@ -203,8 +154,8 @@ class CMB_Pay_Review {
 			);
 		};
 
-		$eta = function ( $reason ) {
-			return CMB_Payments::refund_eta( $reason );
+		$eta = function () {
+			return CMB_Payments::refund_eta();
 		};
 
 		$h = cmb_fa_num( $hours );
@@ -217,7 +168,7 @@ class CMB_Pay_Review {
 				$deposit - $refund,
 				'customer',
 				'مبلغ و مهلت همان است که مشتری هنگام پرداخت پذیرفت؛ تغییر بعدی تنظیمات به آن نوبت نمی‌رسد.',
-				$refund ? 'نوبت شما لغو شد. ' . cmb_toman( $refund ) . ' ' . $eta( 'customer' ) . '.' : 'نوبت شما لغو شد. طبق قوانین رزرو، مبلغی از بیعانه بازگردانده نمی‌شود.'
+				$refund ? 'نوبت شما لغو شد. ' . cmb_toman( $refund ) . ' ' . $eta() . '.' : 'نوبت شما لغو شد. طبق قوانین رزرو، مبلغی از بیعانه بازگردانده نمی‌شود.'
 			),
 			$row(
 				'cancel_late',
@@ -234,12 +185,8 @@ class CMB_Pay_Review {
 				$shop,
 				$deposit - $shop,
 				'shop',
-				$wallet
-					? 'پیش‌فرض از درصد تنظیمات است و هنگام لغو در پنل قابل تغییر است (از ۰ تا کل بیعانه).'
-					: 'پیش‌فرض از درصد تنظیمات است و هنگام لغو در پنل قابل تغییر است (۰، یا دست‌کم ۲,۰۰۰ تومان).',
-				$wallet
-					? 'پیامک لغو و پیامک «واریز به کیف پول» برای مشتری می‌رود.'
-					: 'پیامک لغو برای مشتری می‌رود؛ با انجام برگشت، پیامک «بازگردانده شد».'
+				'پیش‌فرض از درصد تنظیمات است و هنگام لغو در پنل قابل تغییر است (از ۰ تا کل بیعانه).',
+				'پیامک لغو و پیامک «واریز به کیف پول» برای مشتری می‌رود.'
 			),
 			$row(
 				'no_show',
@@ -266,7 +213,7 @@ class CMB_Pay_Review {
 				0,
 				'slot_gone',
 				'نوبت ثبت نمی‌شود و کل مبلغ برمی‌گردد.',
-				'پرداخت شما رسید ولی ظرفیت آن زمان دیگر خالی نبود؛ کل مبلغ ' . $eta( 'slot_gone' ) . '.'
+				'پرداخت شما رسید ولی ظرفیت آن زمان دیگر خالی نبود؛ کل مبلغ ' . $eta() . '.'
 			),
 			$row(
 				'duplicate',
@@ -290,178 +237,24 @@ class CMB_Pay_Review {
 	}
 
 	/**
-	 * گزارش پرداخت‌ها و برگشت‌ها در یک بازه (بر اساس زمان پرداخت).
-	 *
-	 * @param int  $days        چند روز اخیر؛ ۰ یعنی همه.
-	 * @param bool $with_sandbox پرداخت‌های آزمایشی هم حساب شوند؟
-	 */
-	public static function report( $days = 30, $with_sandbox = false ) {
-		global $wpdb;
-
-		if ( CMB_Payments::wallet_mode() ) {
-			return self::report_wallet( $days, $with_sandbox );
-		}
-
-		$empty = array(
-			'days'    => (int) $days,
-			'totals'  => array(),
-			'reasons' => array(),
-			'methods' => array(),
-			'services' => array(),
-		);
-
-		if ( ! CMB_Payments::schema_ready() ) {
-			return $empty;
-		}
-
-		$pt    = cmb_table( 'payments' );
-		$bt    = cmb_table( 'bookings' );
-		$where = "p.status = 'paid'";
-
-		if ( $days > 0 ) {
-			$where .= $wpdb->prepare( ' AND p.paid_at >= %s', cmb_now()->modify( '-' . (int) $days . ' days' )->format( 'Y-m-d 00:00:00' ) );
-		}
-
-		if ( ! $with_sandbox ) {
-			$where .= ' AND p.sandbox = 0';
-		}
-
-		$rows = $wpdb->get_results( "SELECT p.*, b.service_id FROM {$pt} p LEFT JOIN {$bt} b ON b.id = p.booking_id WHERE {$where}" ); // phpcs:ignore
-
-		$t = array(
-			'paidCount'     => 0,
-			'paid'          => 0,
-			'refunded'      => 0,
-			'refundedCount' => 0,
-			'pending'       => 0,
-			'pendingCount'  => 0,
-			'failed'        => 0,
-			'failedCount'   => 0,
-			'fees'          => 0,
-			'tests'         => 0,
-		);
-
-		$reasons  = array();
-		$methods  = array();
-		$services = array();
-		$labels   = CMB_Payments::refund_reasons();
-
-		foreach ( (array) $rows as $p ) {
-			$amount = (int) ( $p->amount_rial / 10 );
-			$back   = (int) ( $p->refund_amount_rial / 10 );
-
-			// آزمون ۲,۰۰۰ تومانی جزو درآمد نیست
-			if ( CMB_Payments::is_selftest_reason( $p->refund_reason ) ) {
-				$t['tests']++;
-				continue;
-			}
-
-			$t['paidCount']++;
-			$t['paid'] += $amount;
-			$t['fees'] += (int) ( $p->fee / 10 );
-
-			$sid = (int) $p->service_id;
-
-			if ( ! isset( $services[ $sid ] ) ) {
-				$svc              = CMB_Services::get_service( $sid );
-				$services[ $sid ] = array(
-					'title'    => $svc ? $svc->title : '—',
-					'count'    => 0,
-					'paid'     => 0,
-					'refunded' => 0,
-					'open'     => 0,
-				);
-			}
-
-			$services[ $sid ]['count']++;
-			$services[ $sid ]['paid'] += $amount;
-
-			if ( $back < 1 ) {
-				continue;
-			}
-
-			if ( 'done' === $p->refund_status ) {
-				$t['refunded'] += $back;
-				$t['refundedCount']++;
-				$services[ $sid ]['refunded'] += $back;
-
-				$m = CMB_Payments::done_label( (string) $p->refund_method );
-				$m = '' !== $m ? $m : 'دستی';
-
-				if ( ! isset( $methods[ $m ] ) ) {
-					$methods[ $m ] = array( 'label' => $m, 'count' => 0, 'sum' => 0 );
-				}
-
-				$methods[ $m ]['count']++;
-				$methods[ $m ]['sum'] += $back;
-			} elseif ( 'failed' === $p->refund_status ) {
-				$t['failed'] += $back;
-				$t['failedCount']++;
-				$services[ $sid ]['open'] += $back;
-			} elseif ( in_array( $p->refund_status, array( 'due', 'processing' ), true ) ) {
-				$t['pending'] += $back;
-				$t['pendingCount']++;
-				$services[ $sid ]['open'] += $back;
-			}
-
-			$r = (string) $p->refund_reason;
-
-			if ( ! isset( $reasons[ $r ] ) ) {
-				$reasons[ $r ] = array( 'label' => isset( $labels[ $r ] ) ? $labels[ $r ] : $r, 'count' => 0, 'sum' => 0 );
-			}
-
-			$reasons[ $r ]['count']++;
-			$reasons[ $r ]['sum'] += $back;
-		}
-
-		$t['kept'] = $t['paid'] - $t['refunded'] - $t['pending'] - $t['failed'];
-
-		$fa = array();
-
-		foreach ( $t as $k => $v ) {
-			$fa[ $k . 'Fa' ] = in_array( $k, array( 'paidCount', 'refundedCount', 'pendingCount', 'failedCount', 'tests' ), true ) ? cmb_fa_num( $v ) : cmb_toman( $v );
-		}
-
-		$fmt = function ( array $list ) {
-			return array_values(
-				array_map(
-					function ( $x ) {
-						$x['countFa'] = cmb_fa_num( $x['count'] );
-						$x['sumFa']   = isset( $x['sum'] ) ? cmb_toman( $x['sum'] ) : '';
-
-						foreach ( array( 'paid', 'refunded', 'open' ) as $k ) {
-							if ( isset( $x[ $k ] ) ) {
-								$x[ $k . 'Fa' ] = cmb_toman( $x[ $k ] );
-							}
-						}
-
-						return $x;
-					},
-					$list
-				)
-			);
-		};
-
-		return array(
-			'days'     => (int) $days,
-			'sandbox'  => (bool) $with_sandbox,
-			'totals'   => $t + $fa,
-			'reasons'  => $fmt( $reasons ),
-			'methods'  => $fmt( $methods ),
-			'services' => $fmt( $services ),
-		);
-	}
-
-	/**
-	 * گزارش در حالت کیف پول.
+	 * گزارش بیعانه و کیف پول در یک بازه.
 	 *
 	 * بیعانه‌ها از روی خود نوبت‌ها (زمان پرداخت)، با سهم کیف پول و
 	 * درگاه؛ برگشت‌ها، شارژها، خرج‌ها و تغییرهای دستی از دفتر کیف پول
 	 * (زمان ثبت). شارژ درآمد نیست؛ پیش‌پرداخت مشتری است و تا خرج نشده
 	 * در «موجودی کیف پول‌ها» (بدهی مجموعه به مشتری‌ها) می‌ماند.
 	 */
-	protected static function report_wallet( $days, $with_sandbox ) {
+	public static function report( $days = 30, $with_sandbox = false ) {
 		global $wpdb;
+
+		if ( ! CMB_Wallet::ready() ) {
+			return array(
+				'days'     => (int) $days,
+				'totals'   => array(),
+				'reasons'  => array(),
+				'services' => array(),
+			);
+		}
 
 		$pt    = cmb_table( 'payments' );
 		$bt    = cmb_table( 'bookings' );
@@ -643,12 +436,10 @@ class CMB_Pay_Review {
 		};
 
 		return array(
-			'mode'     => 'wallet',
 			'days'     => (int) $days,
 			'sandbox'  => (bool) $with_sandbox,
 			'totals'   => $t + $fa,
 			'reasons'  => $fmt( $reasons ),
-			'methods'  => array(),
 			'services' => $fmt( $services ),
 		);
 	}

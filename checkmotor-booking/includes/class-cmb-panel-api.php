@@ -1186,8 +1186,7 @@ class CMB_Panel_Api {
 	 * --------------------------------------------------------------- */
 
 	/**
-	 * فهرست کیف پول‌ها، جمع موجودی همه، و تعداد ردیف‌های مانده در صف
-	 * قدیمی برگشت به کارت.
+	 * فهرست کیف پول‌ها، جمع موجودی همه، و تعداد برگشت‌های مانده.
 	 */
 	public function wallets( WP_REST_Request $request ) {
 		if ( ! CMB_Wallet::ready() ) {
@@ -1282,26 +1281,29 @@ class CMB_Panel_Api {
 	}
 
 	/* ------------------------------------------------------------------
-	 * بازگشت وجه
+	 * برگشت‌های مانده
 	 * --------------------------------------------------------------- */
 
 	/**
-	 * آیا کاربر فعلی می‌تواند برگشت وجه را ثبت کند؟
+	 * آیا کاربر فعلی می‌تواند کیف پول را دستی تغییر دهد و برگشت‌های مانده
+	 * را تعیین تکلیف کند؟
 	 *
-	 * دیدن صف برای همه‌ی مسئولان رزرو آزاد است؛ ثبتِ «انجام شد» با پول
-	 * سروکار دارد و پیش‌فرض فقط مدیر کل.
+	 * دیدن برای همه‌ی مسئولان رزرو آزاد است؛ تغییر با پول سروکار دارد و
+	 * پیش‌فرض فقط مدیر کل.
 	 */
 	public static function can_refund() {
 		return current_user_can( 'manage_options' ) || (bool) CMB_Settings::get( 'pay_refund_operators', 0 );
 	}
 
+	/**
+	 * برگشت‌های مانده: صف کارتِ پیش از کیف پول، و برگشتی که واریزش به
+	 * کیف پول ممکن نشد.
+	 */
 	public function refunds( WP_REST_Request $request ) {
-		$which = 'done' === $request->get_param( 'which' ) ? 'done' : 'open';
-
 		return rest_ensure_response(
 			array(
-				'items'     => CMB_Payments::refund_queue( $which ),
-				'which'     => $which,
+				'items'     => CMB_Payments::refund_queue( 'open' ),
+				'which'     => 'open',
 				'canRefund' => self::can_refund(),
 				'open'      => CMB_Payments::count_open_refunds(),
 			)
@@ -1309,7 +1311,7 @@ class CMB_Panel_Api {
 	}
 
 	/**
-	 * بیعانه و برگشت هر خدمت، با هشدار و سناریوها.
+	 * بیعانه و برگشتیِ هر خدمت، با هشدار و سناریوها.
 	 */
 	public function pay_review( WP_REST_Request $request ) {
 		return rest_ensure_response( CMB_Pay_Review::services() );
@@ -1324,27 +1326,17 @@ class CMB_Panel_Api {
 
 	public function update_refund( WP_REST_Request $request ) {
 		if ( ! self::can_refund() ) {
-			return new WP_Error( 'cmb_refund_forbidden', 'ثبت برگشت وجه فقط برای مدیر سایت مجاز است.', array( 'status' => 403 ) );
+			return new WP_Error( 'cmb_refund_forbidden', 'تعیین تکلیف برگشت‌های مانده فقط برای مدیر سایت مجاز است.', array( 'status' => 403 ) );
 		}
 
 		$id     = (int) $request->get_param( 'id' );
 		$action = sanitize_key( (string) $request->get_param( 'action' ) );
 
-		$outcome = '';
-
-		if ( 'amount' === $action ) {
-			$result = CMB_Payments::edit_refund( $id, (int) cmb_en_num( (string) $request->get_param( 'amount' ) ), get_current_user_id() );
-		} elseif ( 'auto' === $action ) {
-			$result = CMB_Payments::run_now( $id );
-
-			if ( ! is_wp_error( $result ) ) {
-				$outcome = $result;
-				$result  = true;
-			}
-		} elseif ( 'done' === $action ) {
-			$result = CMB_Payments::mark_refunded( $id, (string) $request->get_param( 'ref' ), get_current_user_id(), (bool) $request->get_param( 'sms' ) );
+		if ( 'done' === $action ) {
+			// پول قبلاً جور دیگری برگشته (مثلاً پیش از کیف پول، در زرین‌پال)
+			$result = CMB_Payments::mark_refunded( $id, (string) $request->get_param( 'ref' ), get_current_user_id() );
 		} elseif ( 'wallet' === $action && CMB_Wallet::ready() ) {
-			// ردیف مانده از صف قدیمی کارت ← کیف پول مشتری
+			// برگشت مانده ← کیف پول مشتری
 			$result = CMB_Wallet::move_legacy( $id, get_current_user_id() );
 		} else {
 			return new WP_Error( 'cmb_bad_action', 'درخواست معتبر نیست.', array( 'status' => 400 ) );
@@ -1359,7 +1351,6 @@ class CMB_Panel_Api {
 		return rest_ensure_response(
 			array(
 				'success' => true,
-				'outcome' => $outcome,
 				'error'   => $payment ? (string) $payment->refund_error : '',
 				'items'   => CMB_Payments::refund_queue( 'open' ),
 				'open'    => CMB_Payments::count_open_refunds(),

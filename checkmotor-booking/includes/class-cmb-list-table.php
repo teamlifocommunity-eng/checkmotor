@@ -258,9 +258,7 @@ class CMB_Bookings_List_Table extends WP_List_Table {
 
 			if ( 'cancelled' === $status && isset( $item->pay_status ) && 'paid' === $item->pay_status ) {
 				$ask = sprintf(
-					CMB_Payments::wallet_mode()
-						? 'بیعانه‌ی این نوبت پرداخت شده؛ با لغو، %s تومان همان لحظه به کیف پول مشتری می‌رود (مبلغ دیگر را از پنل رزرو می‌توانید بگذارید). مطمئن هستید؟'
-						: 'بیعانه‌ی این نوبت پرداخت شده؛ با لغو، %s تومان در صف بازگشت وجه می‌نشیند (مبلغ دیگر را از پنل رزرو می‌توانید بگذارید). مطمئن هستید؟',
+					'بیعانه‌ی این نوبت پرداخت شده؛ با لغو، %s تومان همان لحظه به کیف پول مشتری می‌رود (مبلغ دیگر را از پنل رزرو می‌توانید بگذارید). مطمئن هستید؟',
 					number_format( CMB_Payments::shop_refund_default( (int) $item->deposit_amount ) )
 				);
 			}
