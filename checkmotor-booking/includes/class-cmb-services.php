@@ -321,7 +321,8 @@ class CMB_Services {
 			return new WP_Error( 'cmb_bad_deposit', 'بیعانه' . $label . ' باید ۰ (بدون بیعانه) یا دست‌کم ۱,۰۰۰ تومان باشد؛ زرین‌پال پرداخت کمتر از این را نمی‌پذیرد.', array( 'status' => 400 ) );
 		}
 
-		if ( null !== $refund && (int) $refund > 0 && (int) $refund < 2000 ) {
+		// کیف پول حداقل ندارد؛ فقط استرداد زرین‌پال (حالت کارت) کمتر از ۲,۰۰۰ تومان را نمی‌پذیرد
+		if ( null !== $refund && (int) $refund > 0 && (int) $refund < 2000 && ! CMB_Payments::wallet_mode() ) {
 			return new WP_Error( 'cmb_bad_refund', 'مبلغ بازگشتی در لغو' . $label . ' باید ۰ یا دست‌کم ۲,۰۰۰ تومان باشد؛ زرین‌پال کمتر از این را برنمی‌گرداند.', array( 'status' => 400 ) );
 		}
 

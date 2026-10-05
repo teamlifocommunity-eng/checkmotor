@@ -3,7 +3,7 @@
  * Plugin Name: چک موتور — سیستم رزرو نوبت
  * Plugin URI:  https://checkmotor.ir
  * Description: سیستم رزرو نوبت آنلاین چک موتور (MVP) — ورود با کد تایید پیامکی ملی‌پیامک، تقویم ۷ روزه، شیفت صبح/بعدازظهر، پنل مدیریت نوبت‌ها.
- * Version:     1.35.4
+ * Version:     1.36.0
  * Author:      رضا امام‌حسنی
  * Text Domain: checkmotor-booking
  * Domain Path: /languages
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMB_VERSION', '1.35.4' );
+define( 'CMB_VERSION', '1.36.0' );
 define( 'CMB_FILE', __FILE__ );
 define( 'CMB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMB_URL', plugin_dir_url( __FILE__ ) );
@@ -115,6 +115,7 @@ function cmb_load_files() {
 		'includes/class-cmb-zarinpal.php',
 		'includes/class-cmb-zarinpal-refund.php',
 		'includes/class-cmb-payments.php',
+		'includes/class-cmb-wallet.php',
 		'includes/class-cmb-pay-review.php',
 		'includes/class-cmb-pay-setup.php',
 		'includes/class-cmb-services.php',
@@ -204,6 +205,14 @@ final class CMB_Plugin {
 		// مشتری‌ها نباید به پیشخوان وردپرس دسترسی داشته باشند.
 		add_action( 'admin_init', array( $this, 'block_customer_admin' ) );
 		add_filter( 'show_admin_bar', array( $this, 'hide_admin_bar' ) );
+
+		/* پیامکِ انتقال صف قدیمی به کیف پول، وقتی مدیر پترنش را ذخیره کرد. */
+		add_action(
+			'update_option_' . CMB_Settings::OPTION,
+			function () {
+				CMB_Wallet::flush_migration_sms();
+			}
+		);
 
 		CMB_Rest::instance();
 		CMB_Panel_Api::instance();
@@ -626,6 +635,10 @@ function cmb_enqueue_app() {
 
 	$route = (string) get_query_var( 'cmb_route' );
 
+	/* نتیجه‌ی شارژ پیش از خود کیف پول: ممکن است همین حالا verify کند و
+	   موجودی را بالا ببرد. */
+	$topup = ( 0 === strpos( $route, 'wallet' ) && CMB_Wallet::schema_ready() ) ? CMB_Wallet::topup_state() : null;
+
 	wp_localize_script(
 		'cmb-app',
 		'CMB_APP',
@@ -666,12 +679,18 @@ function cmb_enqueue_app() {
 				'on'      => CMB_Payments::enabled(),
 				'sandbox' => CMB_Payments::enabled() && CMB_Payments::sandbox(),
 				'auto'    => CMB_Payments::auto_on(),
+				// برگشت‌ها به کیف پول مشتری می‌رود (نه کارت)
+				'wallet'  => CMB_Payments::wallet_mode(),
 				// «کِی پولم برمی‌گردد» برای متن تأیید لغو
 				'eta'     => CMB_Payments::refund_eta( 'customer' ),
 			),
 			/* صفحه‌ی نتیجه‌ی پرداخت: وضعیت همین‌جا ساخته می‌شود، چون
 			   ممکن است بی‌کوکی باز شده باشد (سافاری جدا در آیفون). */
 			'payResult' => 0 === strpos( $route, 'pay/result' ) ? CMB_Payments::result_payload() : null,
+			/* کیف پول: موجودی، تاریخچه و شارژ (null یعنی کیف پول خاموش است). */
+			'wallet'    => CMB_Wallet::ready() ? CMB_Wallet::payload( $user->ID ) : null,
+			/* نتیجه‌ی شارژ کیف پول؛ مثل payResult با توکن، بی‌نیاز به کوکی. */
+			'topupResult' => $topup,
 			'notes'     => array(
 				'ecu'         => $boot['notes']['ecu'],
 				'outOfWindow' => $boot['notes']['outOfWindow'],
@@ -724,6 +743,8 @@ function cmb_enqueue_panel() {
 				'on'        => CMB_Payments::enabled(),
 				'used'      => CMB_Payments::in_use(),
 				'canRefund' => CMB_Panel_Api::can_refund(),
+				// برگشت‌ها به کیف پول مشتری می‌رود (بخش «بیعانه و کیف پول»)
+				'wallet'    => CMB_Payments::wallet_mode(),
 				'shopPct'   => (int) CMB_Settings::get( 'pay_shop_refund_percent', 100 ),
 				'auto'      => CMB_Payments::auto_on(),
 				'delay'     => CMB_Payments::refund_delay(),

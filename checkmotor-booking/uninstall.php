@@ -16,7 +16,7 @@ if ( ! defined( 'CMB_REMOVE_ALL_DATA' ) || ! CMB_REMOVE_ALL_DATA ) {
 
 global $wpdb;
 
-$cmb_tables = array( 'bookings', 'closures', 'services', 'branches', 'otp', 'payments' );
+$cmb_tables = array( 'bookings', 'closures', 'services', 'branches', 'otp', 'payments', 'wallet' );
 
 foreach ( $cmb_tables as $cmb_table ) {
 	$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}cmb_{$cmb_table}" ); // phpcs:ignore
@@ -52,6 +52,7 @@ $cmb_options = array(
 	'cmb_zp_token',
 	'cmb_pay_selftest',
 	'cmb_pay_setup',
+	'cmb_wallet_migrated',
 );
 
 /* فایل حالت سریع در mu-plugins؛ فقط اگر واقعاً مال همین افزونه باشد. */

@@ -15,7 +15,9 @@
  *      reconcile() پرداخت‌های بی‌جواب را با فاصله دوباره verify می‌کند.
  *
  * پولی که آمده ولی نوبتی برایش نمانده (پرداخت دیر، پرداخت دوم برای یک
- * نوبت، انصراف قبلی) گم نمی‌شود: در صف «بازگشت وجه» می‌نشیند.
+ * نوبت، انصراف قبلی) گم نمی‌شود: به کیف پول مشتری می‌رود (CMB_Wallet).
+ * بیعانه هم می‌تواند تمام یا بخشی‌اش از کیف پول باشد؛ آن وقت درگاه فقط
+ * باقی‌مانده را می‌گیرد (wallet_used روی نوبت).
  *
  * مبلغ‌ها: روی نوبت و در تنظیمات تومان؛ در جدول پرداخت‌ها و درگاه ریال.
  */
@@ -92,6 +94,23 @@ class CMB_Payments {
 		return (bool) CMB_Settings::get( 'pay_enabled', 0 ) && self::schema_ready() && '' !== self::merchant();
 	}
 
+	/**
+	 * پولی که باید به مشتری برگردد کجا می‌رود: wallet (کیف پول در همین
+	 * سایت) یا card (صف برگشت به کارت با API زرین‌پال).
+	 *
+	 * زرین‌پال برای این درگاه استرداد نمی‌دهد، پس کیف پول پیش‌فرض است.
+	 * کد کارت دست‌نخورده مانده و فقط با این فیلتر برمی‌گردد:
+	 *     add_filter( 'cmb_refund_to', function () { return 'card'; } );
+	 */
+	public static function refund_to() {
+		return 'card' === apply_filters( 'cmb_refund_to', 'wallet' ) ? 'card' : 'wallet';
+	}
+
+	/** برگشت‌ها به کیف پول می‌روند (و جدولش ساخته شده). */
+	public static function wallet_mode() {
+		return class_exists( 'CMB_Wallet' ) && CMB_Wallet::ready();
+	}
+
 	/** لحظه‌ی جاری به وقت سایت، برای ستون‌های DATETIME (از ساعت مرجع افزونه). */
 	public static function now_local() {
 		return cmb_now()->format( 'Y-m-d H:i:s' );
@@ -145,6 +164,22 @@ class CMB_Payments {
 	}
 
 	public static function default_terms() {
+		if ( self::wallet_mode() ) {
+			return implode(
+				"\n",
+				array(
+					'۱. برای ثبت نوبت، پرداخت {deposit} بیعانه الزامی است. نوبت فقط پس از پرداخت موفق ثبت و قطعی می‌شود.',
+					'۲. هنگام مراجعه، بیعانه از کل هزینه‌ی خدمات کسر می‌شود.',
+					'۳. تا {hours} ساعت پیش از زمان نوبت می‌توانید نوبت را از «نوبت‌های من» لغو کنید. در این صورت {refund} همان لحظه به کیف پول شما در همین سایت برمی‌گردد و {kept} به‌عنوان هزینه‌ی لغو نزد مجموعه می‌ماند.',
+					'۴. کمتر از {hours} ساعت مانده به نوبت، لغو آنلاین ممکن نیست.',
+					'۵. اگر نوبت را لغو نکنید و در زمان نوبت مراجعه نکنید، کل بیعانه ({deposit}) نزد مجموعه می‌ماند و بازگردانده نمی‌شود.',
+					'۶. اگر مجموعه نوبت شما را لغو کند، {shop_refund} به کیف پول شما برمی‌گردد.',
+					'۷. موجودی کیف پول قابل برداشت یا انتقال به کارت بانکی نیست و فقط برای پرداخت بیعانه‌ی نوبت‌های بعدی در همین سایت استفاده می‌شود.',
+					'۸. پرداخت تکراری، یا پرداختی که بعد از پر شدن ظرفیت یا پایان مهلت پرداخت برسد، کامل به کیف پول شما برمی‌گردد.',
+				)
+			);
+		}
+
 		return implode(
 			"\n",
 			array(
@@ -188,6 +223,16 @@ class CMB_Payments {
 
 	public static function terms_hash( $text ) {
 		return hash( 'sha256', (string) $text );
+	}
+
+	/**
+	 * متن قوانینی که مدیر خودش نوشته هنوز از برگشت به کارت می‌گوید؟
+	 * (متن پیش‌فرض خودش با حالت کیف پول عوض می‌شود.)
+	 */
+	public static function terms_mention_card() {
+		$own = trim( (string) CMB_Settings::get( 'pay_terms_text', '' ) );
+
+		return self::wallet_mode() && '' !== $own && false !== mb_strpos( $own, 'کارت' ) && false === mb_strpos( $own, 'کیف پول' );
 	}
 
 	/** گرد کردن به هزار تومان پایین‌تر. */
@@ -253,6 +298,20 @@ class CMB_Payments {
 			'holdMinutes'   => self::hold_minutes(),
 			'sandbox'       => self::sandbox(),
 		);
+	}
+
+	/**
+	 * quote به‌علاوه‌ی بخش کیف پولِ همین مشتری (موجودی، چقدر از کیف پول،
+	 * چقدر با درگاه).
+	 */
+	public static function quote_for( $service, $date, $block, $phone ) {
+		$quote = self::quote( $service, $date, $block );
+
+		if ( $quote && '' !== (string) $phone && CMB_Wallet::spend_on() ) {
+			$quote['wallet'] = CMB_Wallet::quote( $phone, $quote['deposit'] );
+		}
+
+		return $quote;
 	}
 
 	/** «سه‌شنبه ۱۵ مهر ۱۴۰۵، ساعت ۱۰:۰۰» */
@@ -385,24 +444,29 @@ class CMB_Payments {
 			return new WP_Error( 'cmb_pay_off', 'درگاه پرداخت تنظیم نشده است. با شعبه تماس بگیرید.', array( 'status' => 503 ) );
 		}
 
-		$amount  = (int) $booking->deposit_amount * 10;
+		// بخشی از بیعانه که از کیف پول کنار گذاشته شده، از درگاه گرفته نمی‌شود
+		$used    = isset( $booking->wallet_used ) ? (int) $booking->wallet_used : 0;
+		$amount  = max( 0, (int) $booking->deposit_amount - $used ) * 10;
 		$sandbox = self::sandbox();
 		$now     = self::now_local();
-
-		$wpdb->insert(
-			cmb_table( 'payments' ),
-			array(
-				'booking_id'  => (int) $booking->id,
-				'user_id'     => (int) $booking->user_id,
-				'sandbox'     => $sandbox ? 1 : 0,
-				'amount_rial' => $amount,
-				'status'      => 'created',
-				'ip'          => cmb_get_ip(),
-				'created_at'  => $now,
-				'created_gmt' => cmb_now_gmt(),
-				'updated_at'  => $now,
-			)
+		$row     = array(
+			'booking_id'  => (int) $booking->id,
+			'user_id'     => (int) $booking->user_id,
+			'sandbox'     => $sandbox ? 1 : 0,
+			'amount_rial' => $amount,
+			'status'      => 'created',
+			'ip'          => cmb_get_ip(),
+			'created_at'  => $now,
+			'created_gmt' => cmb_now_gmt(),
+			'updated_at'  => $now,
 		);
+
+		if ( CMB_Wallet::schema_ready() ) {
+			$row['kind']  = 'booking';
+			$row['phone'] = (string) $booking->phone;
+		}
+
+		$wpdb->insert( cmb_table( 'payments' ), $row );
 
 		$pid = (int) $wpdb->insert_id;
 
@@ -414,10 +478,8 @@ class CMB_Payments {
 
 		$service = CMB_Services::get_service( $booking->service_id );
 
-		$res = CMB_Zarinpal::request(
-			$merchant,
-			$sandbox,
-			$amount,
+		$res = self::gateway_request(
+			$pid,
 			self::callback_url( $booking ),
 			sprintf( 'بیعانه نوبت %s — %s', $booking->tracking_code, $service ? $service->title : 'چک موتور' ),
 			array(
@@ -426,7 +488,35 @@ class CMB_Payments {
 			)
 		);
 
+		if ( is_wp_error( $res ) ) {
+			cmb_log( 'Zarinpal request failed: ' . $res->get_error_message(), array( 'booking' => (int) $booking->id ) );
+
+			return $res;
+		}
+
+		return array(
+			'url'       => $res['url'],
+			'paymentId' => $pid,
+		);
+	}
+
+	/**
+	 * درخواست پرداخت به زرین‌پال برای ردیف پرداختی که ساخته شده، و ثبت
+	 * جوابش روی همان ردیف. (بیعانه‌ی نوبت و شارژ کیف پول.)
+	 *
+	 * @return array|WP_Error { url }
+	 */
+	public static function gateway_request( $pid, $callback, $description, array $meta = array() ) {
 		$payment = self::get_payment( $pid );
+
+		$res = CMB_Zarinpal::request(
+			self::merchant(),
+			(bool) $payment->sandbox,
+			(int) $payment->amount_rial,
+			$callback,
+			$description,
+			$meta
+		);
 
 		if ( is_wp_error( $res ) ) {
 			$data = $res->get_error_data();
@@ -440,8 +530,6 @@ class CMB_Payments {
 					'raw'        => self::append_raw( $payment, 'request', array( 'error' => $res->get_error_message() ) ),
 				)
 			);
-
-			cmb_log( 'Zarinpal request failed: ' . $res->get_error_message(), array( 'booking' => (int) $booking->id ) );
 
 			return $res;
 		}
@@ -460,10 +548,7 @@ class CMB_Payments {
 			)
 		);
 
-		return array(
-			'url'       => CMB_Zarinpal::start_url( $res['authority'], $sandbox ),
-			'paymentId' => $pid,
-		);
+		return array( 'url' => CMB_Zarinpal::start_url( $res['authority'], (bool) $payment->sandbox ) );
 	}
 
 	/* ------------------------------------------------------------------
@@ -626,6 +711,12 @@ class CMB_Payments {
 			return;
 		}
 
+		// شارژ کیف پول: نوبتی در کار نیست، فقط واریز
+		if ( isset( $payment->kind ) && 'topup' === $payment->kind ) {
+			CMB_Wallet::credit_topup( $payment );
+			return;
+		}
+
 		$lock_name = 'cmb_payb_' . (int) $payment->booking_id;
 		$lock      = cmb_lock( $lock_name, 10 );
 		$booking   = CMB_Bookings::get( $payment->booking_id );
@@ -650,8 +741,19 @@ class CMB_Payments {
 		$outcome = self::confirm_or_reason( $booking );
 
 		if ( true === $outcome ) {
-			self::confirm( $booking, $payment );
-		} else {
+			/* بخشی از بیعانه که از کیف پول کنار گذاشته شده بود قطعی می‌شود.
+			   پرداختِ دیر: اگر مشتری آن مبلغ را در این فاصله خرج کرده،
+			   نوبت دیگر کامل پرداخت نمی‌شود. */
+			$wallet_row = CMB_Wallet::settle_hold( $booking );
+
+			if ( false === $wallet_row ) {
+				$outcome = 'wallet';
+			} else {
+				self::confirm( $booking, $payment, $wallet_row );
+			}
+		}
+
+		if ( true !== $outcome ) {
 			// نوبتی برای این پول نمانده: کل مبلغ برگشت داده می‌شود
 			if ( 'pending' === $booking->status ) {
 				self::update_booking(
@@ -664,8 +766,13 @@ class CMB_Payments {
 				);
 			}
 
+			CMB_Wallet::release( $booking->id );
 			self::refund_due( $payment, $full, $outcome, 0, true );
-			self::notify_late( CMB_Bookings::get( $booking->id ), $outcome );
+
+			// در حالت کیف پول، پیامک واریز به کیف پول همین را می‌گوید
+			if ( ! self::wallet_mode() ) {
+				self::notify_late( CMB_Bookings::get( $booking->id ), $outcome );
+			}
 		}
 
 		cmb_unlock( $lock_name, $lock );
@@ -711,7 +818,41 @@ class CMB_Payments {
 		return true;
 	}
 
-	protected static function confirm( $booking, $payment ) {
+	/**
+	 * @param int $wallet_row ردیف برداشت کیف پولِ همین بیعانه (اگر هست)؛
+	 *                        اگر تأیید نشد، باطل می‌شود.
+	 */
+	protected static function confirm( $booking, $payment, $wallet_row = 0 ) {
+		if ( ! self::mark_paid( $booking ) ) {
+			// هم‌زمان چیز دیگری عوض شد؛ پول گم نشود
+			if ( $wallet_row ) {
+				CMB_Wallet::void_row( $wallet_row );
+			}
+
+			self::refund_due( $payment, (int) $payment->amount_rial, 'duplicate', 0, false );
+			return;
+		}
+
+		self::after_paid( $booking, $payment );
+	}
+
+	/**
+	 * کل بیعانه با کیف پول پرداخت شد: نوبت قطعی می‌شود، بی‌ردیف پرداخت.
+	 *
+	 * @return bool
+	 */
+	public static function confirm_wallet( $booking ) {
+		if ( ! self::mark_paid( $booking ) ) {
+			return false;
+		}
+
+		self::after_paid( $booking, null );
+
+		return true;
+	}
+
+	/** به‌روزرسانی شرطی: فقط نوبتِ در انتظار پرداخت (یا منقضی‌شده‌ی دیر) قطعی می‌شود. */
+	protected static function mark_paid( $booking ) {
 		global $wpdb;
 
 		$table = cmb_table( 'bookings' );
@@ -730,15 +871,13 @@ class CMB_Payments {
 
 		CMB_Availability::flush_cache();
 
-		if ( ! $done ) {
-			// هم‌زمان چیز دیگری عوض شد؛ پول گم نشود
-			self::refund_due( $payment, (int) $payment->amount_rial, 'duplicate', 0, false );
-			return;
-		}
+		return (bool) $done;
+	}
 
+	protected static function after_paid( $booking, $payment ) {
 		$booking = CMB_Bookings::get( $booking->id );
 
-		cmb_log( 'Booking paid and confirmed', array( 'booking' => (int) $booking->id, 'payment' => (int) $payment->id ) );
+		cmb_log( 'Booking paid and confirmed', array( 'booking' => (int) $booking->id, 'payment' => $payment ? (int) $payment->id : 0 ) );
 
 		do_action( 'cmb_booking_created', (int) $booking->id, $booking );
 		do_action( 'cmb_booking_paid', (int) $booking->id, $booking, $payment );
@@ -798,6 +937,18 @@ class CMB_Payments {
 		}
 
 		$amount_rial = max( 0, min( (int) $payment->amount_rial, (int) $amount_rial ) );
+
+		/* کیف پول: همین حالا واریز می‌شود. اگر نشد (صاحب پرداخت معلوم
+		   نبود) مثل قبل در صف می‌ماند تا مدیر ببیند؛ پول گم نمی‌شود. */
+		if ( $amount_rial > 0 && self::wallet_mode() && ! self::is_selftest_reason( $reason ) ) {
+			$res = CMB_Wallet::refund_payment( $payment, (int) ( $amount_rial / 10 ), $reason, $by, $touch_booking );
+
+			if ( true === $res || 'cmb_refund_locked' === $res->get_error_code() ) {
+				return $res;
+			}
+
+			$payment = self::get_payment( $payment->id );
+		}
 
 		if ( $amount_rial > 0 ) {
 			$fields = array(
@@ -899,6 +1050,28 @@ class CMB_Payments {
 	}
 
 	/**
+	 * برگشت بیعانه‌ی نوبتِ لغوشده (لغو مشتری یا مجموعه): کیف پول، یا در
+	 * حالت کارت صف برگشتِ پرداختِ اصلی.
+	 *
+	 * @param int $amount تومان؛ ۰ یعنی کل بیعانه نزد مجموعه می‌ماند.
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function refund_booking( $booking, $amount, $reason, $by = 0 ) {
+		if ( self::wallet_mode() ) {
+			return CMB_Wallet::refund_booking( $booking, $amount, $reason, $by );
+		}
+
+		$main = self::main_payment( $booking->id );
+
+		if ( ! $main ) {
+			return new WP_Error( 'cmb_refund_no_payment', 'پرداخت موفقی برای برگشت پیدا نشد.', array( 'status' => 409 ) );
+		}
+
+		return self::refund_due( $main, (int) $amount * 10, $reason, $by, true );
+	}
+
+	/**
 	 * ثبت «برگشت انجام شد» توسط مدیر (از پنل زرین‌پال یا کارت‌به‌کارت).
 	 *
 	 * @return true|WP_Error
@@ -980,7 +1153,7 @@ class CMB_Payments {
 			return new WP_Error( 'cmb_refund_amount', sprintf( 'مبلغ برگشت باید بین ۰ و %s باشد.', cmb_toman( $paid ) ), array( 'status' => 400 ) );
 		}
 
-		if ( $amount > 0 && $amount * 10 < self::MIN_REFUND_RIAL ) {
+		if ( $amount > 0 && $amount * 10 < self::MIN_REFUND_RIAL && ! self::wallet_mode() ) {
 			return new WP_Error( 'cmb_refund_amount', 'کمترین مبلغ برگشت در زرین‌پال ۲,۰۰۰ تومان است. ۰ بگذارید یا مبلغ را بیشتر کنید.', array( 'status' => 400 ) );
 		}
 
@@ -1076,6 +1249,7 @@ class CMB_Payments {
 			'abandoned'  => 'پرداخت بعد از انصراف',
 			'cancelled'  => 'پرداخت برای نوبت لغوشده',
 			'no_booking' => 'نوبت حذف شده بود',
+			'wallet'     => 'پرداخت دیر رسید؛ موجودی کیف پول دیگر کافی نبود',
 			'selftest'   => 'آزمون استرداد',
 			'selftest_fast' => 'آزمون برگشت فوری',
 		);
@@ -1131,6 +1305,7 @@ class CMB_Payments {
 	public static function done_label( $method ) {
 		$map = array(
 			'manual'   => 'دستی',
+			'wallet'   => 'به کیف پول مشتری',
 			'sandbox'  => 'خودکار (آزمایشی)',
 			'reverse'  => 'خودکار — برگشت فوری',
 			'api-PAYA' => 'خودکار — پایا',
@@ -1161,7 +1336,7 @@ class CMB_Payments {
 
 	/** برگشت خودکار روشن است (پرداخت‌های آزمایشی بدون توکن هم شبیه‌سازی می‌شوند). */
 	public static function auto_on() {
-		return self::auto_schema() && 'auto' === self::refund_mode();
+		return self::auto_schema() && 'auto' === self::refund_mode() && ! self::wallet_mode();
 	}
 
 	public static function refund_delay() {
@@ -1606,6 +1781,10 @@ class CMB_Payments {
 	 * @param string $reason دلیل برگشت (customer، shop، duplicate، …)
 	 */
 	public static function refund_eta( $reason = 'customer' ) {
+		if ( self::wallet_mode() ) {
+			return 'همان لحظه به کیف پول شما در همین سایت برمی‌گردد و برای بیعانه‌ی نوبت بعدی قابل استفاده است';
+		}
+
 		if ( ! self::auto_on() ) {
 			return 'معمولاً ظرف ۳ روز کاری به همان کارتی که با آن پرداخت کرده‌اید برمی‌گردد';
 		}
@@ -1726,16 +1905,19 @@ class CMB_Payments {
 
 		$wpdb->insert(
 			cmb_table( 'payments' ),
-			array(
-				'booking_id'  => 0,
-				'user_id'     => get_current_user_id(),
-				'sandbox'     => $sandbox ? 1 : 0,
-				'amount_rial' => self::SELFTEST_RIAL,
-				'status'      => 'created',
-				'ip'          => cmb_get_ip(),
-				'created_at'  => $now,
-				'created_gmt' => cmb_now_gmt(),
-				'updated_at'  => $now,
+			array_merge(
+				array(
+					'booking_id'  => 0,
+					'user_id'     => get_current_user_id(),
+					'sandbox'     => $sandbox ? 1 : 0,
+					'amount_rial' => self::SELFTEST_RIAL,
+					'status'      => 'created',
+					'ip'          => cmb_get_ip(),
+					'created_at'  => $now,
+					'created_gmt' => cmb_now_gmt(),
+					'updated_at'  => $now,
+				),
+				CMB_Wallet::schema_ready() ? array( 'kind' => 'selftest' ) : array()
 			)
 		);
 
@@ -1999,7 +2181,7 @@ class CMB_Payments {
 
 		$table = cmb_table( 'bookings' );
 
-		return (int) $wpdb->query(
+		$count = (int) $wpdb->query(
 			$wpdb->prepare(
 				"UPDATE {$table} SET status = 'expired', expire_reason = 'timeout', pay_status = 'unpaid', updated_at = %s
 				 WHERE status = 'pending' AND hold_until_gmt IS NOT NULL AND hold_until_gmt <= %s", // phpcs:ignore
@@ -2007,6 +2189,11 @@ class CMB_Payments {
 				cmb_now_gmt()
 			)
 		);
+
+		// مبلغ کیف پولِ کنار گذاشته برای این نوبت‌ها آزاد می‌شود
+		CMB_Wallet::release_stale();
+
+		return $count;
 	}
 
 	/**
@@ -2150,6 +2337,11 @@ class CMB_Payments {
 			return true;
 		}
 
+		if ( 'pay/wallet' === $route ) {
+			CMB_Wallet::handle_return();
+			return true;
+		}
+
 		return false;
 	}
 
@@ -2285,7 +2477,7 @@ class CMB_Payments {
 			return $out + array(
 				'state'    => $checking ? 'checking' : 'failed',
 				'message'  => $checking
-					? 'نتیجه‌ی پرداخت هنوز از درگاه نرسیده. اگر پول از حسابتان کم شده، چند دقیقه‌ی دیگر خودکار بررسی می‌شود و نوبت ثبت می‌شود؛ وگرنه کل مبلغ بازگردانده می‌شود.'
+					? 'نتیجه‌ی پرداخت هنوز از درگاه نرسیده. اگر پول از حسابتان کم شده، چند دقیقه‌ی دیگر خودکار بررسی می‌شود و نوبت ثبت می‌شود؛ وگرنه کل مبلغ ' . ( self::wallet_mode() ? 'به کیف پولتان برمی‌گردد.' : 'بازگردانده می‌شود.' )
 					: ( $last && $last->gw_message ? $last->gw_message . ' ' : 'پرداخت انجام نشد. ' ) . 'نوبت هنوز برایتان نگه داشته شده است.',
 				'canRetry' => $attempts < self::MAX_ATTEMPTS,
 				'holdLeft' => max( 0, strtotime( $booking->hold_until_gmt . ' UTC' ) - cmb_now()->getTimestamp() ),
@@ -2295,7 +2487,9 @@ class CMB_Payments {
 		if ( in_array( $booking->pay_status, array( 'refund_due', 'refunding', 'refunded' ), true ) && 'expired' === $booking->status ) {
 			return $out + array(
 				'state'   => 'refund',
-				'message' => sprintf( 'پرداخت شما رسید ولی نوبت دیگر قابل ثبت نبود؛ %s به کارت شما بازگردانده می‌شود.', cmb_toman( $booking->refund_amount ) ),
+				'message' => self::wallet_mode()
+					? sprintf( 'پرداخت شما رسید ولی نوبت دیگر قابل ثبت نبود؛ %s به کیف پول شما برگشت و برای نوبت بعدی قابل استفاده است.', cmb_toman( $booking->refund_amount ) )
+					: sprintf( 'پرداخت شما رسید ولی نوبت دیگر قابل ثبت نبود؛ %s به کارت شما بازگردانده می‌شود.', cmb_toman( $booking->refund_amount ) ),
 			);
 		}
 
@@ -2417,6 +2611,8 @@ class CMB_Payments {
 					'hold_until_gmt' => null,
 				)
 			);
+
+			CMB_Wallet::release( $booking->id );
 		}
 
 		return CMB_Bookings::get( $booking->id );
@@ -2439,10 +2635,29 @@ class CMB_Payments {
 			'kept'       => 'نزد مجموعه ماند',
 		);
 
+		$to_wallet = self::wallet_mode();
+
+		/* برگشتِ کیف پولی: برگشتی که روی کارت انجام شده (پیش از کیف
+		   پول) همان برچسب قبلی را دارد. */
+		if ( $to_wallet && 'refunded' === $booking->pay_status ) {
+			$main = self::main_payment( $booking->id );
+
+			if ( ! $main || 'wallet' === $main->refund_method || '' === (string) $main->refund_method ) {
+				$labels['refunded'] = 'به کیف پول برگشت';
+			}
+		}
+
 		$deposit = (int) $booking->deposit_amount;
 		$refund  = (int) $booking->refund_amount;
+		$wallet  = isset( $booking->wallet_used ) ? min( $deposit, (int) $booking->wallet_used ) : 0;
 
 		return array(
+			// بیعانه = بخش کیف پول + بخش درگاه
+			'wallet'       => $wallet,
+			'walletFa'     => cmb_toman( $wallet ),
+			'gateway'      => $deposit - $wallet,
+			'gatewayFa'    => cmb_toman( $deposit - $wallet ),
+			'toWallet'     => $to_wallet,
 			'deposit'      => $deposit,
 			'depositFa'    => cmb_toman( $deposit ),
 			'status'       => (string) $booking->pay_status,

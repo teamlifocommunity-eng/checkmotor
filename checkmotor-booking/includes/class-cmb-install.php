@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CMB_Install {
 
-	const DB_VERSION = '1.5.0';
+	const DB_VERSION = '1.6.0';
 
 	public static function activate() {
 		global $wpdb;
@@ -47,6 +47,8 @@ class CMB_Install {
 			CMB_Cron::clear_events();
 
 			update_option( 'cmb_db_version', self::DB_VERSION );
+
+			self::after_upgrade();
 
 			// قواعد باید اول ثبت شوند، بعد flush — وگرنه مسیر اپ تا ذخیره‌ی
 			// دستی «پیوندهای یکتا» خطای ۴۰۴ می‌دهد.
@@ -90,7 +92,7 @@ class CMB_Install {
 
 		$missing = array();
 
-		foreach ( array( 'branches', 'services', 'bookings', 'closures', 'otp', 'payments' ) as $name ) {
+		foreach ( array( 'branches', 'services', 'bookings', 'closures', 'otp', 'payments', 'wallet' ) as $name ) {
 			$table = cmb_table( $name );
 			$found = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ); // phpcs:ignore
 
@@ -146,7 +148,30 @@ class CMB_Install {
 
 		update_option( 'cmb_db_version', self::DB_VERSION );
 
+		self::after_upgrade();
+
 		delete_transient( 'cmb_upgrading' );
+	}
+
+	/**
+	 * کارهای داده‌ای بعد از ساخت جدول‌ها (هر کدام فقط یک بار اثر دارد).
+	 */
+	protected static function after_upgrade() {
+		global $wpdb;
+
+		$payments = cmb_table( 'payments' );
+
+		/* پرداخت‌های بی‌نوبتِ پیش از 1.6.0 همه آزمون‌های صفحه‌ی
+		   راه‌اندازی بودند؛ حالا شارژ کیف پول هم بی‌نوبت است و نوعش را
+		   خودش دارد. */
+		if ( cmb_has_column( 'payments', 'kind' ) ) {
+			$wpdb->query( "UPDATE {$payments} SET kind = 'selftest' WHERE booking_id = 0 AND kind = 'booking'" ); // phpcs:ignore
+		}
+
+		// برگشت‌های مانده در صف کارت ← کیف پول (یک بار، با پیامک)
+		if ( class_exists( 'CMB_Wallet' ) ) {
+			CMB_Wallet::migrate_legacy();
+		}
 	}
 
 	/**
@@ -179,6 +204,7 @@ class CMB_Install {
 		$closures = cmb_table( 'closures' );
 		$otp      = cmb_table( 'otp' );
 		$payments = cmb_table( 'payments' );
+		$wallet   = cmb_table( 'wallet' );
 
 		$sql = array();
 
@@ -249,6 +275,7 @@ class CMB_Install {
 			paid_at DATETIME NULL,
 			pay_token VARCHAR(64) DEFAULT '' NOT NULL,
 			expire_reason VARCHAR(20) DEFAULT '' NOT NULL,
+			wallet_used INT UNSIGNED DEFAULT 0 NOT NULL,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL,
 			PRIMARY KEY  (id),
@@ -294,6 +321,9 @@ class CMB_Install {
 			refund_done_at DATETIME NULL,
 			refund_after_gmt DATETIME NULL,
 			refund_tries SMALLINT UNSIGNED DEFAULT 0 NOT NULL,
+			kind VARCHAR(10) DEFAULT 'booking' NOT NULL,
+			phone VARCHAR(20) DEFAULT '' NOT NULL,
+			token VARCHAR(64) DEFAULT '' NOT NULL,
 			raw TEXT NULL,
 			ip VARCHAR(45) DEFAULT '' NOT NULL,
 			created_at DATETIME NOT NULL,
@@ -304,7 +334,33 @@ class CMB_Install {
 			KEY booking_id (booking_id),
 			KEY status_check (status,next_check_gmt),
 			KEY refund_status (refund_status),
-			KEY refund_after (refund_status,refund_after_gmt)
+			KEY refund_after (refund_status,refund_after_gmt),
+			KEY kind_phone (kind,phone)
+		) {$charset};";
+
+		/* کیف پول: دفتر کل، یک ردیف برای هر واریز و برداشت. مبلغ‌ها
+		   تومان و علامت‌دار (مثبت واریز، منفی برداشت). کلید هر مشتری
+		   شماره‌ی موبایل است، همان چیزی که با آن وارد می‌شود. موجودی =
+		   جمع ردیف‌های done، به‌علاوه‌ی برداشت‌های held نوبتی که هنوز در
+		   انتظار پرداخت است (CMB_Wallet::balance). */
+		$sql[] = "CREATE TABLE {$wallet} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			phone VARCHAR(20) NOT NULL,
+			user_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			amount BIGINT NOT NULL,
+			type VARCHAR(10) NOT NULL,
+			status VARCHAR(10) DEFAULT 'done' NOT NULL,
+			reason VARCHAR(30) DEFAULT '' NOT NULL,
+			booking_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			payment_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			note VARCHAR(190) DEFAULT '' NOT NULL,
+			by_user BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			KEY phone_status (phone,status),
+			KEY booking_id (booking_id),
+			KEY payment_id (payment_id)
 		) {$charset};";
 
 		$sql[] = "CREATE TABLE {$closures} (
@@ -342,10 +398,12 @@ class CMB_Install {
 		delete_transient( 'cmb_has_owncap_col' );
 		delete_transient( 'cmb_col_bookings_city' );
 
-		foreach ( array( 'deposit_amount', 'pay_status', 'hold_until_gmt' ) as $col ) {
+		foreach ( array( 'deposit_amount', 'pay_status', 'hold_until_gmt', 'wallet_used' ) as $col ) {
 			delete_transient( 'cmb_col_bookings_' . $col );
 			delete_transient( 'cmb_col_services_' . $col );
 		}
+
+		delete_transient( 'cmb_col_payments_kind' );
 	}
 
 	/**

@@ -333,8 +333,10 @@ class CMB_Pay_Setup {
 			$warn += 'warn' === $it['level'] ? 1 : 0;
 		}
 
+		$section = CMB_Payments::wallet_mode() ? 'بیعانه و کیف پول' : 'بیعانه و برگشت';
+
 		if ( $bad ) {
-			$s = array( 'bad', cmb_fa_num( $bad ) . ' خدمت مبلغ نامعتبر دارد (زرین‌پال نمی‌پذیرد). در پنل ← «بیعانه و برگشت» ← «بررسی خدمات» اصلاحش کنید.' );
+			$s = array( 'bad', cmb_fa_num( $bad ) . ' خدمت مبلغ نامعتبر دارد (زرین‌پال نمی‌پذیرد). در پنل ← «' . $section . '» ← «بررسی خدمات» اصلاحش کنید.' );
 		} elseif ( ! CMB_Payments::enabled() ) {
 			$s = array( 'todo', 'پرداخت بیعانه خاموش است؛ رزروها رایگان‌اند. بعد از آماده شدن قدم‌های دیگر روشنش کنید.' );
 		} elseif ( $warn ) {
@@ -351,6 +353,18 @@ class CMB_Pay_Setup {
 			'fix'    => '',
 			'at'     => 0,
 		);
+
+		/* کیف پول: برگشت‌ها به کیف پول مشتری می‌رود، پس قدم‌های برگشت به
+		   کارت (آی‌پی، توکن، استرداد، آزمون‌ها، خودکار) لازم نیستند. */
+		if ( CMB_Payments::wallet_mode() ) {
+			$steps[] = self::wallet_step();
+
+			foreach ( $steps as $i => $st ) {
+				$steps[ $i ]['n'] = $i + 1;
+			}
+
+			return $steps;
+		}
 
 		// ۳. آی‌پی سرور برای برگشت فوری
 		$r = self::result( 'reverse' );
@@ -494,6 +508,49 @@ class CMB_Pay_Setup {
 		return $steps;
 	}
 
+	/**
+	 * قدم کیف پول: پیامک، شارژ، صف قدیمی، متن قوانین.
+	 */
+	protected static function wallet_step() {
+		$todo   = array();
+		$legacy = CMB_Payments::count_open_refunds();
+		$mig    = get_option( 'cmb_wallet_migrated' );
+		$wait   = is_array( $mig ) && ! empty( $mig['sms_pending'] ) ? count( $mig['sms_pending'] ) : 0;
+
+		if ( ! CMB_Wallet::sms_ready() ) {
+			$todo[] = 'پترن پیامک «تغییر کیف پول» تنظیم نشده؛ مشتری از برگشت پول به کیف پولش پیامک نمی‌گیرد' . ( $wait ? ' (پیامک ' . cmb_fa_num( $wait ) . ' مشتریِ صف قدیمی هم منتظر همین پترن است)' : '' ) . '.';
+		}
+
+		if ( $legacy ) {
+			$todo[] = cmb_fa_num( $legacy ) . ' برگشت از پیش از کیف پول هنوز تعیین تکلیف نشده (پنل ← بیعانه و کیف پول ← صف قدیمی).';
+		}
+
+		if ( CMB_Payments::terms_mention_card() ) {
+			$todo[] = 'متن قوانینی که خودتان نوشته‌اید هنوز از برگشت به کارت می‌گوید (تنظیمات ← پرداخت بیعانه).';
+		}
+
+		$totals = CMB_Wallet::totals();
+
+		list( $min, $max ) = CMB_Wallet::topup_limits();
+
+		$info = 'برگشت‌ها همان لحظه به کیف پول مشتری می‌رود؛ شارژ کیف پول '
+			. ( CMB_Wallet::topup_on() ? 'روشن (' . cmb_toman( $min ) . ' تا ' . cmb_toman( $max ) . ')' : 'خاموش' )
+			. '؛ ' . cmb_fa_num( $totals['wallets'] ) . ' کیف پول با جمع موجودی ' . cmb_toman( $totals['liability'] ) . '.';
+
+		if ( is_array( $mig ) && ! empty( $mig['count'] ) ) {
+			$info .= ' صف قدیمی: ' . cmb_fa_num( $mig['count'] ) . ' برگشت (' . cmb_toman( $mig['amount'] ) . ') به کیف پول مشتری‌ها منتقل شد.';
+		}
+
+		return array(
+			'key'    => 'wallet',
+			'title'  => 'کیف پول مشتری',
+			'status' => $todo ? 'warn' : 'ok',
+			'text'   => $todo ? implode( ' ', $todo ) . ' — ' . $info : $info,
+			'fix'    => '',
+			'at'     => 0,
+		);
+	}
+
 	/** آزمونی که هنوز منتظر درگاه یا برگشت است، شکست حساب نمی‌شود. */
 	protected static function waiting( $res ) {
 		foreach ( $res['steps'] as $st ) {
@@ -573,7 +630,9 @@ class CMB_Pay_Setup {
 		}
 
 		if ( ! $left ) {
-			$text = 'همه‌چیز آماده است؛ برگشت خودکار با پول واقعی کار می‌کند.';
+			$text = CMB_Payments::wallet_mode()
+				? 'همه‌چیز آماده است؛ بیعانه با درگاه و کیف پول پرداخت می‌شود و برگشت‌ها به کیف پول مشتری می‌رود.'
+				: 'همه‌چیز آماده است؛ برگشت خودکار با پول واقعی کار می‌کند.';
 		} else {
 			$names = array();
 
@@ -672,6 +731,17 @@ class CMB_Pay_Setup {
 			case 'api':
 				$changes = array( 'zp_terminal_id' => preg_replace( '/\D/', '', cmb_en_num( (string) wp_unslash( $_POST['zp_terminal_id'] ?? '' ) ) ) );
 				$token   = CMB_Zarinpal_Refund::token_from_post();
+				break;
+
+			case 'wallet':
+				$changes = array(
+					'wallet_topup'     => isset( $_POST['wallet_topup'] ) ? 1 : 0,
+					'wallet_topup_min' => $num( 'wallet_topup_min', 1000, 100000000 ),
+					'wallet_topup_max' => $num( 'wallet_topup_max', 1000, 100000000 ),
+					'pattern_wallet'   => sanitize_text_field( wp_unslash( $_POST['pattern_wallet'] ?? '' ) ),
+				);
+
+				$changes['wallet_topup_max'] = max( $changes['wallet_topup_min'], $changes['wallet_topup_max'] );
 				break;
 
 			case 'auto':
@@ -788,6 +858,19 @@ class CMB_Pay_Setup {
 			<div class="cmb-su-head">
 				<div class="cmb-su-bar" role="progressbar" aria-valuenow="<?php echo esc_attr( $pct ); ?>" aria-valuemin="0" aria-valuemax="100"><span style="width:<?php echo esc_attr( $pct ); ?>%"></span></div>
 				<p class="cmb-su-count"><b><?php echo esc_html( cmb_fa_num( $sum['ready'] ) . ' از ' . cmb_fa_num( $sum['total'] ) . ' قدم آماده' ); ?></b> — <?php echo esc_html( $sum['text'] ); ?></p>
+				<?php if ( CMB_Payments::wallet_mode() ) : ?>
+					<p class="description">
+						هر قدم جدا ذخیره می‌شود و وضعیتش همین‌جا می‌ماند. برای امتحان بی‌پول، در قدم ۱ «درگاه آزمایشی» را روشن کنید.
+						زرین‌پال برای این درگاه استرداد نمی‌دهد، پس برگشت به کارت در کار نیست: هر برگشت به کیف پول مشتری در همین سایت می‌رود
+						و مشتری با آن بیعانه‌ی نوبت بعدی را می‌پردازد. همه‌ی این تنظیم‌ها در «تنظیمات ← پرداخت بیعانه» هم هستند.
+					</p>
+					<p class="cmb-su-chips">
+						<span><?php echo CMB_Payments::sandbox() ? 'درگاه آزمایشی' : 'درگاه واقعی'; ?></span>
+						<span><?php echo CMB_Payments::enabled() ? 'پرداخت بیعانه روشن' : 'پرداخت بیعانه خاموش'; ?></span>
+						<span>برگشت به کیف پول مشتری</span>
+						<span><?php echo CMB_Wallet::topup_on() ? 'شارژ کیف پول روشن' : 'شارژ کیف پول خاموش'; ?></span>
+					</p>
+				<?php else : ?>
 				<p class="description">
 					هر قدم جدا ذخیره و آزمایش می‌شود و وضعیتش همین‌جا می‌ماند. برای امتحان بی‌پول، در قدم ۱ «درگاه آزمایشی» را روشن کنید؛
 					برای پول واقعی خاموشش کنید و آزمون‌ها را دوباره بگیرید. همه‌ی این تنظیم‌ها در «تنظیمات ← پرداخت بیعانه» هم هستند.
@@ -798,6 +881,7 @@ class CMB_Pay_Setup {
 					<span><?php echo 'auto' === CMB_Payments::refund_mode() ? 'برگشت خودکار' : 'برگشت دستی'; ?></span>
 					<span><?php echo CMB_Payments::reverse_on() ? 'برگشت فوری روشن' : 'برگشت فوری خاموش'; ?></span>
 				</p>
+				<?php endif; ?>
 			</div>
 
 			<ol class="cmb-su-list">
@@ -820,10 +904,12 @@ class CMB_Pay_Setup {
 				<?php endforeach; ?>
 			</ol>
 
+			<?php if ( ! CMB_Payments::wallet_mode() ) : ?>
 			<p class="description" style="max-width:760px">
 				این صفحه از روی مستندات درگاه زرین‌پال ساخته شده: پرداخت (request / verify)، برگشت فوری (reverse، تا ۳۰ دقیقه، بی‌کارمزد)،
 				استعلام (inquiry) و استرداد (AddRefund در API زرین‌پال). اگر منوها در پنل زرین‌پال جای دیگری بود، از پشتیبانی همان مورد را بخواهید.
 			</p>
+			<?php endif; ?>
 		</div>
 		<?php
 	}
@@ -893,10 +979,59 @@ class CMB_Pay_Setup {
 				<label>برگشتی در لغوِ به‌موقع <input type="number" name="pay_cancel_refund_default" min="0" step="1000" class="small-text" style="width:120px" value="<?php echo esc_attr( $s['pay_cancel_refund_default'] ); ?>" /> تومان</label>
 			</p>
 			<p class="cmb-su__btns"><button type="submit" name="do" value="save" class="button button-primary">ذخیره</button></p>
+			<?php if ( CMB_Payments::wallet_mode() ) : ?>
+				<p class="description">
+					بیعانه ۰ یا دست‌کم ۱,۰۰۰ تومان (حداقل زرین‌پال). برگشتی هر مبلغی از ۰ تا خود بیعانه است و همان لحظه به کیف پول مشتری می‌رود؛
+					حالا که پول در مجموعه می‌ماند، می‌شود برگشتیِ لغو را بیشتر کرد. مبلغ هر خدمت جدا و شبیه‌ساز «چه کسی چقدر، کِی»:
+					<a href="<?php echo esc_url( cmb_app_url( 'panel/refunds' ) ); ?>" target="_blank" rel="noopener">پنل ← بیعانه و کیف پول ← بررسی خدمات</a>.
+				</p>
+			<?php else : ?>
 			<p class="description">
 				بیعانه ۰ یا دست‌کم ۱,۰۰۰ تومان، و برگشتی ۰ یا دست‌کم ۲,۰۰۰ تومان (حداقل‌های زرین‌پال). مبلغ هر خدمت جدا و شبیه‌ساز «چه کسی چقدر، کِی»:
 				<a href="<?php echo esc_url( cmb_app_url( 'panel/refunds' ) ); ?>" target="_blank" rel="noopener">پنل ← بیعانه و برگشت ← بررسی خدمات</a>.
 			</p>
+			<?php endif; ?>
+		</form>
+		<?php
+	}
+
+	protected static function step_wallet() {
+		$s   = CMB_Settings::all();
+		$mig = get_option( 'cmb_wallet_migrated' );
+
+		self::guide(
+			array(
+				'هر برگشت — لغو به‌موقع مشتری (همان مبلغ تعیین‌شده‌ی هر خدمت)، لغو از طرف مجموعه، پرداخت تکراری، پرداختی که دیر رسید — همان لحظه به کیف پول مشتری در همین سایت واریز می‌شود و پیامک می‌گیرد.',
+				'مشتری در اپ، تب «کیف پول»، موجودی و تاریخچه را می‌بیند و در قدم پرداخت بیعانه‌ی نوبت بعدی، موجودی خودکار کم می‌شود (اگر کافی نبود، باقی‌مانده با درگاه).',
+				'موجودی قابل برداشت یا انتقال به کارت نیست و فقط برای بیعانه‌ی نوبت‌های آنلاین همین سایت خرج می‌شود؛ این در متن قوانینی که مشتری پیش از پرداخت می‌پذیرد آمده است.',
+				'مدیر در پنل ← «بیعانه و کیف پول» موجودی همه، تاریخچه‌ی هر مشتری و افزایش یا کاهش دستی (با توضیح) دارد.',
+				'در ملی‌پیامک یک پترن با چهار متغیر بسازید و شناسه‌اش را این‌جا بگذارید. متن پیشنهادی: ' . str_replace( "\n", ' ⏎ ', CMB_Wallet::pattern_hint() ),
+			)
+		);
+
+		if ( is_array( $mig ) && ( ! empty( $mig['count'] ) || ! empty( $mig['left'] ) ) ) {
+			$wait = ! empty( $mig['sms_pending'] ) ? count( $mig['sms_pending'] ) : 0;
+			?>
+			<p class="cmb-su__ip">
+				<b>انتقال صف قدیمی:</b>
+				<?php echo esc_html( cmb_fa_num( (int) $mig['count'] ) . ' برگشت به جمع ' . cmb_toman( (int) $mig['amount'] ) . ' به کیف پول مشتری‌ها رفت' . ( $wait ? '؛ پیامک ' . cmb_fa_num( $wait ) . ' نفرشان با ذخیره‌ی پترن همین‌جا فرستاده می‌شود.' : ( ! empty( $mig['sms_sent'] ) ? '؛ پیامکشان رفت.' : '.' ) ) ); ?>
+			</p>
+			<?php
+		}
+
+		self::form_open( 'wallet' );
+		?>
+			<p><label><input type="checkbox" name="wallet_topup" value="1" <?php checked( (int) $s['wallet_topup'], 1 ); ?> /> مشتری بتواند کیف پولش را با درگاه شارژ کند</label></p>
+			<p>
+				<label>از <input type="number" name="wallet_topup_min" min="1000" step="1000" class="small-text" style="width:120px" value="<?php echo esc_attr( $s['wallet_topup_min'] ); ?>" /></label>
+				<label>تا <input type="number" name="wallet_topup_max" min="1000" step="1000" class="small-text" style="width:140px" value="<?php echo esc_attr( $s['wallet_topup_max'] ); ?>" /> تومان در هر شارژ</label>
+			</p>
+			<p>
+				<label>شناسه‌ی پترن «تغییر کیف پول» در ملی‌پیامک<br>
+				<input type="text" name="pattern_wallet" class="regular-text" dir="ltr" value="<?php echo esc_attr( $s['pattern_wallet'] ); ?>" /></label>
+				<br><span class="description">متغیرها: {0} نام، {1} مبلغ، {2} موجودی بعد از تغییر، {3} شرح (مثلاً «بابت لغو نوبت CM… به کیف پول شما برگشت»).</span>
+			</p>
+			<p class="cmb-su__btns"><button type="submit" name="do" value="save" class="button button-primary">ذخیره</button></p>
 		</form>
 		<?php
 	}

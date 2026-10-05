@@ -1027,3 +1027,73 @@ select.cmb-in {
   padding: 2px 8px; border-radius: 999px; background: var(--warn-bg); color: var(--warn);
 }
 .cmb-testtag--float { position: absolute; top: 10px; right: 10px; box-shadow: var(--sh-1); }
+
+/* ═══ کیف پول ═══ */
+
+.cmb-flex { display: flex; align-items: center; gap: 8px; }
+.cmb-payres--ok .cmb-payres__ic { background: var(--ok-bg); color: var(--ok); }
+
+/* یادآوری موجودی در صفحه‌ی اصلی */
+.cmb-walletchip {
+  display: flex; align-items: center; gap: var(--s3); width: 100%; text-align: start;
+  margin-top: var(--s4); padding: 12px var(--s4);
+  background: var(--ok-bg); color: #0a6d3e; border-radius: var(--r-md);
+  font-size: var(--t-sb); line-height: 1.8; box-shadow: var(--sh-1);
+}
+.cmb-walletchip svg { flex: 0 0 auto; font-size: 20px; }
+.cmb-walletchip span { flex: 1; min-width: 0; }
+.cmb-walletchip b { font-weight: 800; }
+
+/* کارت موجودی */
+.cmb-wallet {
+  background: linear-gradient(150deg, var(--steel-900) 0%, var(--steel-700) 100%);
+  color: #fff; border-radius: var(--r-lg); padding: var(--s5); box-shadow: var(--sh-3);
+}
+.cmb-wallet__k { display: flex; align-items: center; gap: 8px; font-size: var(--t-sb); color: rgba(255,255,255,.72); font-weight: 600; }
+.cmb-wallet__k svg { font-size: 18px; }
+.cmb-wallet__v { margin-top: var(--s2); }
+.cmb-wallet__v b { font-size: 32px; font-weight: 800; letter-spacing: -.6px; }
+.cmb-wallet__v small { font-size: var(--t-cl); color: rgba(255,255,255,.72); }
+.cmb-wallet__s { margin-top: var(--s2); font-size: var(--t-ft); line-height: 1.8; color: rgba(255,255,255,.78); }
+.cmb-wallet__held {
+  display: flex; align-items: center; gap: 8px; margin-top: var(--s3);
+  padding: 8px var(--s3); border-radius: var(--r-sm); background: rgba(255,255,255,.1);
+  font-size: var(--t-ft); line-height: 1.7;
+}
+.cmb-wallet__held svg { flex: 0 0 auto; font-size: 16px; }
+
+/* دکمه‌های آماده‌ی شارژ */
+.cmb-chips { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.cmb-chip {
+  flex: 1 1 0; min-width: 90px; min-height: var(--tap); padding: 6px 10px;
+  border-radius: var(--r-sm); border: 1.5px solid var(--g4); background: var(--card);
+  font-size: var(--t-sb); font-weight: 700; color: var(--ink);
+}
+.cmb-chip.is-on { border-color: var(--flame); background: var(--flame-50); color: var(--flame-600); }
+
+/* تاریخچه */
+.cmb-wtxs { background: var(--card); border-radius: var(--r-md); box-shadow: var(--sh-2); overflow: hidden; margin-top: var(--s3); }
+.cmb-wtx { display: flex; align-items: center; gap: var(--s3); padding: 12px var(--s4); border-bottom: 1px solid var(--g5); }
+.cmb-wtx:last-child { border-bottom: 0; }
+.cmb-wtx.is-held { background: var(--warn-bg); }
+.cmb-wtx__ic {
+  flex: 0 0 34px; width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 16px;
+}
+.cmb-wtx__ic.is-in  { background: var(--ok-bg); color: var(--ok); }
+.cmb-wtx__ic.is-out { background: var(--steel-50); color: var(--steel-700); }
+.cmb-wtx__main { flex: 1; min-width: 0; }
+.cmb-wtx__t { font-size: var(--t-cl); font-weight: 700; line-height: 1.6; }
+.cmb-wtx__s { font-size: var(--t-ft); color: var(--ink-3); line-height: 1.7; margin-top: 2px; }
+.cmb-wtx__a { flex: 0 0 auto; text-align: end; line-height: 1.4; }
+.cmb-wtx__a b { display: block; font-size: var(--t-bd); font-weight: 800; font-variant-numeric: tabular-nums; }
+.cmb-wtx__a small { font-size: var(--t-cp); color: var(--ink-3); }
+.cmb-wtx__a.is-in b  { color: var(--ok); }
+.cmb-wtx__a.is-out b { color: var(--ink); }
+
+/* گام پرداخت: سهم کیف پول */
+.cmb-wuse { border: 1.5px solid var(--ok-bg); }
+.cmb-wuse .cmb-check { background: var(--ok-bg); }
+.cmb-wuse .cmb-check input { accent-color: var(--ok); }
+.cmb-wuse .cmb-check small { font-weight: 600; color: var(--ink-2); }
+.cmb-wuse__split { margin-top: var(--s2); }

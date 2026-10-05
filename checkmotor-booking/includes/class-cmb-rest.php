@@ -160,6 +160,28 @@ class CMB_Rest {
 			)
 		);
 
+		/* کیف پول: فقط کیف پولِ خودِ کاربرِ واردشده (کلیدش شماره‌ی موبایل
+		   حساب است، نه چیزی که کلاینت بفرستد). */
+		register_rest_route(
+			self::NAMESPACE_V1,
+			'/wallet',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'get_wallet' ),
+				'permission_callback' => array( $this, 'check_logged_in' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_V1,
+			'/wallet/topup',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'wallet_topup' ),
+				'permission_callback' => array( $this, 'check_logged_in' ),
+			)
+		);
+
 		register_rest_route(
 			self::NAMESPACE_V1,
 			'/me',
@@ -285,6 +307,9 @@ class CMB_Rest {
 			'accept_terms' => (bool) $request->get_param( 'accept_terms' ),
 			'terms_hash'   => (string) $request->get_param( 'terms_hash' ),
 			'deposit_seen' => (int) $request->get_param( 'deposit_seen' ),
+			// کیف پول: استفاده بشود؟ و مشتری چه مبلغی از کیف پول را دید
+			'use_wallet'   => (bool) $request->get_param( 'use_wallet' ),
+			'wallet_seen'  => null === $request->get_param( 'wallet_seen' ) ? '' : (int) $request->get_param( 'wallet_seen' ),
 		);
 
 		$result = CMB_Bookings::create( $data );
@@ -323,10 +348,14 @@ class CMB_Rest {
 			return new WP_Error( 'cmb_bad_slot', 'زمان نوبت معتبر نیست.', array( 'status' => 400 ) );
 		}
 
+		/* این نقطه عمومی است؛ بخش کیف پول فقط برای کاربرِ واردشده و فقط
+		   موجودیِ خودش. */
+		$phone = is_user_logged_in() ? cmb_get_user_phone( get_current_user_id() ) : '';
+
 		return rest_ensure_response(
 			array(
 				'success' => true,
-				'quote'   => CMB_Payments::quote( $service, $date, $block ),
+				'quote'   => CMB_Payments::quote_for( $service, $date, $block, $phone ),
 			)
 		);
 	}
@@ -404,7 +433,13 @@ class CMB_Rest {
 
 		$message = 'نوبت شما لغو شد و ظرفیت آزاد شد.';
 
-		if ( ! empty( $result['pay'] ) && 'refund_due' === $result['pay']['status'] ) {
+		if ( ! empty( $result['pay'] ) && 'refunded' === $result['pay']['status'] && CMB_Payments::wallet_mode() ) {
+			$message = sprintf(
+				'نوبت شما لغو شد. %s به کیف پول شما برگشت؛ موجودی: %s. برای بیعانه‌ی نوبت بعدی قابل استفاده است.',
+				$result['pay']['refundFa'],
+				cmb_toman( CMB_Wallet::balance( cmb_get_user_phone( $user_id ) ) )
+			);
+		} elseif ( ! empty( $result['pay'] ) && 'refund_due' === $result['pay']['status'] ) {
 			$message = sprintf( 'نوبت شما لغو شد. %s %s.', $result['pay']['refundFa'], CMB_Payments::refund_eta( 'customer' ) );
 		} elseif ( ! empty( $result['pay'] ) && 'kept' === $result['pay']['status'] ) {
 			$message = 'نوبت شما لغو شد. طبق قوانین رزرو، مبلغی از بیعانه بازگردانده نمی‌شود.';
@@ -416,8 +451,36 @@ class CMB_Rest {
 				'booking'  => $result,
 				'bookings' => $bookings,
 				'message'  => $message,
+				'wallet'   => CMB_Wallet::ready() ? CMB_Wallet::payload( $user_id ) : null,
 			)
 		);
+	}
+
+	public function get_wallet( WP_REST_Request $request ) {
+		if ( ! CMB_Wallet::ready() ) {
+			return new WP_Error( 'cmb_wallet_off', 'کیف پول فعال نیست.', array( 'status' => 404 ) );
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'wallet'  => CMB_Wallet::payload( get_current_user_id(), 100 ),
+			)
+		);
+	}
+
+	/**
+	 * شارژ کیف پول: نشانی درگاه برمی‌گردد.
+	 */
+	public function wallet_topup( WP_REST_Request $request ) {
+		$amount = (int) cmb_en_num( (string) $request->get_param( 'amount' ) );
+		$result = CMB_Wallet::topup_start( get_current_user_id(), $amount );
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return rest_ensure_response( array( 'success' => true ) + $result );
 	}
 
 	public function get_me( WP_REST_Request $request ) {
@@ -439,6 +502,7 @@ class CMB_Rest {
 				'name'     => $user->display_name,
 				'phone'    => cmb_get_user_phone( $user->ID ),
 				'bookings' => $bookings,
+				'wallet'   => CMB_Wallet::ready() ? CMB_Wallet::payload( $user->ID ) : null,
 				'nonce'    => wp_create_nonce( 'wp_rest' ),
 			)
 		);

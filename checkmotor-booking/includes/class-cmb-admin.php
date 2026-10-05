@@ -99,6 +99,7 @@ class CMB_Admin {
 		$source  = CMB_Payments::merchant_source();
 		$terms   = '' !== trim( (string) $s['pay_terms_text'] ) ? (string) $s['pay_terms_text'] : CMB_Payments::default_terms();
 		$https   = 0 === strpos( home_url( '/' ), 'https://' );
+		$wallet  = CMB_Payments::wallet_mode();
 		?>
 		<h2 class="title" id="cmb-pay">پرداخت بیعانه (زرین‌پال)</h2>
 		<?php $setup = CMB_Pay_Setup::summary(); ?>
@@ -106,17 +107,29 @@ class CMB_Admin {
 			<p style="margin:4px 0">
 				<b>راه‌اندازی قدم‌به‌قدم زرین‌پال: <?php echo esc_html( cmb_fa_num( $setup['ready'] ) . ' از ' . cmb_fa_num( $setup['total'] ) ); ?> آماده</b> —
 				<?php echo esc_html( $setup['text'] ); ?>
-				<a class="button button-small" href="<?php echo esc_url( admin_url( 'admin.php?page=cmb-zarinpal' ) ); ?>">رفتن به صفحه‌ی راه‌اندازی و آزمون‌ها</a>
+				<a class="button button-small" href="<?php echo esc_url( admin_url( 'admin.php?page=cmb-zarinpal' ) ); ?>"><?php echo $wallet ? 'رفتن به صفحه‌ی راه‌اندازی' : 'رفتن به صفحه‌ی راه‌اندازی و آزمون‌ها'; ?></a>
 			</p>
 		</div>
 		<?php if ( ! $ready ) : ?>
 			<div class="notice notice-warning inline"><p>ساختار دیتابیس هنوز به‌روز نشده است؛ صفحه را یک بار تازه کنید.</p></div>
 		<?php endif; ?>
-		<p class="description" style="max-width:760px">
-			با روشن بودن، رزرو خدمت‌هایی که بیعانه دارند فقط بعد از پرداخت موفق ثبت می‌شود. نوبت تا پرداخت «در انتظار پرداخت» است
-			و جایش برای مدت مشخصی نگه داشته می‌شود. لغو به‌موقع توسط مشتری بخشی از بیعانه را برمی‌گرداند و برگشت‌ها در پنل،
-			بخش «بازگشت وجه»، فهرست می‌شوند تا از پنل زرین‌پال انجامشان دهید.
-		</p>
+		<?php if ( $wallet ) : ?>
+			<p class="description" style="max-width:760px">
+				با روشن بودن، رزرو خدمت‌هایی که بیعانه دارند فقط بعد از پرداخت موفق ثبت می‌شود. نوبت تا پرداخت «در انتظار پرداخت» است
+				و جایش برای مدت مشخصی نگه داشته می‌شود. <b>هر برگشت (لغو به‌موقع، لغو از طرف مجموعه، پرداخت تکراری یا دیر) همان لحظه
+				به کیف پول مشتری در همین سایت می‌رود</b> و مشتری با آن بیعانه‌ی نوبت بعدی را می‌پردازد؛ کیف پول را با درگاه هم می‌شود
+				شارژ کرد. برداشت یا برگشت به کارت ندارد. موجودی‌ها و تاریخچه: پنل رزرو ← بیعانه و کیف پول.
+			</p>
+			<?php if ( CMB_Payments::terms_mention_card() ) : ?>
+				<div class="notice notice-warning inline" style="max-width:760px"><p>متن «قوانین و مقررات رزرو» که خودتان نوشته‌اید هنوز از برگشت پول به کارت می‌گوید، ولی برگشت‌ها حالا به کیف پول می‌رود. کادر را خالی کنید تا متن تازه‌ی پیش‌فرض استفاده شود، یا اصلاحش کنید.</p></div>
+			<?php endif; ?>
+		<?php else : ?>
+			<p class="description" style="max-width:760px">
+				با روشن بودن، رزرو خدمت‌هایی که بیعانه دارند فقط بعد از پرداخت موفق ثبت می‌شود. نوبت تا پرداخت «در انتظار پرداخت» است
+				و جایش برای مدت مشخصی نگه داشته می‌شود. لغو به‌موقع توسط مشتری بخشی از بیعانه را برمی‌گرداند و برگشت‌ها در پنل،
+				بخش «بازگشت وجه»، فهرست می‌شوند تا از پنل زرین‌پال انجامشان دهید.
+			</p>
+		<?php endif; ?>
 		<table class="form-table">
 			<tr>
 				<th><label>پرداخت بیعانه</label></th>
@@ -155,17 +168,17 @@ class CMB_Admin {
 				</td>
 			</tr>
 			<tr>
-				<th><label>بازگشتی در لغوِ به‌موقع</label></th>
+				<th><label><?php echo $wallet ? 'بازگشتی به کیف پول در لغوِ به‌موقع' : 'بازگشتی در لغوِ به‌موقع'; ?></label></th>
 				<td>
 					<input type="number" name="pay_cancel_refund_default" min="0" step="1000" class="regular-text" value="<?php echo esc_attr( $s['pay_cancel_refund_default'] ); ?>" /> تومان
-					<p class="description">وقتی مشتری تا مهلت لغو (<?php echo esc_html( cmb_fa_num( (int) $s['cancel_deadline_hours'] ) ); ?> ساعت پیش از نوبت) خودش لغو کند. بقیه‌ی بیعانه نزد مجموعه می‌ماند. کمتر از آن مهلت، لغو آنلاین ممکن نیست.</p>
+					<p class="description">وقتی مشتری تا مهلت لغو (<?php echo esc_html( cmb_fa_num( (int) $s['cancel_deadline_hours'] ) ); ?> ساعت پیش از نوبت) خودش لغو کند<?php echo $wallet ? '، همان لحظه به کیف پولش برمی‌گردد' : ''; ?>. بقیه‌ی بیعانه نزد مجموعه می‌ماند. کمتر از آن مهلت، لغو آنلاین ممکن نیست.<?php echo $wallet ? ' حالا که پول در مجموعه می‌ماند، می‌شود این مبلغ را بیشتر کرد.' : ''; ?></p>
 				</td>
 			</tr>
 			<tr>
 				<th><label>لغو از طرف مجموعه</label></th>
 				<td>
 					<input type="number" name="pay_shop_refund_percent" min="0" max="100" class="small-text" value="<?php echo esc_attr( $s['pay_shop_refund_percent'] ); ?>" /> درصد بیعانه
-					<p class="description">پیش‌فرضِ مبلغ بازگشتی وقتی خودتان نوبت پرداخت‌شده‌ای را لغو می‌کنید. هنگام لغو قابل تغییر است.</p>
+					<p class="description">پیش‌فرضِ مبلغ بازگشتی<?php echo $wallet ? ' (به کیف پول مشتری)' : ''; ?> وقتی خودتان نوبت پرداخت‌شده‌ای را لغو می‌کنید. هنگام لغو قابل تغییر است.</p>
 				</td>
 			</tr>
 			<tr>
@@ -187,6 +200,26 @@ class CMB_Admin {
 					</p>
 				</td>
 			</tr>
+			<?php if ( $wallet ) : ?>
+			<tr>
+				<th><label>شارژ کیف پول</label></th>
+				<td>
+					<label><input type="checkbox" name="wallet_topup" value="1" <?php checked( (int) $s['wallet_topup'], 1 ); ?> /> مشتری بتواند کیف پولش را با درگاه شارژ کند</label>
+					<p style="margin-top:8px">
+						از <input type="number" name="wallet_topup_min" min="1000" step="1000" class="small-text" style="width:110px" value="<?php echo esc_attr( $s['wallet_topup_min'] ); ?>" />
+						تا <input type="number" name="wallet_topup_max" min="1000" step="1000" class="small-text" style="width:130px" value="<?php echo esc_attr( $s['wallet_topup_max'] ); ?>" /> تومان در هر شارژ
+					</p>
+					<p class="description">موجودی فقط برای بیعانه‌ی نوبت‌های آنلاین خرج می‌شود و قابل برداشت به کارت نیست. شارژ درآمد حساب نمی‌شود؛ تا خرج نشده بدهی مجموعه به مشتری است.</p>
+				</td>
+			</tr>
+			<tr>
+				<th><label>تغییر دستی کیف پول</label></th>
+				<td>
+					<label><input type="checkbox" name="pay_refund_operators" value="1" <?php checked( (int) $s['pay_refund_operators'], 1 ); ?> /> مسئولان رزرو هم بتوانند کیف پول مشتری را دستی کم و زیاد کنند</label>
+					<p class="description">بدون این، دیدن کیف پول‌ها برای همه آزاد است ولی تغییرش فقط با مدیر سایت. هر تغییر با نام انجام‌دهنده و توضیح ثبت می‌شود.</p>
+				</td>
+			</tr>
+			<?php else : ?>
 			<tr>
 				<th><label>ثبت برگشت وجه</label></th>
 				<td>
@@ -258,6 +291,7 @@ class CMB_Admin {
 					<p class="description">بعد از ثبت «انجام شد». متغیرها: <code>{0}</code> نام، <code>{1}</code> مبلغ (تومان)، <code>{2}</code> کد پیگیری نوبت.</p>
 				</td>
 			</tr>
+			<?php endif; ?>
 			<?php if ( $ready ) : ?>
 				<tr>
 					<th><label>نشانی کرون پرداخت</label></th>
@@ -947,6 +981,18 @@ class CMB_Admin {
 							</p>
 						</td>
 					</tr>
+					<tr>
+						<th><label>پترن تغییر کیف پول</label></th>
+						<td>
+							<input type="text" name="pattern_wallet" class="regular-text" value="<?php echo esc_attr( $s['pattern_wallet'] ); ?>" />
+							<p class="description">
+								هر بار که پولی به کیف پول مشتری برمی‌گردد (لغو، پرداخت تکراری یا دیر)، شارژ می‌شود یا دستی تغییر می‌کند.
+								متغیرها: <code>{0}</code> نام، <code>{1}</code> مبلغ (تومان)، <code>{2}</code> موجودی بعد از تغییر، <code>{3}</code> شرح
+								(مثلاً «بابت لغو نوبت CM… به کیف پول شما برگشت»). متن پیشنهادی:
+								<code><?php echo esc_html( str_replace( "\n", ' ⏎ ', CMB_Wallet::pattern_hint() ) ); ?></code>
+							</p>
+						</td>
+					</tr>
 				</table>
 
 				<h2 class="title">کد تایید (OTP)</h2>
@@ -1150,6 +1196,15 @@ class CMB_Admin {
 			<hr />
 
 			<?php if ( CMB_Payments::schema_ready() ) : ?>
+				<?php if ( CMB_Payments::wallet_mode() ) : ?>
+					<h2 id="cmb-pay-test">آزمایش درگاه و کیف پول</h2>
+					<p class="description" style="max-width:760px">
+						آزمایش اتصال درگاه، مبلغ‌ها و تنظیمات کیف پول قدم‌به‌قدم در یک صفحه‌اند:
+						<a href="<?php echo esc_url( admin_url( 'admin.php?page=cmb-zarinpal' ) ); ?>">رزرو نوبت ← راه‌اندازی زرین‌پال</a>.
+						<br><b>خدمت آزمایشی:</b> در «خدمات» وضعیت یک خدمت را «آزمایشی — فقط مدیران» بگذارید (بهتر با سهمیه‌ی جداگانه و بیعانه‌ی ۱,۰۰۰ تومان)
+						تا با حساب مدیر کل مسیر واقعی مشتری را — رزرو، پرداخت، لغو، برگشت به کیف پول، پرداخت بعدی از کیف پول، پیامک — امتحان کنید.
+					</p>
+				<?php else : ?>
 				<h2 id="cmb-pay-test">آزمایش درگاه و برگشت پول</h2>
 				<p class="description" style="max-width:760px">
 					آزمایش اتصال درگاه، آزمایش API استرداد، آی‌پی سرور برای برگشت فوری، و دو آزمون ۲,۰۰۰ تومانی (برگشت فوری و استرداد) با کارت نتیجه‌ی
@@ -1158,6 +1213,7 @@ class CMB_Admin {
 					<br><b>خدمت آزمایشی:</b> در «خدمات» وضعیت یک خدمت را «آزمایشی — فقط مدیران» بگذارید (بهتر با سهمیه‌ی جداگانه و بیعانه‌ی ۲,۰۰۰ تومان)
 					تا با حساب مدیر کل مسیر واقعی مشتری را — رزرو، پرداخت، لغو، برگشت، پیامک — امتحان کنید.
 				</p>
+				<?php endif; ?>
 				<hr />
 			<?php endif; ?>
 
@@ -1392,7 +1448,7 @@ class CMB_Admin {
 			'pattern_admin',
 			'pattern_cancel',
 			'pattern_admin_cancel',
-			'pattern_refund',
+			'pattern_wallet',
 			'admin_phones',
 			'confirm_note',
 			'ecu_note',
@@ -1556,12 +1612,25 @@ class CMB_Admin {
 			'pay_cancel_refund_default' => $num( 'pay_cancel_refund_default', 0, 100000000 ),
 			'pay_shop_refund_percent'   => $num( 'pay_shop_refund_percent', 0, 100 ),
 			'pay_hold_minutes'          => $num( 'pay_hold_minutes', 10, 60 ),
-			'pay_refund_mode'           => 'auto' === sanitize_key( wp_unslash( $_POST['pay_refund_mode'] ?? '' ) ) ? 'auto' : 'manual',
-			'pay_refund_delay'          => $num( 'pay_refund_delay', 0, 1440 ),
-			'zp_refund_method'          => 'CARD' === sanitize_text_field( wp_unslash( $_POST['zp_refund_method'] ?? '' ) ) ? 'CARD' : 'PAYA',
-			'zp_reverse'                => isset( $_POST['zp_reverse'] ) ? 1 : 0,
-			'zp_terminal_id'            => preg_replace( '/\D/', '', cmb_en_num( (string) wp_unslash( $_POST['zp_terminal_id'] ?? '' ) ) ),
 		);
+
+		/* تنظیمات برگشت به کارت فقط وقتی در فرم هستند؛ حالت کیف پول
+		   نشانشان نمی‌دهد و نباید با ذخیره‌ی صفحه خالی شوند. */
+		if ( isset( $_POST['pay_refund_mode'] ) ) {
+			$out['pay_refund_mode']  = 'auto' === sanitize_key( wp_unslash( $_POST['pay_refund_mode'] ) ) ? 'auto' : 'manual';
+			$out['pay_refund_delay'] = $num( 'pay_refund_delay', 0, 1440 );
+			$out['zp_refund_method'] = 'CARD' === sanitize_text_field( wp_unslash( $_POST['zp_refund_method'] ?? '' ) ) ? 'CARD' : 'PAYA';
+			$out['zp_reverse']       = isset( $_POST['zp_reverse'] ) ? 1 : 0;
+			$out['zp_terminal_id']   = preg_replace( '/\D/', '', cmb_en_num( (string) wp_unslash( $_POST['zp_terminal_id'] ?? '' ) ) );
+			$out['pattern_refund']   = sanitize_text_field( wp_unslash( $_POST['pattern_refund'] ?? '' ) );
+		}
+
+		// کیف پول
+		if ( isset( $_POST['wallet_topup_min'] ) ) {
+			$out['wallet_topup']     = isset( $_POST['wallet_topup'] ) ? 1 : 0;
+			$out['wallet_topup_min'] = $num( 'wallet_topup_min', 1000, 100000000 );
+			$out['wallet_topup_max'] = max( $out['wallet_topup_min'], $num( 'wallet_topup_max', 1000, 100000000 ) );
+		}
 
 		// توکن جدا از cmb_settings نگه داشته می‌شود؛ خالی یعنی «همان قبلی»
 		$token = CMB_Zarinpal_Refund::token_from_post();
@@ -1590,6 +1659,9 @@ class CMB_Admin {
 	 * @return true|WP_Error
 	 */
 	public static function check_pay( array $out ) {
+		// کلیدهایی که این فرم نداشت، همان مقدار ذخیره‌شده‌اند
+		$out = array_merge( CMB_Settings::all(), $out );
+
 		if ( '' !== $out['zp_merchant_id'] && ! preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $out['zp_merchant_id'] ) ) {
 			return new WP_Error( 'cmb_bad_merchant', 'مرچنت کد زرین‌پال معتبر نیست؛ ۳۶ نویسه به شکل xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx است.' );
 		}
@@ -1602,11 +1674,11 @@ class CMB_Admin {
 
 		$shop = $out['pay_shop_refund_percent'] >= 100 ? $out['pay_deposit_default'] : CMB_Payments::round_toman( $out['pay_deposit_default'] * $out['pay_shop_refund_percent'] / 100 );
 
-		if ( $shop > 0 && $shop < 2000 ) {
+		if ( $shop > 0 && $shop < 2000 && ! CMB_Payments::wallet_mode() ) {
 			return new WP_Error( 'cmb_bad_shop', sprintf( 'با این درصد، برگشتِ لغو از طرف مجموعه %s می‌شود که از حداقل برگشت زرین‌پال (۲,۰۰۰ تومان) کمتر است. درصد را ۰ یا بیشتر بگذارید.', cmb_toman( $shop ) ) );
 		}
 
-		if ( 'auto' === $out['pay_refund_mode'] && ! $out['zp_sandbox'] ) {
+		if ( 'auto' === $out['pay_refund_mode'] && ! $out['zp_sandbox'] && ! CMB_Payments::wallet_mode() ) {
 			$has_token = array_key_exists( '__token', $out ) ? '' !== $out['__token'] : '' !== CMB_Zarinpal_Refund::token();
 
 			if ( '' === $out['zp_terminal_id'] || ! $has_token ) {

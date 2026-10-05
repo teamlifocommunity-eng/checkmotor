@@ -229,7 +229,13 @@ class CMB_Health {
 			);
 		}
 
-		$old = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$pt} WHERE refund_status IN ('due','failed') AND paid_at < %s", cmb_now()->modify( '-45 days' )->format( 'Y-m-d H:i:s' ) ) ); // phpcs:ignore
+		$wallet = CMB_Payments::wallet_mode();
+
+		if ( $wallet ) {
+			$out = array_merge( $out, self::check_wallet() );
+		}
+
+		$old = $wallet ? 0 : (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$pt} WHERE refund_status IN ('due','failed') AND paid_at < %s", cmb_now()->modify( '-45 days' )->format( 'Y-m-d H:i:s' ) ) ); // phpcs:ignore
 
 		if ( $old ) {
 			$out[] = self::item(
@@ -260,7 +266,7 @@ class CMB_Health {
 			}
 		}
 
-		if ( CMB_Payments::auto_schema() ) {
+		if ( CMB_Payments::auto_schema() && ! $wallet ) {
 			$failed = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$pt} WHERE refund_status = 'failed'" ); // phpcs:ignore
 
 			if ( $failed ) {
@@ -286,9 +292,12 @@ class CMB_Health {
 			$out[] = self::item( self::BAD, 'مبلغ‌های بیعانه', 'مبلغ بیعانه یا برگشتیِ این خدمت‌ها با قواعد زرین‌پال جور نیست: ' . implode( '، ', $bad_svc ) . '.', 'پنل رزرو ← بیعانه و برگشت ← بررسی خدمات.' );
 		}
 
+		// شارژ کیف پول نوبتی ندارد و قرار هم نیست داشته باشد
+		$not_topup = CMB_Wallet::schema_ready() ? " AND p.kind <> 'topup'" : '';
+
 		$orphan = (int) $wpdb->get_var( // phpcs:ignore
 			"SELECT COUNT(*) FROM {$pt} p LEFT JOIN {$bt} b ON b.id = p.booking_id
-			 WHERE p.status = 'paid' AND p.refund_status = '' AND p.refund_reason = ''
+			 WHERE p.status = 'paid' AND p.refund_status = '' AND p.refund_reason = ''{$not_topup}
 			   AND ( b.id IS NULL OR b.status NOT IN ('confirmed','done','no_show','cancelled') )"
 		);
 
@@ -299,6 +308,48 @@ class CMB_Health {
 				sprintf( '%s پرداخت موفق هست که نه نوبتی برایش ثبت شده و نه در صف بازگشت وجه است.', cmb_fa_num( $orphan ) ),
 				'با پشتیبانی افزونه تماس بگیرید؛ این حالت نباید پیش بیاید.'
 			);
+		}
+
+		return $out;
+	}
+
+	/**
+	 * کیف پول: موجودی منفی، مبلغِ کنار گذاشته‌ی بی‌صاحب، صف قدیمی کارت،
+	 * قوانینی که هنوز از کارت می‌گویند، و پترن پیامک.
+	 */
+	protected static function check_wallet() {
+		global $wpdb;
+
+		$out    = array();
+		$title  = 'کیف پول';
+		$totals = CMB_Wallet::totals();
+
+		if ( $totals['negative'] ) {
+			$out[] = self::item( self::BAD, $title, sprintf( 'موجودی %s کیف پول منفی است؛ این حالت نباید پیش بیاید.', cmb_fa_num( $totals['negative'] ) ), 'پنل رزرو ← بیعانه و کیف پول: تاریخچه‌ی آن مشتری را ببینید و با «تغییر دستی» درستش کنید، و به پشتیبانی افزونه خبر دهید.' );
+		} else {
+			$out[] = self::item( self::OK, $title, sprintf( 'برگشت‌ها به کیف پول مشتری می‌رود. جمع موجودی %s کیف پول: %s.', cmb_fa_num( $totals['wallets'] ), cmb_toman( $totals['liability'] ) ) );
+		}
+
+		$wt    = cmb_table( 'wallet' );
+		$bt    = cmb_table( 'bookings' );
+		$stale = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wt} WHERE status = 'held' AND booking_id NOT IN ( SELECT id FROM {$bt} WHERE status = 'pending' AND hold_until_gmt > %s )", cmb_now_gmt() ) ); // phpcs:ignore
+
+		if ( $stale ) {
+			$out[] = self::item( self::WARN, 'مبلغ کنار گذاشته‌ی کیف پول', sprintf( '%s مبلغ برای نوبت‌هایی کنار گذاشته مانده که دیگر در انتظار پرداخت نیستند. در موجودی مشتری حساب نمی‌شوند و با بررسی دوره‌ای بعدی آزاد می‌شوند.', cmb_fa_num( $stale ) ), 'اگر ماند، نشانی کرون پرداخت را در کرون‌جاب هاست تنظیم کنید.' );
+		}
+
+		$legacy = CMB_Payments::count_open_refunds();
+
+		if ( $legacy ) {
+			$out[] = self::item( self::WARN, 'صف قدیمی برگشت به کارت', sprintf( '%s برگشت از پیش از کیف پول هنوز تعیین تکلیف نشده (در حال انجام در زرین‌پال، یا صاحبش معلوم نبود).', cmb_fa_num( $legacy ) ), 'پنل رزرو ← بیعانه و کیف پول ← صف قدیمی: اگر در زرین‌پال انجام شده «ثبت انجام‌شده»، وگرنه «انتقال به کیف پول».' );
+		}
+
+		if ( CMB_Payments::terms_mention_card() ) {
+			$out[] = self::item( self::WARN, 'متن قوانین رزرو', 'متن قوانینی که خودتان نوشته‌اید هنوز از برگشت پول به کارت می‌گوید، ولی برگشت‌ها حالا به کیف پول می‌رود.', 'تنظیمات افزونه ← پرداخت بیعانه ← متن قوانین را خالی کنید تا متن تازه‌ی پیش‌فرض (با کیف پول) استفاده شود، یا خودتان اصلاحش کنید.' );
+		}
+
+		if ( '' === trim( (string) CMB_Settings::get( 'pattern_wallet', '' ) ) && 'simple' !== CMB_Settings::get( 'sms_api_mode', 'pattern' ) ) {
+			$out[] = self::item( self::WARN, 'پیامک کیف پول', 'پترن «تغییر کیف پول» تنظیم نشده؛ مشتری وقتی پولی به کیف پولش برمی‌گردد پیامک نمی‌گیرد.', 'در ملی‌پیامک پترنی با متن «{0} عزیز، {1} تومان {3}. موجودی کیف پول شما: {2} تومان» بسازید و شناسه‌اش را در تنظیمات افزونه ← پیامک بگذارید.' );
 		}
 
 		return $out;
@@ -487,13 +538,16 @@ class CMB_Health {
 		if ( CMB_Settings::get( 'one_per_service', 1 ) ) {
 			$dups = $wpdb->get_results( // phpcs:ignore
 				$wpdb->prepare(
-					"SELECT b.phone, MAX(b.customer_name) AS name, s.title, COUNT(*) AS c
-					 FROM {$bookings} b
-					 LEFT JOIN {$services} s ON s.id = b.service_id
-					 WHERE b.status = 'confirmed' AND b.booking_date >= %s
-					 GROUP BY b.phone, b.service_id, s.title
-					 HAVING COUNT(*) > 1
-					 ORDER BY c DESC
+					/* زیرکوئری به‌جای HAVING: نتیجه یکی است، ولی مترجم بعضی
+					   دیتابیس‌ها (افزونه‌ی SQLite وردپرس) HAVING را خراب می‌کند. */
+					"SELECT * FROM (
+						SELECT b.phone, MAX(b.customer_name) AS name, s.title, COUNT(*) AS c
+						FROM {$bookings} b
+						LEFT JOIN {$services} s ON s.id = b.service_id
+						WHERE b.status = 'confirmed' AND b.booking_date >= %s
+						GROUP BY b.phone, b.service_id, s.title
+					 ) t WHERE t.c > 1
+					 ORDER BY t.c DESC
 					 LIMIT 20",
 					$today
 				)
@@ -520,12 +574,13 @@ class CMB_Health {
 		if ( $max > 0 ) {
 			$over = $wpdb->get_results( // phpcs:ignore
 				$wpdb->prepare(
-					"SELECT phone, MAX(customer_name) AS name, COUNT(*) AS c
-					 FROM {$bookings}
-					 WHERE status = 'confirmed' AND booking_date >= %s
-					 GROUP BY phone
-					 HAVING COUNT(*) > %d
-					 ORDER BY c DESC
+					"SELECT * FROM (
+						SELECT phone, MAX(customer_name) AS name, COUNT(*) AS c
+						FROM {$bookings}
+						WHERE status = 'confirmed' AND booking_date >= %s
+						GROUP BY phone
+					 ) t WHERE t.c > %d
+					 ORDER BY t.c DESC
 					 LIMIT 20",
 					$today,
 					$max

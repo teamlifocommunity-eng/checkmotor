@@ -10,7 +10,7 @@ var BASE  = C.base || '/reserve/';
 var NONCE = C.nonce || '';
 var NURL  = C.nonceUrl || '/wp-admin/admin-ajax.php?action=cmb_nonce';
 
-var TABS = ['home', 'mine', 'me'];
+var TABS = ['home', 'mine', 'wallet', 'me'];
 
 var S = {
   page: 'home',
@@ -48,6 +48,14 @@ var S = {
   pendingBlock: null,              // نوبتِ در انتظار پرداختی که جلوی ثبت تازه را گرفته
   payResult: C.payResult || null,  // صفحه‌ی بازگشت از درگاه
   payBusy: 0,
+
+  /* کیف پول: برگشت‌ها به آن می‌رود و بیعانه با آن پرداخت می‌شود */
+  wallet: C.wallet || null,           // { on, show, spend, balance, held, history[], topup{} }
+  walletFresh: !!C.wallet,
+  walletLoading: false,
+  topupResult: C.topupResult || null, // صفحه‌ی بازگشت از درگاهِ شارژ
+  topupAmount: 0, topupBusy: false,
+  useWallet: true,                    // تیک «استفاده از کیف پول» در گام پرداخت
 
   toasts: [], sheet: null,
   online: navigator.onLine !== false
@@ -136,6 +144,7 @@ function esc(v) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+function money(n) { return fa(Number(n || 0).toLocaleString('en-US')); }
 function $(s, r) { return (r || document).querySelector(s); }
 function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
 function val(s) { var e = $(s); return e ? e.value : ''; }
@@ -269,6 +278,8 @@ var I = {
   logout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 21H5.5A2 2 0 0 1 3.5 19V5a2 2 0 0 1 2-2h4"/><path d="M16 16.5L20.5 12 16 7.5"/><path d="M20.5 12H9.5"/></svg>',
   gauge: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 17a9 9 0 1 1 17 0"/><path d="M12 17l4-5.5"/><circle cx="12" cy="17" r="1.4" fill="currentColor" stroke="none"/></svg>',
   card: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 15h4"/></svg>',
+  wallet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7.5V6a2 2 0 0 0-2-2H5.5A2.5 2.5 0 0 0 3 6.5v11A2.5 2.5 0 0 0 5.5 20H19a2 2 0 0 0 2-2v-8.5a2 2 0 0 0-2-2H5.5A2.5 2.5 0 0 1 3 6.5"/><circle cx="16.5" cy="13.75" r="1.3" fill="currentColor" stroke="none"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></svg>',
   panel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2.5"/><path d="M3 9h18M9 9v12"/></svg>',
   zoom: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6M11 8.5v5M8.5 11h5"/></svg>',
   empty: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="2.6"/><path d="M3.5 9.5h17M8 2.8v3.4M16 2.8v3.4"/><path d="M9 14.5h6"/></svg>'
@@ -299,9 +310,13 @@ function empty(icon, title, sub) {
 function nav() {
   var items = [
     { k: 'home', ic: I.home, t: 'رزرو نوبت' },
-    { k: 'mine', ic: I.list, t: 'نوبت‌های من' },
-    { k: 'me',   ic: I.user, t: 'حساب من' }
+    { k: 'mine', ic: I.list, t: 'نوبت‌های من' }
   ];
+
+  // کیف پول: وقتی بیعانه روشن است، یا مشتری از قبل تراکنشی دارد
+  if (walletShown()) { items.push({ k: 'wallet', ic: I.wallet, t: 'کیف پول' }); }
+
+  items.push({ k: 'me', ic: I.user, t: 'حساب من' });
 
   var active = (S.page === 'book') ? 'home' : S.page;
 
@@ -345,6 +360,12 @@ function viewHome() {
         '<button class="cmb-btn cmb-btn--sm cmb-btn--soft" data-pay-abandon="' + x.id + '"' + (S.payBusy ? ' disabled' : '') + '>انصراف</button>' +
       '</div></div>';
   });
+
+  // موجودی کیف پول: یادآوری که بیعانه‌ی نوبت بعدی با آن پرداخت می‌شود
+  if (S.logged && S.wallet && S.wallet.spend && Number(S.wallet.balance) > 0) {
+    html += '<button class="cmb-walletchip" data-tab="wallet">' + I.wallet +
+      '<span>موجودی کیف پول: <b>' + money(S.wallet.balance) + ' تومان</b> — در پرداخت بیعانه‌ی نوبت بعدی استفاده می‌شود.</span>' + I.chevL + '</button>';
+  }
 
   if (S.loading && !S.services.length) {
     html += '<div class="cmb-sk cmb-sk--card"></div><div class="cmb-sk cmb-sk--card"></div>';
@@ -744,6 +765,21 @@ function termsHtml(text) {
   }).join('') + '</div>';
 }
 
+/**
+ * سهم کیف پول در همین بیعانه، با توجه به تیک «پرداخت از کیف پول».
+ * عددها از سرور است (quote.wallet)؛ این فقط انتخاب مشتری را اعمال می‌کند.
+ */
+function walletPart(q) {
+  var w = q && q.wallet;
+  var use = (w && S.useWallet) ? Number(w.use || 0) : 0;
+
+  return {
+    use: use,
+    gateway: use > 0 ? Number(w.gateway || 0) : Number(q ? q.deposit : 0),
+    full: use > 0 && Number(w.gateway || 0) === 0
+  };
+}
+
 function stepPay() {
   var bl = (S.day && S.day.blocks || []).filter(function (x) { return x.key === S.block; })[0] || {};
   var q = S.quote;
@@ -761,14 +797,31 @@ function stepPay() {
     return html;
   }
 
+  var w = walletPart(q);
+
   html += '<div class="cmb-card cmb-deposit">' +
     '<div class="cmb-deposit__amount"><span>بیعانه‌ی رزرو</span><b>' + esc(q.depositFa) + '</b></div>' +
     (q.priceFa ? kv('هزینه‌ی خدمت', q.priceFa) + kv('باقی‌مانده هنگام مراجعه', q.remainingFa) : '') +
     '<div class="cmb-deposit__rows">' +
-      '<div class="cmb-deposit__row ok">' + I.check + '<div>لغو تا <b>' + esc(q.cancelUntilFa) + '</b>: ' + esc(q.refundFa) + ' به کارتتان برمی‌گردد.</div></div>' +
+      '<div class="cmb-deposit__row ok">' + I.check + '<div>لغو تا <b>' + esc(q.cancelUntilFa) + '</b>: ' + esc(q.refundFa) +
+        (S.pay.wallet ? ' همان لحظه به کیف پولتان در همین سایت برمی‌گردد.' : ' به کارتتان برمی‌گردد.') + '</div></div>' +
       '<div class="cmb-deposit__row bad">' + I.alert + '<div>بعد از آن لغو آنلاین ممکن نیست؛ اگر نیایید کل بیعانه نزد مجموعه می‌ماند.</div></div>' +
     '</div>' +
     '</div>';
+
+  // کیف پول: تیک استفاده، و تقسیم بیعانه بین کیف پول و درگاه
+  if (q.wallet && Number(q.wallet.balance) > 0) {
+    html += '<div class="cmb-card cmb-wuse">' +
+      '<label class="cmb-check"><input type="checkbox" id="cmb-usewallet"' + (S.useWallet ? ' checked' : '') + '>' +
+      '<span>پرداخت از کیف پول <small>(موجودی ' + esc(q.wallet.balanceFa) + ')</small></span></label>' +
+      (w.use > 0
+        ? '<div class="cmb-wuse__split">' +
+            kv(w.full ? 'کل بیعانه از کیف پول' : 'از کیف پول', q.wallet.useFa) +
+            (w.gateway > 0 ? kv('با درگاه', q.wallet.gatewayFa) : '') +
+          '</div>'
+        : '') +
+      '</div>';
+  }
 
   html += '<div class="cmb-card">' +
     '<div class="cmb-svc__t">قوانین و مقررات رزرو</div>' +
@@ -781,14 +834,19 @@ function stepPay() {
     html += note('warn', I.alert, 'درگاه در حالت آزمایشی است و پول واقعی جابه‌جا نمی‌شود.');
   }
 
-  html += note('info', I.info, 'پس از پرداخت به همین صفحه برمی‌گردید. جا تا ' + fa(q.holdMinutes) + ' دقیقه برای پرداخت شما نگه داشته می‌شود.');
+  html += note('info', I.info, w.full
+    ? 'با زدن دکمه، بیعانه از کیف پولتان کم می‌شود و نوبت همین حالا ثبت می‌شود؛ به درگاه نمی‌روید.'
+    : 'پس از پرداخت به همین صفحه برمی‌گردید. جا تا ' + fa(q.holdMinutes) + ' دقیقه برای پرداخت شما نگه داشته می‌شود.');
   html += pendingCard();
   html += '</div>';
+
+  var label = w.full ? 'پرداخت ' + esc(q.wallet.useFa) + ' از کیف پول'
+    : 'پرداخت ' + esc(w.use > 0 ? q.wallet.gatewayFa : q.depositFa);
 
   html += '<div class="cmb-actionbar"><div class="cmb-actionbar__in">' +
     '<button class="cmb-btn cmb-btn--pri" style="width:100%" data-pay' + (S.busy || !S.termsOk || S.redirecting ? ' disabled' : '') + '>' +
     (S.redirecting ? '<span class="cmb-spin"></span> در حال انتقال به درگاه…'
-      : (S.busy ? '<span class="cmb-spin"></span> در حال ثبت…' : 'پرداخت ' + esc(q.depositFa))) + '</button>' +
+      : (S.busy ? '<span class="cmb-spin"></span> در حال ثبت…' : label)) + '</button>' +
     '</div></div>';
 
   return html;
@@ -871,6 +929,8 @@ function viewReceipt() {
         kv('موبایل', r.phoneFa) +
         (r.servicePrice ? kv('هزینه', r.servicePrice) : '') +
         (r.pay && r.pay.status === 'paid' ? kv('بیعانه‌ی پرداخت‌شده', r.pay.depositFa) : '') +
+        (r.pay && r.pay.status === 'paid' && r.pay.wallet > 0 ? kv('از کیف پول', r.pay.walletFa) : '') +
+        (r.pay && r.pay.status === 'paid' && r.pay.wallet > 0 && r.pay.gateway > 0 ? kv('با درگاه', r.pay.gatewayFa) : '') +
         (r.pay && r.pay.status === 'paid' && r.pay.remainingFa ? kv('باقی‌مانده هنگام مراجعه', r.pay.remainingFa) : '') +
         (r.refId ? kv('شماره پیگیری پرداخت', fa(r.refId)) : '') +
       '</div>' +
@@ -943,6 +1003,10 @@ function viewPay() {
     out += '<button class="cmb-btn cmb-btn--pri cmb-mt4" data-reload>بررسی دوباره</button>';
   } else {
     out += '<button class="cmb-btn cmb-btn--pri cmb-mt4" data-start>نوبت تازه</button>';
+
+    if (R.state === 'refund' && S.pay.wallet) {
+      out += '<button class="cmb-btn cmb-btn--soft cmb-mt3" data-tab="wallet">' + I.wallet + ' دیدن کیف پول</button>';
+    }
   }
 
   out += '<button class="cmb-btn cmb-btn--ghost cmb-mt3" data-tab="mine">نوبت‌های من</button></div>';
@@ -972,7 +1036,9 @@ function cancelBox(b) {
 
     return '<div class="cmb-bk__foot">' +
       '<div class="cmb-bk__ask">' + (b.pay && b.pay.status === 'paid'
-        ? 'این نوبت لغو شود؟ ' + esc(b.pay.cancelRefundFa) + ' از بیعانه ' + esc(S.pay.eta || 'به کارت شما برمی‌گردد') + ' و بقیه طبق قوانین نزد مجموعه می‌ماند. لغو برگشت‌پذیر نیست.'
+        ? (S.pay.wallet
+          ? 'این نوبت لغو شود؟ ' + esc(b.pay.cancelRefundFa) + ' از بیعانه همان لحظه به کیف پولتان برمی‌گردد (برای بیعانه‌ی نوبت بعدی؛ قابل برداشت به کارت نیست). بقیه طبق قوانین نزد مجموعه می‌ماند. لغو برگشت‌پذیر نیست.'
+          : 'این نوبت لغو شود؟ ' + esc(b.pay.cancelRefundFa) + ' از بیعانه ' + esc(S.pay.eta || 'به کارت شما برمی‌گردد') + ' و بقیه طبق قوانین نزد مجموعه می‌ماند. لغو برگشت‌پذیر نیست.')
         : 'این نوبت لغو شود؟ ظرفیت آزاد می‌شود و برگشت‌پذیر نیست.') + '</div>' +
       '<div class="cmb-bk__acts">' +
         '<button class="cmb-btn cmb-btn--sm cmb-btn--danger"' + (busy ? ' disabled' : '') +
@@ -995,9 +1061,16 @@ function payLine(b) {
 
   var txt = 'بیعانه ' + p.depositFa;
 
-  if (p.status === 'paid') { txt += ' — پرداخت شد' + (p.remainingFa ? '؛ باقی‌مانده هنگام مراجعه ' + p.remainingFa : ''); }
+  if (p.status === 'paid') {
+    txt += ' — پرداخت شد' + (p.wallet > 0 ? ' (' + (p.gateway > 0 ? p.walletFa + ' از کیف پول' : 'از کیف پول') + ')' : '') +
+      (p.remainingFa ? '؛ باقی‌مانده هنگام مراجعه ' + p.remainingFa : '');
+  }
   else if (p.status === 'refund_due' || p.status === 'refunding') { txt += ' — بازگشت ' + p.refundFa + (S.pay.auto ? ' خودکار انجام می‌شود' : ' در صف انجام است'); }
-  else if (p.status === 'refunded') { txt += ' — ' + p.refundFa + ' به کارت شما بازگردانده شد'; }
+  else if (p.status === 'refunded') {
+    txt += String(p.statusLabel || '').indexOf('کیف پول') !== -1
+      ? ' — ' + p.refundFa + ' به کیف پول شما برگشت'
+      : ' — ' + p.refundFa + ' به کارت شما بازگردانده شد';
+  }
   else if (p.status === 'kept') { txt += ' — نزد مجموعه ماند'; }
   else if (b.status === 'pending') { txt += ' — هنوز پرداخت نشده'; }
   else { return ''; }
@@ -1161,7 +1234,8 @@ function viewMe() {
     '</div>';
 
   html += '<div class="cmb-rows">' +
-    row(I.list, 'نوبت‌های من', fa(S.bookings.length) + ' مورد', 'tab', 'mine');
+    row(I.list, 'نوبت‌های من', fa(S.bookings.length) + ' مورد', 'tab', 'mine') +
+    (walletShown() ? row(I.wallet, 'کیف پول', S.wallet ? money(S.wallet.balance) + ' تومان' : '', 'tab', 'wallet') : '');
 
   if (S.canManage && C.panel) {
     html += '<a class="cmb-row" href="' + esc(C.panel) + '">' +
@@ -1185,6 +1259,145 @@ function viewMe() {
 
   html += '</div></div>';
   return html;
+}
+
+/* ═══ کیف پول ═══ */
+
+function walletShown() {
+  return !!(S.wallet && S.wallet.show);
+}
+
+function topupCard() {
+  var R = S.topupResult;
+  if (!R) { return ''; }
+
+  var tone = R.state === 'paid' ? 'ok' : ((R.state === 'checking' || R.state === 'invalid') ? 'wait' : 'bad');
+  var icon = R.state === 'paid' ? I.ok : (R.state === 'checking' ? I.clock : (R.state === 'invalid' ? I.info : I.alert));
+  var title = { paid: 'کیف پول شارژ شد', checking: 'در انتظار نتیجه‌ی پرداخت', invalid: 'نتیجه‌ی شارژ', failed: 'شارژ انجام نشد' }[R.state] || 'نتیجه‌ی شارژ';
+
+  return '<div class="cmb-card cmb-center cmb-payres cmb-payres--' + tone + '">' +
+    '<div class="cmb-payres__ic">' + icon + '</div>' +
+    '<div class="cmb-svc__t">' + esc(title) + '</div>' +
+    '<p class="cmb-hint">' + esc(R.message || '') + '</p>' +
+    (R.state === 'paid' && R.balanceFa ? '<p class="cmb-hint">موجودی تازه: <b>' + esc(R.balanceFa) + '</b></p>' : '') +
+    (R.refId ? '<p class="cmb-hint">شماره پیگیری پرداخت: <span class="cmb-num">' + fa(esc(R.refId)) + '</span></p>' : '') +
+    (R.state === 'checking' ? '<button class="cmb-btn cmb-btn--pri cmb-mt3" data-reload>بررسی دوباره</button>' : '') +
+    '<button class="cmb-btn cmb-btn--ghost cmb-mt3" data-topup-close>بستن</button>' +
+    '</div>';
+}
+
+/** یک ردیف تاریخچه: عنوان، تاریخ، مبلغ با علامت. */
+function walletRow(x) {
+  return '<div class="cmb-wtx' + (x.status === 'held' ? ' is-held' : '') + '">' +
+    '<div class="cmb-wtx__ic ' + (x.in ? 'is-in' : 'is-out') + '">' + (x.type === 'topup' ? I.plus : (x.in ? I.check : I.card)) + '</div>' +
+    '<div class="cmb-wtx__main">' +
+      '<div class="cmb-wtx__t">' + esc(x.title) + '</div>' +
+      '<div class="cmb-wtx__s"><span class="cmb-num">' + fa(esc(x.dateFa)) + '</span>' +
+        (x.statusLabel ? ' · ' + esc(x.statusLabel) : '') +
+        (x.note ? ' · ' + esc(x.note) : '') + '</div>' +
+    '</div>' +
+    '<div class="cmb-wtx__a ' + (x.in ? 'is-in' : 'is-out') + '"><b dir="ltr">' + (x.in ? '+' : '−') + money(Math.abs(Number(x.amount))) + '</b><small>تومان</small></div>' +
+    '</div>';
+}
+
+function viewWallet() {
+  var W = S.wallet || {};
+  var html = topBar('کیف پول', '', false) + '<div class="cmb-page cmb-mt4">';
+
+  html += topupCard();
+
+  if (!S.logged || !S.hasPhone) {
+    html += '<div class="cmb-card cmb-center">' +
+      '<div class="cmb-empty__ic" style="margin:0 auto var(--s3)">' + I.wallet + '</div>' +
+      '<div class="cmb-svc__t">کیف پول</div>' +
+      '<p class="cmb-hint">مبلغ برگشتیِ لغو نوبت به کیف پول شما در همین سایت می‌رود و با آن بیعانه‌ی نوبت بعدی را می‌پردازید.</p>' +
+      '</div>' +
+      authCard('برای دیدن موجودی کیف پول با شماره‌تان وارد شوید.') + '</div>';
+    return html;
+  }
+
+  if (!S.wallet && S.walletLoading) {
+    return html + '<div class="cmb-sk cmb-sk--card"></div><div class="cmb-sk cmb-sk--card"></div></div>';
+  }
+
+  html += '<div class="cmb-wallet">' +
+    '<div class="cmb-wallet__k">' + I.wallet + ' موجودی کیف پول</div>' +
+    '<div class="cmb-wallet__v"><b class="cmb-num">' + money(W.balance) + '</b> <small>تومان</small></div>' +
+    '<div class="cmb-wallet__s">' + (W.spend
+      ? 'در پرداخت بیعانه‌ی نوبت بعدی خودکار استفاده می‌شود؛ اگر کافی نبود، باقی‌مانده با درگاه.'
+      : 'پرداخت بیعانه فعلاً خاموش است؛ موجودی سر جایش می‌ماند.') + '</div>' +
+    (Number(W.held) > 0 ? '<div class="cmb-wallet__held">' + I.clock + '<span>' + esc(W.heldFa) + ' برای نوبتِ در انتظار پرداخت کنار گذاشته شده</span></div>' : '') +
+    '</div>';
+
+  if (W.topup && W.topup.on) {
+    var t = W.topup;
+    var amt = Number(S.topupAmount || 0);
+
+    html += '<div class="cmb-card cmb-mt4">' +
+      '<div class="cmb-svc__t cmb-flex">' + I.plus + ' شارژ کیف پول</div>' +
+      '<div class="cmb-chips cmb-mt3">' + (t.presets || []).map(function (v) {
+        return '<button type="button" class="cmb-chip' + (amt === v ? ' is-on' : '') + '" data-topup-preset="' + v + '">' + money(v) + ' تومان</button>';
+      }).join('') + '</div>' +
+      '<label class="cmb-field cmb-mt3"><span class="cmb-field__l">یا مبلغ دلخواه (تومان)</span>' +
+      '<input class="cmb-in cmb-num" id="cmb-topup" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="' + esc(String(t.min)) + '" value="' + (amt ? esc(String(amt)) : '') + '"></label>' +
+      '<div class="cmb-hint">از ' + esc(t.minFa) + ' تا ' + esc(t.maxFa) + '. پس از پرداخت به همین صفحه برمی‌گردید.</div>' +
+      '<button class="cmb-btn cmb-btn--pri cmb-mt3" style="width:100%" data-topup' + (S.topupBusy || S.redirecting ? ' disabled' : '') + '>' +
+        topupLabel() + '</button>' +
+      '</div>';
+
+    if (S.pay.sandbox) { html += note('warn', I.alert, 'درگاه در حالت آزمایشی است و پول واقعی جابه‌جا نمی‌شود.'); }
+  }
+
+  html += '<div class="cmb-sec"><div class="cmb-sec__t">تاریخچه</div></div>';
+
+  var hist = W.history || [];
+
+  html += hist.length
+    ? '<div class="cmb-wtxs">' + hist.map(walletRow).join('') + '</div>'
+    : empty(I.wallet, 'هنوز تراکنشی ندارید', 'مبلغ برگشتیِ لغو نوبت‌ها و شارژهای شما این‌جا می‌آید.');
+
+  html += note('info', I.info, 'موجودی کیف پول قابل برداشت یا انتقال به کارت بانکی نیست و فقط برای پرداخت بیعانه‌ی نوبت‌های بعدی در همین سایت استفاده می‌شود.');
+  html += '</div>';
+
+  return html;
+}
+
+function topupLabel() {
+  if (S.redirecting) { return '<span class="cmb-spin"></span> در حال انتقال به درگاه…'; }
+  if (S.topupBusy) { return '<span class="cmb-spin"></span> …'; }
+
+  return 'شارژ با درگاه' + (S.topupAmount ? ' — ' + money(S.topupAmount) + ' تومان' : '');
+}
+
+/** شارژ: درخواست به سرور و رفتن به درگاه. */
+function topupStart() {
+  var t = (S.wallet && S.wallet.topup) || null;
+  var amount = Number(S.topupAmount || 0);
+
+  if (!t || S.topupBusy || S.redirecting) { return; }
+
+  if (!amount) { toast('مبلغ شارژ را انتخاب یا وارد کنید.', 'bad'); return; }
+
+  if (amount < t.min || amount > t.max) {
+    toast('مبلغ شارژ باید بین ' + t.minFa + ' و ' + t.maxFa + ' باشد.', 'bad');
+    return;
+  }
+
+  S.topupBusy = true;
+  paint();
+
+  post('wallet/topup', { amount: amount }).then(function (r) {
+    if (r.success === false || !r.url) {
+      S.topupBusy = false;
+      toast((r && r.message) || 'انتقال به درگاه ممکن نشد.', 'bad');
+      paint();
+      return;
+    }
+
+    S.redirecting = true;
+    paint();
+    location.href = r.url;
+  });
 }
 
 function row(ic, title, value, attr, val2) {
@@ -1251,6 +1464,7 @@ function render() {
     case 'book': inner = viewBook(); break;
     case 'mine': inner = viewMine(); break;
     case 'me':   inner = viewMe(); break;
+    case 'wallet': inner = viewWallet(); break;
     case 'pay':  inner = viewPay(); break;
     default:     inner = viewHome();
   }
@@ -1314,6 +1528,8 @@ function cancelBooking(id) {
       S.bookingsFresh = true;
     }
 
+    if (r.wallet) { S.wallet = r.wallet; S.walletFresh = true; }
+
     toast(r.message || 'نوبت شما لغو شد.', 'ok');
     paint();
   });
@@ -1364,6 +1580,20 @@ function load(page) {
     }
   }
 
+  if (page === 'wallet') {
+    if (!S.logged) { paint(); return; }
+
+    S.walletLoading = !S.walletFresh;
+    paint();
+
+    get('wallet').then(function (r) {
+      S.walletLoading = false;
+      if (r.success !== false && r.wallet) { S.wallet = r.wallet; S.walletFresh = true; }
+      paint();
+    });
+    return;
+  }
+
   if (page === 'mine' || page === 'me') {
     if (!S.logged) { paint(); return; }
 
@@ -1380,6 +1610,7 @@ function load(page) {
           S.me = { name: r.name || '', phone: r.phone || '' };
           S.bookings = r.bookings || [];
           S.bookingsFresh = true;
+          if (r.wallet) { S.wallet = r.wallet; S.walletFresh = true; }
           if (r.nonce) { NONCE = r.nonce; }
         }
       }
@@ -1530,6 +1761,7 @@ function loadQuote(force) {
   S.quote = null;
   S.quoteFor = key;
   S.termsOk = false;
+  S.useWallet = true;
   paint();
 
   get('bookings/quote?service_id=' + S.service.id + '&date=' + encodeURIComponent(S.day.date) + '&block=' + encodeURIComponent(S.block)).then(function (r) {
@@ -1557,10 +1789,15 @@ function loadQuote(force) {
 function payNow() {
   if (!S.quote || !S.termsOk || S.busy || S.redirecting) { return; }
 
+  var w = walletPart(S.quote);
+
   sendBooking({
     accept_terms: 1,
     terms_hash: S.quote.hash,
-    deposit_seen: S.quote.deposit
+    deposit_seen: S.quote.deposit,
+    // همان تقسیمی که مشتری دید؛ اگر موجودی عوض شده، سرور تقسیم تازه را برمی‌گرداند
+    use_wallet: w.use > 0 ? 1 : 0,
+    wallet_seen: w.use
   });
 }
 
@@ -1606,6 +1843,16 @@ function sendBooking(extra) {
         return;
       }
 
+      // موجودی کیف پول بین دیدن و زدن دکمه عوض شد: تقسیم تازه
+      if (r.code === 'cmb_wallet_changed' && r.data && r.data.quote) {
+        S.quote = r.data.quote;
+        S.quoteFor = S.service.id + '|' + S.day.date + '|' + S.block;
+        S.walletFresh = false;
+        toast(r.message, 'bad');
+        paint();
+        return;
+      }
+
       if (r.code === 'cmb_pending_exists' && r.data && r.data.pending) {
         S.pendingBlock = r.data.pending;
         S.pendingBlock.message = r.message;
@@ -1644,6 +1891,10 @@ function sendBooking(extra) {
 
     S.receipt = r.booking;
     S.bookings = [];
+    S.walletFresh = false;
+    if (S.wallet && r.booking && r.booking.pay && r.booking.pay.wallet > 0) {
+      S.wallet.balance = Math.max(0, Number(S.wallet.balance) - Number(r.booking.pay.wallet));
+    }
     toast('نوبت شما با موفقیت ثبت شد.', 'ok');
     window.scrollTo(0, 0);
     paint();
@@ -1917,6 +2168,23 @@ function bind() {
 
     if (up('[data-reload]')) { e.preventDefault(); location.reload(); return; }
 
+    if ((el = up('[data-topup-preset]'))) {
+      e.preventDefault();
+      S.topupAmount = Number(el.getAttribute('data-topup-preset'));
+      paint();
+      return;
+    }
+
+    if (up('[data-topup]')) { e.preventDefault(); topupStart(); return; }
+
+    if (up('[data-topup-close]')) {
+      e.preventDefault();
+      S.topupResult = null;
+      if (history.replaceState) { history.replaceState({ page: 'wallet' }, '', BASE + 'wallet'); }
+      paint();
+      return;
+    }
+
     if ((el = up('[data-cancel]'))) {
       e.preventDefault();
       S.cancelAsk = Number(el.getAttribute('data-cancel'));
@@ -2040,6 +2308,15 @@ function bind() {
 
   /* خانه‌های کد تایید: پرش خودکار، بازگشت با Backspace، چسباندن کد کامل */
   document.addEventListener('input', function (e) {
+    // مبلغ دلخواه شارژ: فقط عدد؛ دکمه همان لحظه به‌روز می‌شود، بی‌رندر کل صفحه
+    if (e.target.id === 'cmb-topup') {
+      S.topupAmount = Number(en(e.target.value).replace(/\D/g, '')) || 0;
+      $$('.cmb-chip[data-topup-preset]').forEach(function (c) { c.classList.toggle('is-on', Number(c.getAttribute('data-topup-preset')) === S.topupAmount); });
+      var tb = $('[data-topup]');
+      if (tb) { tb.innerHTML = topupLabel(); }
+      return;
+    }
+
     var box = document.getElementById('cmb-otp');
     if (!box || !box.contains(e.target)) { return; }
 
@@ -2096,6 +2373,7 @@ function bind() {
   document.addEventListener('change', function (e) {
     if (e.target.id && e.target.id.indexOf('cmb-f-') === 0) { grabForm(); }
     if (e.target.id === 'cmb-terms') { S.termsOk = !!e.target.checked; paint(); }
+    if (e.target.id === 'cmb-usewallet') { S.useWallet = !!e.target.checked; paint(); }
   });
 
   /* برگشت از درگاه با دکمه‌ی «بازگشت» مرورگر: صفحه از حافظه (bfcache)
@@ -2106,8 +2384,10 @@ function bind() {
 
     S.redirecting = false;
     S.payBusy = 0;
+    S.topupBusy = false;
     S.bookingsFresh = false;
-    go('mine');
+    S.walletFresh = false;
+    go(S.page === 'wallet' ? 'wallet' : 'mine');
   });
 
   window.addEventListener('popstate', function () {
@@ -2129,6 +2409,15 @@ function boot() {
   S.page = readRoute();
 
   if (S.page === 'book') { S.page = 'home'; }
+
+  /* بازگشت از درگاه شارژ: نتیجه را نشان بده و توکن را از نشانی بردار
+     (مگر هنوز در انتظار باشد و «بررسی دوباره» لازمش داشته باشد). */
+  if (S.topupResult) {
+    S.page = 'wallet';
+    if (S.topupResult.state !== 'checking' && history.replaceState) {
+      history.replaceState({ page: 'wallet' }, '', BASE + 'wallet');
+    }
+  }
   if (S.logged && S.me.name && !/^[0-9+]{6,}$/.test(S.me.name.replace(/\s/g, ''))) { S.form.name = S.me.name; }
 
   bind();

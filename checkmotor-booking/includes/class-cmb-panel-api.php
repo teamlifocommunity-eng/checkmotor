@@ -160,6 +160,9 @@ class CMB_Panel_Api {
 			'panel/refund'    => array( 'POST', 'update_refund' ),
 			'panel/pay-review' => array( 'GET', 'pay_review' ),
 			'panel/pay-report' => array( 'GET', 'pay_report' ),
+			'panel/wallets'   => array( 'GET', 'wallets' ),
+			'panel/wallet'    => array( 'GET', 'wallet' ),
+			'panel/wallet/adjust' => array( 'POST', 'wallet_adjust' ),
 		);
 
 		foreach ( $routes as $path => $conf ) {
@@ -1133,10 +1136,15 @@ class CMB_Panel_Api {
 			}
 		}
 
+		// موجودی کیف پولِ مشتری‌های همین صفحه، با یک کوئری
+		$balances = ( $rows && CMB_Wallet::ready() ) ? CMB_Wallet::balances( wp_list_pluck( $rows, 'phone' ) ) : array();
+
 		$items = array();
 
 		foreach ( (array) $rows as $row ) {
 			$recent = isset( $last[ (int) $row->last_id ] ) ? $last[ (int) $row->last_id ] : null;
+			$key    = CMB_Wallet::key( $row->phone );
+			$bal    = isset( $balances[ $key ] ) ? (int) $balances[ $key ] : 0;
 
 			$items[] = array(
 				'phone'     => $row->phone,
@@ -1157,17 +1165,120 @@ class CMB_Panel_Api {
 				'userId'    => (int) $row->user_id,
 				'firstSeen' => cmb_jalali_date( substr( (string) $row->first_seen, 0, 10 ), 'short' ),
 				'lastDate'  => cmb_jalali_date( $row->last_date, 'numeric' ),
+				'wallet'    => $bal,
+				'walletFa'  => cmb_toman( $bal ),
 			);
 		}
 
 		return rest_ensure_response(
 			array(
-				'items' => $items,
-				'total' => $total,
-				'page'  => $page,
-				'pages' => (int) ceil( $total / $per ),
+				'items'  => $items,
+				'total'  => $total,
+				'page'   => $page,
+				'pages'  => (int) ceil( $total / $per ),
+				'wallet' => CMB_Wallet::ready(),
 			)
 		);
+	}
+
+	/* ------------------------------------------------------------------
+	 * کیف پول مشتری‌ها
+	 * --------------------------------------------------------------- */
+
+	/**
+	 * فهرست کیف پول‌ها، جمع موجودی همه، و تعداد ردیف‌های مانده در صف
+	 * قدیمی برگشت به کارت.
+	 */
+	public function wallets( WP_REST_Request $request ) {
+		if ( ! CMB_Wallet::ready() ) {
+			return new WP_Error( 'cmb_wallet_off', 'کیف پول فعال نیست.', array( 'status' => 404 ) );
+		}
+
+		$filter = 'all' === $request->get_param( 'filter' ) ? 'all' : 'balance';
+		$list   = CMB_Wallet::list_wallets(
+			sanitize_text_field( (string) $request->get_param( 'q' ) ),
+			$filter,
+			max( 1, (int) $request->get_param( 'page' ) )
+		);
+
+		return rest_ensure_response(
+			$list + array(
+				'filter'    => $filter,
+				'totals'    => CMB_Wallet::totals(),
+				'canAdjust' => self::can_refund(),
+				'legacy'    => CMB_Payments::count_open_refunds(),
+				'migrated'  => get_option( 'cmb_wallet_migrated' ) ? get_option( 'cmb_wallet_migrated' ) : null,
+			)
+		);
+	}
+
+	/**
+	 * کیف پول یک مشتری: موجودی و تاریخچه‌ی کامل.
+	 */
+	public function wallet( WP_REST_Request $request ) {
+		if ( ! CMB_Wallet::ready() ) {
+			return new WP_Error( 'cmb_wallet_off', 'کیف پول فعال نیست.', array( 'status' => 404 ) );
+		}
+
+		$phone = CMB_Wallet::key( (string) $request->get_param( 'phone' ) );
+
+		if ( '' === $phone ) {
+			return new WP_Error( 'cmb_wallet_phone', 'شماره‌ی موبایل معتبر نیست.', array( 'status' => 400 ) );
+		}
+
+		return rest_ensure_response( self::wallet_payload( $phone ) );
+	}
+
+	protected static function wallet_payload( $phone ) {
+		$balance = CMB_Wallet::balance( $phone );
+		$held    = CMB_Wallet::held( $phone );
+
+		return array(
+			'phone'     => $phone,
+			'phoneFa'   => cmb_fa_num( $phone ),
+			'name'      => CMB_Wallet::name_for( $phone ),
+			'balance'   => $balance,
+			'balanceFa' => cmb_toman( $balance ),
+			'held'      => $held,
+			'heldFa'    => cmb_toman( $held ),
+			'history'   => CMB_Wallet::history( $phone, 200, true ),
+			'canAdjust' => self::can_refund(),
+		);
+	}
+
+	/**
+	 * افزایش یا کاهش دستی کیف پول؛ با توضیح الزامی.
+	 */
+	public function wallet_adjust( WP_REST_Request $request ) {
+		if ( ! self::can_refund() ) {
+			return new WP_Error( 'cmb_refund_forbidden', 'تغییر کیف پول مشتری فقط برای مدیر سایت مجاز است.', array( 'status' => 403 ) );
+		}
+
+		if ( ! CMB_Wallet::ready() ) {
+			return new WP_Error( 'cmb_wallet_off', 'کیف پول فعال نیست.', array( 'status' => 404 ) );
+		}
+
+		$amount = (int) cmb_en_num( (string) $request->get_param( 'amount' ) );
+
+		if ( 'dec' === $request->get_param( 'dir' ) ) {
+			$amount = -abs( $amount );
+		} else {
+			$amount = abs( $amount );
+		}
+
+		$result = CMB_Wallet::adjust(
+			(string) $request->get_param( 'phone' ),
+			$amount,
+			(string) $request->get_param( 'note' ),
+			get_current_user_id(),
+			(bool) $request->get_param( 'sms' )
+		);
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return rest_ensure_response( array( 'success' => true ) + self::wallet_payload( CMB_Wallet::key( (string) $request->get_param( 'phone' ) ) ) );
 	}
 
 	/* ------------------------------------------------------------------
@@ -1232,6 +1343,9 @@ class CMB_Panel_Api {
 			}
 		} elseif ( 'done' === $action ) {
 			$result = CMB_Payments::mark_refunded( $id, (string) $request->get_param( 'ref' ), get_current_user_id(), (bool) $request->get_param( 'sms' ) );
+		} elseif ( 'wallet' === $action && CMB_Wallet::ready() ) {
+			// ردیف مانده از صف قدیمی کارت ← کیف پول مشتری
+			$result = CMB_Wallet::move_legacy( $id, get_current_user_id() );
 		} else {
 			return new WP_Error( 'cmb_bad_action', 'درخواست معتبر نیست.', array( 'status' => 400 ) );
 		}

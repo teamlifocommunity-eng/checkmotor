@@ -19,6 +19,7 @@ class CMB_Pay_Review {
 	public static function services() {
 		$enabled = CMB_Payments::enabled();
 		$auto    = CMB_Payments::auto_on();
+		$wallet  = CMB_Payments::wallet_mode();
 		$hours   = max( 0, (int) CMB_Settings::get( 'cancel_deadline_hours', 24 ) );
 		$items   = array();
 
@@ -36,7 +37,9 @@ class CMB_Pay_Review {
 			$global[] = array( 'info', 'درگاه آزمایشی روشن است: پرداخت‌ها و برگشت‌ها شبیه‌سازی می‌شوند و پولی جابه‌جا نمی‌شود.' );
 		}
 
-		if ( ! $auto ) {
+		if ( $wallet ) {
+			$global[] = array( 'info', 'هر برگشت همان لحظه به کیف پول مشتری در همین سایت می‌رود و برای بیعانه‌ی نوبت بعدی قابل استفاده است؛ برگشت به کارت انجام نمی‌شود.' );
+		} elseif ( ! $auto ) {
 			$global[] = array( 'warn', 'برگشت پول دستی است؛ هر برگشت در صف می‌ماند تا از پنل زرین‌پال انجامش دهید.' );
 		} elseif ( ! CMB_Payments::sandbox() && ! CMB_Zarinpal_Refund::configured() ) {
 			$global[] = array( 'bad', 'برگشت خودکار روشن است ولی توکن دسترسی یا شماره‌ی ترمینال زرین‌پال تنظیم نشده؛ برگشت‌ها شکست می‌خورند.' );
@@ -46,6 +49,7 @@ class CMB_Pay_Review {
 			'settings' => array(
 				'enabled'   => $enabled,
 				'sandbox'   => CMB_Payments::sandbox(),
+				'wallet'    => $wallet,
 				'auto'      => $auto,
 				'delay'     => CMB_Payments::refund_delay(),
 				'method'    => CMB_Payments::refund_method(),
@@ -78,11 +82,14 @@ class CMB_Pay_Review {
 			$warn[] = array( 'bad', 'بیعانه کمتر از ۱,۰۰۰ تومان است و زرین‌پال این پرداخت را نمی‌پذیرد.' );
 		}
 
-		if ( $refund > 0 && $refund < 2000 ) {
+		// کیف پول حداقل ندارد؛ فقط استرداد زرین‌پال کمتر از ۲,۰۰۰ تومان را نمی‌پذیرد
+		$card = ! CMB_Payments::wallet_mode();
+
+		if ( $card && $refund > 0 && $refund < 2000 ) {
 			$warn[] = array( 'bad', 'برگشتیِ لغو کمتر از ۲,۰۰۰ تومان است و زرین‌پال آن را برنمی‌گرداند.' );
 		}
 
-		if ( $shop > 0 && $shop < 2000 ) {
+		if ( $card && $shop > 0 && $shop < 2000 ) {
 			$warn[] = array( 'bad', 'برگشتیِ لغو از طرف مجموعه کمتر از ۲,۰۰۰ تومان می‌شود؛ درصد را در تنظیمات عوض کنید.' );
 		}
 
@@ -146,9 +153,19 @@ class CMB_Pay_Review {
 		$method = CMB_Payments::method_label( CMB_Payments::refund_method() );
 		$delay  = CMB_Payments::refund_delay();
 
-		$how = function ( $amount, $reason ) use ( $auto, $method, $delay ) {
+		$wallet = CMB_Payments::wallet_mode();
+
+		$how = function ( $amount, $reason ) use ( $auto, $method, $delay, $wallet ) {
 			if ( $amount < 1 ) {
 				return array( 'none', 'برگشتی ندارد' );
+			}
+
+			if ( $wallet ) {
+				return array(
+					'auto',
+					'بلافاصله به کیف پول مشتری در همین سایت، با پیامک؛ برای بیعانه‌ی نوبت بعدی. برداشت به کارت ندارد.'
+						. ( in_array( $reason, CMB_Payments::DELAYED_REASONS, true ) ? ' با «بازگردانی» نوبت، همان مبلغ از کیف پول پس گرفته می‌شود (اگر خرج نشده باشد).' : '' ),
+				);
 			}
 
 			if ( ! $auto ) {
@@ -217,8 +234,12 @@ class CMB_Pay_Review {
 				$shop,
 				$deposit - $shop,
 				'shop',
-				'پیش‌فرض از درصد تنظیمات است و هنگام لغو در پنل قابل تغییر است (۰، یا دست‌کم ۲,۰۰۰ تومان).',
-				'پیامک لغو برای مشتری می‌رود؛ با انجام برگشت، پیامک «بازگردانده شد».'
+				$wallet
+					? 'پیش‌فرض از درصد تنظیمات است و هنگام لغو در پنل قابل تغییر است (از ۰ تا کل بیعانه).'
+					: 'پیش‌فرض از درصد تنظیمات است و هنگام لغو در پنل قابل تغییر است (۰، یا دست‌کم ۲,۰۰۰ تومان).',
+				$wallet
+					? 'پیامک لغو و پیامک «واریز به کیف پول» برای مشتری می‌رود.'
+					: 'پیامک لغو برای مشتری می‌رود؛ با انجام برگشت، پیامک «بازگردانده شد».'
 			),
 			$row(
 				'no_show',
@@ -276,6 +297,10 @@ class CMB_Pay_Review {
 	 */
 	public static function report( $days = 30, $with_sandbox = false ) {
 		global $wpdb;
+
+		if ( CMB_Payments::wallet_mode() ) {
+			return self::report_wallet( $days, $with_sandbox );
+		}
 
 		$empty = array(
 			'days'    => (int) $days,
@@ -423,6 +448,207 @@ class CMB_Pay_Review {
 			'totals'   => $t + $fa,
 			'reasons'  => $fmt( $reasons ),
 			'methods'  => $fmt( $methods ),
+			'services' => $fmt( $services ),
+		);
+	}
+
+	/**
+	 * گزارش در حالت کیف پول.
+	 *
+	 * بیعانه‌ها از روی خود نوبت‌ها (زمان پرداخت)، با سهم کیف پول و
+	 * درگاه؛ برگشت‌ها، شارژها، خرج‌ها و تغییرهای دستی از دفتر کیف پول
+	 * (زمان ثبت). شارژ درآمد نیست؛ پیش‌پرداخت مشتری است و تا خرج نشده
+	 * در «موجودی کیف پول‌ها» (بدهی مجموعه به مشتری‌ها) می‌ماند.
+	 */
+	protected static function report_wallet( $days, $with_sandbox ) {
+		global $wpdb;
+
+		$pt    = cmb_table( 'payments' );
+		$bt    = cmb_table( 'bookings' );
+		$wt    = cmb_table( 'wallet' );
+		$since = $days > 0 ? cmb_now()->modify( '-' . (int) $days . ' days' )->format( 'Y-m-d 00:00:00' ) : '';
+
+		$t = array(
+			'paidCount'     => 0,
+			'paid'          => 0,
+			'paidWallet'    => 0,
+			'paidGateway'   => 0,
+			'toWallet'      => 0,
+			'toWalletCount' => 0,
+			'topup'         => 0,
+			'topupCount'    => 0,
+			'spent'         => 0,
+			'reclaimed'     => 0,
+			'adjust'        => 0,
+			'adjustCount'   => 0,
+			'gatewayIn'     => 0,
+			'fees'          => 0,
+			'kept'          => 0,
+			'tests'         => 0,
+		);
+
+		$services = array();
+
+		// ۱. بیعانه‌ی نوبت‌هایی که در این بازه قطعی شدند
+		$where = 'b.paid_at IS NOT NULL AND b.deposit_amount > 0';
+
+		if ( $since ) {
+			$where .= $wpdb->prepare( ' AND b.paid_at >= %s', $since );
+		}
+
+		if ( ! $with_sandbox ) {
+			$where .= " AND NOT EXISTS ( SELECT 1 FROM {$pt} sp WHERE sp.booking_id = b.id AND sp.status = 'paid' AND sp.sandbox = 1 )";
+		}
+
+		$rows = $wpdb->get_results( "SELECT b.id, b.service_id, b.deposit_amount, b.wallet_used, b.pay_status, b.refund_amount FROM {$bt} b WHERE {$where}" ); // phpcs:ignore
+
+		foreach ( (array) $rows as $b ) {
+			$deposit = (int) $b->deposit_amount;
+			$wallet  = min( $deposit, (int) $b->wallet_used );
+			$back    = 'refunded' === $b->pay_status ? (int) $b->refund_amount : 0;
+			$sid     = (int) $b->service_id;
+
+			$t['paidCount']++;
+			$t['paid']        += $deposit;
+			$t['paidWallet']  += $wallet;
+			$t['paidGateway'] += $deposit - $wallet;
+			$t['kept']        += $deposit - $back;
+
+			if ( ! isset( $services[ $sid ] ) ) {
+				$svc              = CMB_Services::get_service( $sid );
+				$services[ $sid ] = array(
+					'title'    => $svc ? $svc->title : '—',
+					'count'    => 0,
+					'paid'     => 0,
+					'refunded' => 0,
+					'kept'     => 0,
+				);
+			}
+
+			$services[ $sid ]['count']++;
+			$services[ $sid ]['paid']     += $deposit;
+			$services[ $sid ]['refunded'] += $back;
+			$services[ $sid ]['kept']     += $deposit - $back;
+		}
+
+		// ۲. پول درگاه: بیعانه‌ها، شارژها، کارمزد
+		$where = "p.status = 'paid'";
+
+		if ( $since ) {
+			$where .= $wpdb->prepare( ' AND p.paid_at >= %s', $since );
+		}
+
+		if ( ! $with_sandbox ) {
+			$where .= ' AND p.sandbox = 0';
+		}
+
+		foreach ( (array) $wpdb->get_results( "SELECT p.kind, p.booking_id, p.amount_rial, p.fee, p.refund_reason FROM {$pt} p WHERE {$where}" ) as $p ) { // phpcs:ignore
+			if ( 'selftest' === (string) $p->kind || ( ! (int) $p->booking_id && 'topup' !== (string) $p->kind ) || CMB_Payments::is_selftest_reason( $p->refund_reason ) ) {
+				$t['tests']++;
+				continue;
+			}
+
+			$t['gatewayIn'] += (int) ( $p->amount_rial / 10 );
+			$t['fees']      += (int) ( $p->fee / 10 );
+		}
+
+		// ۳. دفتر کیف پول
+		$where = "w.status = 'done'";
+
+		if ( $since ) {
+			$where .= $wpdb->prepare( ' AND w.created_at >= %s', $since );
+		}
+
+		if ( ! $with_sandbox ) {
+			$where .= ' AND ( p.id IS NULL OR p.sandbox = 0 )';
+		}
+
+		$ledger = $wpdb->get_results(
+			"SELECT w.type, w.reason, COUNT(*) AS n, COALESCE(SUM(w.amount),0) AS total
+			 FROM {$wt} w LEFT JOIN {$pt} p ON p.id = w.payment_id
+			 WHERE {$where} GROUP BY w.type, w.reason" // phpcs:ignore
+		);
+
+		$reasons = array();
+		$labels  = CMB_Payments::refund_reasons();
+
+		foreach ( (array) $ledger as $l ) {
+			$sum = (int) $l->total;
+			$n   = (int) $l->n;
+
+			switch ( (string) $l->type ) {
+				case 'refund':
+					$t['toWallet']      += $sum;
+					$t['toWalletCount'] += $n;
+
+					$r = (string) $l->reason;
+
+					if ( ! isset( $reasons[ $r ] ) ) {
+						$reasons[ $r ] = array(
+							'label' => isset( $labels[ $r ] ) ? $labels[ $r ] : $r,
+							'count' => 0,
+							'sum'   => 0,
+						);
+					}
+
+					$reasons[ $r ]['count'] += $n;
+					$reasons[ $r ]['sum']   += $sum;
+					break;
+				case 'topup':
+					$t['topup']      += $sum;
+					$t['topupCount'] += $n;
+					break;
+				case 'pay':
+					$t['spent'] += -$sum;
+					break;
+				case 'reclaim':
+					$t['reclaimed'] += -$sum;
+					break;
+				case 'adjust':
+					$t['adjust']      += $sum;
+					$t['adjustCount'] += $n;
+					break;
+			}
+		}
+
+		$now = CMB_Wallet::totals();
+
+		$t['liability'] = (int) $now['liability'];
+		$t['wallets']   = (int) $now['wallets'];
+
+		$counts = array( 'paidCount', 'toWalletCount', 'topupCount', 'adjustCount', 'tests', 'wallets' );
+		$fa     = array();
+
+		foreach ( $t as $k => $v ) {
+			$fa[ $k . 'Fa' ] = in_array( $k, $counts, true ) ? cmb_fa_num( $v ) : ( $v < 0 ? '−' . cmb_toman( -$v ) : cmb_toman( $v ) );
+		}
+
+		$fmt = function ( array $list ) {
+			return array_values(
+				array_map(
+					function ( $x ) {
+						$x['countFa'] = cmb_fa_num( $x['count'] );
+
+						foreach ( array( 'sum', 'paid', 'refunded', 'kept' ) as $k ) {
+							if ( isset( $x[ $k ] ) ) {
+								$x[ $k . 'Fa' ] = cmb_toman( $x[ $k ] );
+							}
+						}
+
+						return $x;
+					},
+					$list
+				)
+			);
+		};
+
+		return array(
+			'mode'     => 'wallet',
+			'days'     => (int) $days,
+			'sandbox'  => (bool) $with_sandbox,
+			'totals'   => $t + $fa,
+			'reasons'  => $fmt( $reasons ),
+			'methods'  => array(),
 			'services' => $fmt( $services ),
 		);
 	}
