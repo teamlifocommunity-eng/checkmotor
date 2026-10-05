@@ -510,7 +510,8 @@ select.cmb-in {
   backdrop-filter: saturate(180%) blur(18px);
   -webkit-backdrop-filter: saturate(180%) blur(18px);
   border-top: 1px solid var(--g5);
-  padding: var(--s3) var(--pad) calc(var(--s3) + var(--safe-b));
+  /* همه‌ی نوارهای پایین (ادامه، پرداخت، شارژ) یک فاصله‌ی جادار دارند */
+  padding: var(--s4) var(--pad) calc(var(--s3) + var(--safe-b));
 }
 /* بالای نوار ناوبری؛ فاصله‌ی safe-area را خود ناوبری دارد */
 .cmb-actionbar--nav {
@@ -519,12 +520,11 @@ select.cmb-in {
 }
 .cmb-actionbar__in { max-width: var(--max-w); margin: 0 auto; display: flex; gap: var(--s3); align-items: center; }
 .cmb-actionbar__sum { flex: 1; min-width: 0; }
-.cmb-actionbar__k { font-size: var(--t-cp); color: var(--ink-3); }
-.cmb-actionbar__v { font-size: var(--t-cl); font-weight: 700; margin-top: 1px; }
+.cmb-actionbar__k { font-size: var(--t-ft); color: var(--ink-3); }
+.cmb-actionbar__v { font-size: var(--t-hd); font-weight: 700; margin-top: 2px; }
 .cmb-actionbar .cmb-btn { width: auto; flex: 0 0 auto; padding: 0 var(--s6); }
 
 /* گام آخر رزرو: ردیف تیک پذیرش بالای دکمه‌ی پرداخت */
-.cmb-actionbar--terms { padding-top: var(--s4); }
 .cmb-actionbar--terms .cmb-actionbar__in { flex-direction: column; align-items: stretch; gap: var(--s4); }
 .cmb-actionbar--terms .cmb-btn { width: 100%; }
 .cmb-termsrow { display: flex; align-items: center; gap: var(--s3); }
@@ -1071,7 +1071,7 @@ select.cmb-in {
   padding: 12px var(--s3); border-radius: var(--r-sm); background: var(--flame-50);
 }
 .cmb-check input { width: 22px; height: 22px; flex: 0 0 22px; margin: 0; accent-color: var(--flame); }
-/* تیک پذیرش در نوار پایین: جادار و راحت برای لمس */
+/* تیک جادار و راحت برای لمس: پذیرش قوانین (نوار پایین) و پرداخت از کیف پول */
 .cmb-check--bar {
   min-height: 60px; padding: 14px var(--s4); gap: var(--s3);
   font-size: var(--t-bd); line-height: 1.6; border-radius: var(--r);

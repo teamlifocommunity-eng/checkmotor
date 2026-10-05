@@ -812,7 +812,7 @@ function stepPay() {
   // کیف پول: تیک استفاده، و تقسیم بیعانه بین کیف پول و درگاه
   if (q.wallet && Number(q.wallet.balance) > 0) {
     html += '<div class="cmb-card cmb-wuse">' +
-      '<label class="cmb-check"><input type="checkbox" id="cmb-usewallet"' + (S.useWallet ? ' checked' : '') + '>' +
+      '<label class="cmb-check cmb-check--bar"><input type="checkbox" id="cmb-usewallet"' + (S.useWallet ? ' checked' : '') + '>' +
       '<span>پرداخت از کیف پول <small>(موجودی ' + esc(q.wallet.balanceFa) + ')</small></span></label>' +
       (w.use > 0
         ? '<div class="cmb-wuse__split">' +
