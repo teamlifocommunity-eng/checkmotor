@@ -615,6 +615,10 @@ class CMB_Panel_Api {
 				$cols[] = 'city';
 			}
 
+			if ( cmb_has_column( 'bookings', 'province' ) ) {
+				$cols[] = 'province';
+			}
+
 			$where[] = '(' . implode( ' OR ', array_map( function ( $c ) { return $c . ' LIKE %s'; }, $cols ) ) . ')';
 			$params  = array_merge( $params, array_fill( 0, count( $cols ), $like ) );
 		}
@@ -670,6 +674,7 @@ class CMB_Panel_Api {
 			'serviceId'   => (int) $row->service_id,
 			'name'        => $row->customer_name,
 			'phone'       => $row->phone,
+			'province'    => isset( $row->province ) ? (string) $row->province : '',
 			'city'        => isset( $row->city ) ? (string) $row->city : '',
 			'carBrand'    => $row->car_brand,
 			'carModel'    => $row->car_model,
@@ -1048,6 +1053,10 @@ class CMB_Panel_Api {
 
 			if ( cmb_has_column( 'bookings', 'city' ) ) {
 				$cols[] = 'city';
+			}
+
+			if ( cmb_has_column( 'bookings', 'province' ) ) {
+				$cols[] = 'province';
 			}
 
 			$where[] = '(' . implode( ' OR ', array_map( function ( $c ) { return $c . ' LIKE %s'; }, $cols ) ) . ')';

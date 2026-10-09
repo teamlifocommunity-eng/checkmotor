@@ -195,8 +195,9 @@ class CMB_Bookings_List_Table extends WP_List_Table {
 				return $service ? esc_html( $service->title ) : '—';
 
 			case 'customer_name':
+				$place = trim( ( ! empty( $item->province ) ? $item->province : '' ) . ( ! empty( $item->province ) && ! empty( $item->city ) ? ' / ' : '' ) . ( ! empty( $item->city ) ? $item->city : '' ) );
 				return '<b>' . esc_html( $item->customer_name ) . '</b><br /><a href="tel:' . esc_attr( $item->phone ) . '">' . esc_html( cmb_fa_num( $item->phone ) ) . '</a>'
-					. ( ! empty( $item->city ) ? ' · ' . esc_html( $item->city ) : '' );
+					. ( '' !== $place ? ' · ' . esc_html( $place ) : '' );
 
 			case 'car':
 				/* این مقادیر را مشتری وارد می‌کند و ستون‌های جدول بدون

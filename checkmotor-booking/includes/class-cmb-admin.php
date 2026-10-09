@@ -975,6 +975,24 @@ class CMB_Admin {
 					</tr>
 				</table>
 
+				<h2 class="title">محل سکونت مشتری (استان و شهر)</h2>
+				<table class="form-table">
+					<tr>
+						<th><label>انتخاب از فهرست</label></th>
+						<td>
+							<label class="cmb-check">
+								<input type="checkbox" name="location_mode" value="1" <?php checked( (int) $s['location_mode'], 1 ); ?> />
+								مشتری به‌جای تایپِ شهر، استان و شهرش را از فهرست انتخاب کند
+							</label>
+							<p class="description" style="max-width:720px">
+								روشن: در فرمِ مشخصات، دو فهرستِ کشویی «استان» و «شهر» نشان داده می‌شود (شهرها با انتخابِ استان به‌روز می‌شوند). پر کردن سریع‌تر و نوشتار یکدست می‌شود.
+								برای شهری که در فهرست نیست، گزینه‌ی «شهر دیگر (تایپ می‌کنم)» هست تا کسی گیر نکند.
+								خاموش: مثل قبل، فیلدِ تایپ آزادِ شهر با پیشنهاد. نوبت‌های قبلی با تغییر این گزینه تغییری نمی‌کنند.
+							</p>
+						</td>
+					</tr>
+				</table>
+
 				<h2 class="title">متن‌ها و اطلاعات شعبه</h2>
 				<table class="form-table">
 					<tr>
@@ -1385,6 +1403,7 @@ class CMB_Admin {
 			'admin_sms_enabled',
 			'reminder_enabled',
 			'otp_dev_mode',
+			'location_mode',
 		);
 
 		$values = array();
@@ -1703,7 +1722,7 @@ class CMB_Admin {
 
 		fwrite( $output, "\xEF\xBB\xBF" ); // BOM
 
-		fputcsv( $output, array( 'کد پیگیری', 'تاریخ شمسی', 'تاریخ میلادی', 'شیفت', 'خدمت', 'نام', 'موبایل', 'شهر', 'نوع خودرو', 'نوع موتور', 'سال', 'کارکرد', 'وضعیت', 'ثبت', 'بیعانه (تومان)', 'وضعیت پرداخت', 'برگشت (تومان)' ) );
+		fputcsv( $output, array( 'کد پیگیری', 'تاریخ شمسی', 'تاریخ میلادی', 'شیفت', 'خدمت', 'نام', 'موبایل', 'استان', 'شهر', 'نوع خودرو', 'نوع موتور', 'سال', 'کارکرد', 'وضعیت', 'ثبت', 'بیعانه (تومان)', 'وضعیت پرداخت', 'برگشت (تومان)' ) );
 
 		foreach ( (array) $rows as $row ) {
 			$service = CMB_Services::get_service( $row->service_id );
@@ -1720,6 +1739,7 @@ class CMB_Admin {
 					$service ? $service->title : '',
 					$row->customer_name,
 					$row->phone,
+					isset( $row->province ) ? $row->province : '',
 					isset( $row->city ) ? $row->city : '',
 					$row->car_brand,
 					$row->car_model,

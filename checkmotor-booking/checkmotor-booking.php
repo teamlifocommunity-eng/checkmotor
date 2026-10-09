@@ -3,7 +3,7 @@
  * Plugin Name: چک موتور — سیستم رزرو نوبت
  * Plugin URI:  https://checkmotor.ir
  * Description: سیستم رزرو نوبت آنلاین چک موتور (MVP) — ورود با کد تایید پیامکی ملی‌پیامک، تقویم ۷ روزه، شیفت صبح/بعدازظهر، پنل مدیریت نوبت‌ها.
- * Version:     1.37.5
+ * Version:     1.38.0
  * Author:      رضا امام‌حسنی
  * Text Domain: checkmotor-booking
  * Domain Path: /languages
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMB_VERSION', '1.37.5' );
+define( 'CMB_VERSION', '1.38.0' );
 define( 'CMB_FILE', __FILE__ );
 define( 'CMB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMB_URL', plugin_dir_url( __FILE__ ) );
@@ -618,7 +618,17 @@ function cmb_boot_payload() {
  */
 function cmb_enqueue_app() {
 	wp_enqueue_style( 'cmb-app', CMB_URL . 'assets/css/app.css', array(), CMB_VERSION );
-	wp_enqueue_script( 'cmb-app', CMB_URL . 'assets/js/app.js', array(), CMB_VERSION, false );
+
+	/* بانک استان/شهر فقط وقتی حالت انتخاب از فهرست روشن است بار می‌شود.
+	   app.js به آن وابسته می‌شود تا پیش از اجرای اپ آماده باشد. */
+	$app_deps = array();
+
+	if ( (int) CMB_Settings::get( 'location_mode', 0 ) ) {
+		wp_enqueue_script( 'cmb-places', CMB_URL . 'assets/js/iran-places.js', array(), CMB_VERSION, false );
+		$app_deps[] = 'cmb-places';
+	}
+
+	wp_enqueue_script( 'cmb-app', CMB_URL . 'assets/js/app.js', $app_deps, CMB_VERSION, false );
 
 	$font = cmb_font_css();
 
@@ -658,6 +668,9 @@ function cmb_enqueue_app() {
 			   می‌شود تا شب سال تحویل، فهرست کهنه تحویل کسی نشود. */
 			'carYears'  => cmb_car_years(),
 			'cities'    => array_values( cmb_city_suggestions() ),
+			/* روشن بودنِ انتخابِ استان و شهر از فهرست؛ داده‌ی فهرست در
+			   فایل جدا (CMB_PLACES) است و فقط در همین حالت بار می‌شود. */
+			'locMode'   => (int) CMB_Settings::get( 'location_mode', 0 ) ? 1 : 0,
 			'cols'      => (int) get_option( 'cmb_poster_cols', 1 ),
 			'canManage' => CMB_Panel_Api::can(),
 			'panel'     => cmb_app_url( 'panel' ),

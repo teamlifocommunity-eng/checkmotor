@@ -297,6 +297,7 @@ class CMB_Rest {
 			'date'        => (string) $request->get_param( 'date' ),
 			'block'       => (string) $request->get_param( 'block' ),
 			'name'        => (string) $request->get_param( 'name' ),
+			'province'    => (string) $request->get_param( 'province' ),
 			'city'        => (string) $request->get_param( 'city' ),
 			'car_brand'   => (string) $request->get_param( 'car_brand' ),
 			'car_model'   => (string) $request->get_param( 'car_model' ),

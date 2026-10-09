@@ -31,7 +31,8 @@ var S = {
   step: 1,                 // 1 خدمت · 2 زمان · 3 ورود · 4 مشخصات · 5 قوانین و پرداخت (فقط با بیعانه)
   service: null,
   cal: null, calCache: {}, day: null, block: null,
-  form: { name: '', city: '', brand: '', model: '', year: '', mileage: '', note: '' },
+  form: { name: '', province: '', city: '', brand: '', model: '', year: '', mileage: '', note: '' },
+  cityOther: false,        // در حالت انتخاب از فهرست: «شهر دیگر (تایپ می‌کنم)» انتخاب شده؟
   bad: {},
 
   /* ورود */
@@ -129,6 +130,13 @@ var CAR_YEARS = carYearList();
 
 /* پیشنهادهای شهر از سرور؛ فقط پیشنهاد است و هر شهری قابل تایپ است. */
 var CITIES = Array.isArray(C.cities) ? C.cities : [];
+
+/* حالت «انتخاب استان و شهر از فهرست»: فقط وقتی هم تنظیماتش روشن باشد و
+   هم بانک اطلاعاتی (فایل جدا) بار شده باشد. در غیر این صورت به فیلد
+   تایپ آزادِ شهر برمی‌گردیم. */
+var PLACES = (C.locMode && window.CMB_PLACES && typeof window.CMB_PLACES === 'object') ? window.CMB_PLACES : null;
+var PROVINCES = PLACES ? Object.keys(PLACES) : [];
+var CITY_OTHER = '__other__';   // مقدارِ گزینه‌ی «شهر دیگر (تایپ می‌کنم)»
 
 function fa(v) {
   var s = String(v == null ? '' : v);
@@ -690,7 +698,12 @@ function stepDetails() {
      دوباره تایپش نکند. فقط اگر خالی باشد — ورودی خودش را پاک نکنیم. */
   if (!f.city) {
     for (var i = 0; i < S.bookings.length; i++) {
-      if (S.bookings[i].city) { f.city = S.bookings[i].city; break; }
+      var bk = S.bookings[i];
+      if (bk.city) {
+        f.city = bk.city;
+        if (PLACES && bk.province) { f.province = bk.province; }
+        break;
+      }
     }
   }
   var bl = (S.day && S.day.blocks || []).filter(function (x) { return x.key === S.block; })[0] || {};
@@ -707,7 +720,7 @@ function stepDetails() {
   html += '<div class="cmb-card">' +
     '<div class="cmb-svc__t">مشخصات خودرو</div>' +
     field('name', 'نام و نام خانوادگی', 'text', 'مثلاً رضا محمدی', f.name, true) +
-    cityField(f.city) +
+    (PLACES ? provinceCityFields(f) : cityField(f.city)) +
     '<div class="cmb-grid2">' +
       /* ستون راست در RTL همان فیلد اول است. کلیدها (brand/model) و
          ستون‌های دیتابیس عوض نشده‌اند؛ فقط معنی‌شان برای این کسب‌وکار
@@ -900,6 +913,56 @@ function cityField(value) {
       ? '<datalist id="cmb-cities">' + CITIES.map(function (c) { return '<option value="' + esc(c) + '">'; }).join('') + '</datalist>'
       : '') +
     '</label>';
+}
+
+/** حدسِ استان از روی نامِ شهر (برای پر کردنِ خودکار از نوبت قبلی). */
+function findProvinceOfCity(city) {
+  if (!PLACES || !city) { return ''; }
+  for (var p = 0; p < PROVINCES.length; p++) {
+    if (PLACES[PROVINCES[p]].indexOf(city) !== -1) { return PROVINCES[p]; }
+  }
+  return '';
+}
+
+/**
+ * فیلدهای «استان» و «شهر» کشویی (حالت انتخاب از فهرست).
+ *
+ * شهرها با انتخابِ استان به‌روز می‌شوند. برای شهری که در فهرست نیست،
+ * گزینه‌ی «شهر دیگر (تایپ می‌کنم)» یک ورودی متنی باز می‌کند تا کسی
+ * گیر نکند — همان فلسفه‌ی قبلی که هیچ مشتری نباید بماند.
+ */
+function provinceCityFields(f) {
+  /* استانِ خالی ولی شهرِ پرشده از نوبت قبلی: استان را حدس بزن. */
+  if (!f.province && f.city) {
+    var guess = findProvinceOfCity(f.city);
+    if (guess) { f.province = guess; }
+  }
+
+  var cityList = (f.province && PLACES[f.province]) ? PLACES[f.province] : [];
+  var inList   = !!f.city && cityList.indexOf(f.city) !== -1;
+  var isOther  = S.cityOther || (!!f.city && !!f.province && !inList);
+
+  if (isOther) { S.cityOther = true; }
+
+  var html = selectField('province', 'استان', PROVINCES, f.province, true, 'انتخاب کنید');
+
+  html += '<label class="cmb-field"><span class="cmb-field__l">شهر <i>*</i></span>' +
+    '<select class="cmb-in' + (S.bad.city ? ' is-bad' : '') + '" id="cmb-f-city-sel"' + (f.province ? '' : ' disabled') + '>' +
+    '<option value="" disabled' + ((f.city || isOther) ? '' : ' selected') + '>' +
+      (f.province ? 'انتخاب کنید' : 'ابتدا استان را انتخاب کنید') + '</option>' +
+    cityList.map(function (c) {
+      return '<option value="' + esc(c) + '"' + (!isOther && f.city === c ? ' selected' : '') + '>' + esc(c) + '</option>';
+    }).join('') +
+    (f.province ? '<option value="' + CITY_OTHER + '"' + (isOther ? ' selected' : '') + '>شهر دیگر (تایپ می‌کنم)</option>' : '') +
+    '</select></label>';
+
+  if (isOther) {
+    html += '<label class="cmb-field"><span class="cmb-field__l">نام شهر <i>*</i></span>' +
+      '<input class="cmb-in' + (S.bad.city ? ' is-bad' : '') + '" id="cmb-f-city-other" type="text"' +
+      ' autocomplete="address-level2" placeholder="نام شهر را بنویسید" value="' + esc(f.city) + '"></label>';
+  }
+
+  return html;
 }
 
 /**
@@ -1787,7 +1850,34 @@ function grabForm() {
   if (!$('#cmb-f-name')) { return; }
 
   S.form.name    = val('#cmb-f-name').trim();
-  S.form.city    = val('#cmb-f-city').trim().replace(/\s+/g, ' ');
+
+  if (PLACES) {
+    S.form.province = val('#cmb-f-province');
+
+    var provCities = (S.form.province && PLACES[S.form.province]) ? PLACES[S.form.province] : [];
+    var selEl = $('#cmb-f-city-sel');
+
+    if (selEl) {
+      var cv = selEl.value;
+      if (cv === CITY_OTHER) {
+        S.cityOther = true;
+      } else if (cv) {
+        S.cityOther = false;
+        S.form.city = cv;
+      }
+    }
+
+    if (S.cityOther) {
+      var othEl = $('#cmb-f-city-other');
+      if (othEl) { S.form.city = othEl.value.trim().replace(/\s+/g, ' '); }
+    } else if (S.form.province && S.form.city && provCities.indexOf(S.form.city) === -1) {
+      /* شهرِ کهنه از استانِ قبلی را پاک کن تا شهرِ استانِ دیگری ثبت نشود. */
+      S.form.city = '';
+    }
+  } else {
+    S.form.city = val('#cmb-f-city').trim().replace(/\s+/g, ' ');
+  }
+
   S.form.brand   = val('#cmb-f-brand').trim();
   S.form.model   = val('#cmb-f-model').trim();
   S.form.year    = en(val('#cmb-f-year')).replace(/\D/g, '');
@@ -1805,6 +1895,7 @@ function submitBooking() {
   if (f.name.length < 3) { S.bad.name = 1; }
   // شماره در فیلد نام — سرور هم رد می‌کند، ولی بهتر است زودتر بفهمد
   if (/^[0-9+\s\-()]{6,}$/.test(en(f.name))) { S.bad.name = 1; S.nameIsPhone = true; }
+  if (PLACES && !f.province) { S.bad.province = 1; }
   if (f.city.length < 2 || /\d{4,}/.test(en(f.city))) { S.bad.city = 1; }
   if (!f.brand) { S.bad.brand = 1; }
   if (!f.model) { S.bad.model = 1; }
@@ -1892,6 +1983,7 @@ function sendBooking(extra) {
     date: S.day.date,
     block: S.block,
     name: f.name,
+    province: f.province,
     city: f.city,
     car_brand: f.brand,
     car_model: f.model,
@@ -2461,6 +2553,16 @@ function bind() {
 
   /* مقادیر فرم قبل از رندر مجدد از بین نروند */
   document.addEventListener('change', function (e) {
+    /* استان/شهر کشویی: با تغییرِ استان فهرستِ شهر و با انتخابِ «شهر دیگر»
+       ورودیِ متنی باید دوباره رندر شوند، پس اینجا paint لازم است. */
+    if (e.target.id === 'cmb-f-province' || e.target.id === 'cmb-f-city-sel') {
+      grabForm();
+      /* بعد از خواندنِ فرم: با تغییرِ استان، شهرِ قبلی پاک می‌شود (DOMِ
+         فهرستِ شهر هنوز متعلق به استانِ قبلی است، پس بعد از grabForm). */
+      if (e.target.id === 'cmb-f-province') { S.cityOther = false; S.form.city = ''; }
+      paint();
+      return;
+    }
     if (e.target.id && e.target.id.indexOf('cmb-f-') === 0) { grabForm(); }
     if (e.target.id === 'cmb-terms') { S.termsOk = !!e.target.checked; paint(); }
     if (e.target.id === 'cmb-usewallet') { S.useWallet = !!e.target.checked; paint(); }

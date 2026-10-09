@@ -535,7 +535,7 @@ function viewBookings() {
         '<div class="pn-table__s">' + esc(b.blockLabel) + ' · ' + fa(esc(b.blockStart)) + '</div></td>' +
       '<td data-label="مشتری"><div class="pn-table__b">' + esc(b.name) + '</div>' +
         '<div class="pn-table__s num"><a href="tel:' + esc(b.phone) + '">' + fa(esc(b.phone)) + '</a>' +
-        (b.city ? ' · ' + esc(b.city) : '') + '</div></td>' +
+        (b.province || b.city ? ' · ' + esc([b.province, b.city].filter(Boolean).join(' / ')) : '') + '</div></td>' +
       /* نوع خودرو خط اصلی، نوع موتور و سال خط دوم. سرهم نوشتن این دو
          («۲۰۷ TU5») بدون برچسب معلوم نمی‌کرد کدام کدام است. */
       '<td data-label="خودرو"><div>' + esc(b.carBrand) + '</div>' +
@@ -1685,6 +1685,7 @@ function bookingModal() {
     '<div class="pn-kv"><span class="pn-kv__k">تاریخ</span><span class="pn-kv__v">' + fa(esc(b.dateLong)) + '</span></div>' +
     '<div class="pn-kv"><span class="pn-kv__k">ساعت</span><span class="pn-kv__v">' + esc(b.blockLabel) + ' — ' + fa(esc(b.blockStart)) + '</span></div>' +
     '<div class="pn-kv"><span class="pn-kv__k">موبایل</span><span class="pn-kv__v num"><a href="tel:' + esc(b.phone) + '">' + fa(esc(b.phone)) + '</a></span></div>' +
+    (b.province ? '<div class="pn-kv"><span class="pn-kv__k">استان</span><span class="pn-kv__v">' + esc(b.province) + '</span></div>' : '') +
     '<div class="pn-kv"><span class="pn-kv__k">شهر</span><span class="pn-kv__v">' + esc(b.city || '—') + '</span></div>' +
     '<div class="pn-kv"><span class="pn-kv__k">نوع خودرو</span><span class="pn-kv__v">' + esc(b.carBrand) + '</span></div>' +
     '<div class="pn-kv"><span class="pn-kv__k">نوع موتور</span><span class="pn-kv__v">' + esc(b.carModel) + '</span></div>' +

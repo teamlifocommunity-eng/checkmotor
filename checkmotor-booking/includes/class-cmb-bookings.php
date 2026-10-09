@@ -67,6 +67,10 @@ class CMB_Bookings {
 			return $city;
 		}
 
+		/* استان اختیاری است (فقط در حالتِ انتخاب از فهرست پر می‌شود)؛ هر
+		   متنی پذیرفته می‌شود تا سخت‌گیریِ سرور کسی را گیر نیندازد. */
+		$province = self::sanitize_province( isset( $data['province'] ) ? $data['province'] : '' );
+
 		if ( '' === $car_brand || '' === $car_model ) {
 			return new WP_Error( 'cmb_bad_car', 'نوع خودرو و نوع موتور الزامی است.', array( 'status' => 400 ) );
 		}
@@ -197,6 +201,10 @@ class CMB_Bookings {
 		// پیش از مهاجرت، ستون شهر وجود ندارد و نوشتنش کل ثبت را خراب می‌کرد
 		if ( cmb_has_column( 'bookings', 'city' ) ) {
 			$row['city'] = $city;
+		}
+
+		if ( '' !== $province && cmb_has_column( 'bookings', 'province' ) ) {
+			$row['province'] = $province;
 		}
 
 		if ( CMB_Payments::schema_ready() ) {
@@ -478,6 +486,23 @@ class CMB_Bookings {
 	 *
 	 * @return string|WP_Error
 	 */
+	/**
+	 * استان را پاک‌سازی می‌کند (اختیاری؛ فقط در حالتِ انتخاب از فهرست).
+	 *
+	 * مثل شهر، «ي/ك» عربی به فارسی تبدیل و فاصله‌ها یکی می‌شوند تا
+	 * «آذربایجان شرقی» و شکل‌های دیگرش در گزارش‌ها یکی حساب شوند. خالی
+	 * مجاز است و خطا نمی‌دهد.
+	 *
+	 * @return string
+	 */
+	public static function sanitize_province( $raw ) {
+		$province = sanitize_text_field( (string) $raw );
+		$province = strtr( $province, array( 'ي' => 'ی', 'ى' => 'ی', 'ك' => 'ک' ) );
+		$province = trim( preg_replace( '/\s+/u', ' ', $province ) );
+
+		return cmb_substr( $province, 0, 100 );
+	}
+
 	public static function sanitize_city( $raw ) {
 		$city = sanitize_text_field( (string) $raw );
 		$city = strtr( $city, array( 'ي' => 'ی', 'ى' => 'ی', 'ك' => 'ک' ) );
@@ -1209,6 +1234,7 @@ class CMB_Bookings {
 			'phoneFa'      => cmb_fa_num( $booking->phone ),
 			/* «۲۰۷ · TU5 · ۱۳۹۸» خواناتر از سرهم نوشتن است، حالا که این
 			   سه تا سه چیز متفاوت‌اند و نه یک نام خودرو. */
+			'province'     => isset( $booking->province ) ? (string) $booking->province : '',
 			'city'         => isset( $booking->city ) ? (string) $booking->city : '',
 			'car'          => implode(
 				' · ',

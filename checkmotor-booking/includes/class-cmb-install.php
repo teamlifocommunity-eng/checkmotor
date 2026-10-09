@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CMB_Install {
 
-	const DB_VERSION = '1.7.0';
+	const DB_VERSION = '1.8.0';
 
 	public static function activate() {
 		global $wpdb;
@@ -278,6 +278,7 @@ class CMB_Install {
 			block_key VARCHAR(20) NOT NULL,
 			customer_name VARCHAR(190) NOT NULL,
 			phone VARCHAR(20) NOT NULL,
+			province VARCHAR(100) DEFAULT '' NOT NULL,
 			city VARCHAR(100) DEFAULT '' NOT NULL,
 			car_brand VARCHAR(120) DEFAULT '' NOT NULL,
 			car_model VARCHAR(120) DEFAULT '' NOT NULL,
@@ -423,6 +424,7 @@ class CMB_Install {
 		delete_transient( 'cmb_has_cancel_cols' );
 		delete_transient( 'cmb_has_owncap_col' );
 		delete_transient( 'cmb_col_bookings_city' );
+		delete_transient( 'cmb_col_bookings_province' );
 
 		foreach ( array( 'deposit_amount', 'pay_status', 'hold_until_gmt', 'wallet_used' ) as $col ) {
 			delete_transient( 'cmb_col_bookings_' . $col );
