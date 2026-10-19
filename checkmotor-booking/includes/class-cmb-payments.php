@@ -677,6 +677,12 @@ class CMB_Payments {
 			return;
 		}
 
+		// شارژ کیف پول نمایندگی: واریز به دفتر همان شعبه
+		if ( isset( $payment->kind ) && 'btopup' === $payment->kind ) {
+			CMB_Branch_Wallet::credit_topup( $payment );
+			return;
+		}
+
 		$lock_name = 'cmb_payb_' . (int) $payment->booking_id;
 		$lock      = cmb_lock( $lock_name, 10 );
 		$booking   = CMB_Bookings::get( $payment->booking_id );
@@ -1350,6 +1356,11 @@ class CMB_Payments {
 
 		if ( 'pay/wallet' === $route ) {
 			CMB_Wallet::handle_return();
+			return true;
+		}
+
+		if ( 'pay/branch' === $route ) {
+			CMB_Branch_Wallet::handle_return();
 			return true;
 		}
 

@@ -245,8 +245,8 @@ class CMB_Health {
 			$out[] = self::item( self::BAD, 'مبلغ‌های بیعانه', 'مبلغ بیعانه یا برگشتیِ این خدمت‌ها با قواعد زرین‌پال جور نیست: ' . implode( '، ', $bad_svc ) . '.', 'پنل رزرو ← بیعانه و کیف پول ← بررسی خدمات.' );
 		}
 
-		// شارژ کیف پول نوبتی ندارد و قرار هم نیست داشته باشد
-		$not_topup = CMB_Wallet::schema_ready() ? " AND p.kind <> 'topup'" : '';
+		// شارژ کیف پول (مشتری یا نمایندگی) نوبتی ندارد و قرار هم نیست داشته باشد
+		$not_topup = CMB_Wallet::schema_ready() ? " AND p.kind NOT IN ('topup','btopup')" : '';
 
 		$orphan = (int) $wpdb->get_var( // phpcs:ignore
 			"SELECT COUNT(*) FROM {$pt} p LEFT JOIN {$bt} b ON b.id = p.booking_id

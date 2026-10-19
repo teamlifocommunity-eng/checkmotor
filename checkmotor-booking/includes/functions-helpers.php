@@ -409,6 +409,33 @@ function cmb_unlock( $name, $state ) {
 	$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $key ) ); // phpcs:ignore
 }
 
+/**
+ * تراکنش دیتابیس، وقتی موتور دیتابیس پشتیبانی کند.
+ *
+ * روی MySQL/MariaDB (InnoDB) ثبت نوبت نمایندگی و بلوکه‌ی هزینه‌اش یا با
+ * هم انجام می‌شوند یا هیچ‌کدام. روی SQLite (محیط آزمون) کاری نمی‌کند و
+ * فراخواننده خودش ردیف نیمه‌کاره را پاک می‌کند.
+ *
+ * @param string $op START TRANSACTION | COMMIT | ROLLBACK
+ */
+function cmb_tx( $op ) {
+	global $wpdb;
+
+	if ( ! cmb_tx_supported() ) {
+		return;
+	}
+
+	if ( in_array( $op, array( 'START TRANSACTION', 'COMMIT', 'ROLLBACK' ), true ) ) {
+		$wpdb->query( $op ); // phpcs:ignore
+	}
+}
+
+function cmb_tx_supported() {
+	global $wpdb;
+
+	return is_object( $wpdb ) && false === stripos( get_class( $wpdb ), 'sqlite' );
+}
+
 function cmb_status_label( $status ) {
 	$all = cmb_statuses();
 

@@ -30,6 +30,13 @@ class CMB_Bookings {
 		$date      = isset( $data['date'] ) ? sanitize_text_field( $data['date'] ) : '';
 		$block_key = isset( $data['block'] ) ? sanitize_key( $data['block'] ) : '';
 
+		/* نمایندگیِ غیرفعال یا بی‌موجودی: حتی اگر فرم دور زده شود (US-2.2).
+		   دلیل مالی هرگز به مشتری گفته نمی‌شود. بررسی قطعی دوباره داخل قفل
+		   کیف پول انجام می‌شود. */
+		if ( CMB_Branches::ready() && ! CMB_Branches::bookable( $branch_id ) ) {
+			return self::branch_unavailable( $branch_id );
+		}
+
 		$user_id = get_current_user_id();
 
 		if ( ! $user_id ) {
@@ -225,7 +232,59 @@ class CMB_Bookings {
 			}
 		}
 
-		$inserted = $wpdb->insert( $table, $row );
+		/* نوبت نمایندگی: ثبت نوبت و بلوکه‌ی هزینه‌اش با هم (US-4.3).
+		   قفل کیف پول همان شعبه همه‌ی رزروهای هم‌زمانش را پشت سر هم
+		   می‌کند — حتی روی شیفت‌های مختلف — و موجودی آزاد داخل همان قفل
+		   خوانده می‌شود؛ پس دو رزرو روی آخرین ۲۰۰ هزار فقط یکی موفق است. */
+		$fee   = ( CMB_Branches::ready() && CMB_Branches::is_agency( $branch_id ) ) ? CMB_Branches::fee() : 0;
+		$wlock = null;
+
+		if ( $fee > 0 ) {
+			$wlock = CMB_Branch_Wallet::lock( $branch_id );
+
+			if ( 'busy' === $wlock ) {
+				cmb_unlock( $lock_name, $locked );
+
+				return new WP_Error( 'cmb_busy', 'سرور همین حالا مشغول ثبت نوبت دیگری برای همین مرکز است. چند ثانیه‌ی دیگر دوباره «ثبت» را بزنید.', array( 'status' => 503 ) );
+			}
+
+			cmb_tx( 'START TRANSACTION' );
+
+			if ( CMB_Branch_Wallet::free( $branch_id ) < $fee ) {
+				cmb_tx( 'ROLLBACK' );
+				CMB_Branch_Wallet::unlock( $branch_id, $wlock );
+				cmb_unlock( $lock_name, $locked );
+
+				return self::branch_unavailable( $branch_id );
+			}
+
+			$row['branch_fee'] = $fee;
+			$row['fee_status'] = 'held';
+		}
+
+		$inserted   = $wpdb->insert( $table, $row );
+		$booking_id = $inserted ? (int) $wpdb->insert_id : 0;
+
+		if ( $fee > 0 ) {
+			$held = $booking_id
+				? CMB_Branch_Wallet::hold_fee( $booking_id, $branch_id, $fee )
+				: new WP_Error( 'cmb_db_error', 'ثبت نوبت ناموفق بود.', array( 'status' => 500 ) );
+
+			if ( is_wp_error( $held ) ) {
+				cmb_tx( 'ROLLBACK' );
+
+				// بدون تراکنش (یا جدول غیر InnoDB) ردیف نیمه‌کاره دستی پاک می‌شود
+				if ( $booking_id ) {
+					$wpdb->delete( $table, array( 'id' => $booking_id ) );
+				}
+
+				$inserted = false;
+			} else {
+				cmb_tx( 'COMMIT' );
+			}
+
+			CMB_Branch_Wallet::unlock( $branch_id, $wlock );
+		}
 
 		cmb_unlock( $lock_name, $locked );
 
@@ -236,7 +295,9 @@ class CMB_Bookings {
 			return new WP_Error( 'cmb_db_error', 'ثبت نوبت ناموفق بود. لطفاً دوباره تلاش کنید.', array( 'status' => 500 ) );
 		}
 
-		$booking_id = (int) $wpdb->insert_id;
+		if ( $fee > 0 ) {
+			CMB_Branch_Wallet::check_notice( $branch_id );
+		}
 
 		/* نام نمایشی فقط وقتی پر می‌شود که حساب هنوز نام واقعی ندارد.
 		   قبلاً هر رزرو آن را بازنویسی می‌کرد: اگر کسی در فیلد نام
@@ -334,6 +395,20 @@ class CMB_Bookings {
 		);
 
 		return self::to_array( $booking );
+	}
+
+	/** خطای «این مرکز فعلاً نوبت نمی‌گیرد»، بی‌آنکه دلیل مالی گفته شود. */
+	protected static function branch_unavailable( $branch_id ) {
+		$b     = CMB_Branches::get( $branch_id );
+		$phone = $b ? trim( (string) $b->phone ) : '';
+
+		return new WP_Error(
+			'cmb_branch_unavailable',
+			'' !== $phone
+				? sprintf( 'این مرکز فعلاً نوبت آنلاین نمی‌گیرد. برای هماهنگی با شماره‌ی %s تماس بگیرید یا مرکز دیگری را انتخاب کنید.', cmb_fa_num( $phone ) )
+				: 'این مرکز فعلاً نوبت آنلاین نمی‌گیرد. مرکز دیگری را انتخاب کنید.',
+			array( 'status' => 409 )
+		);
 	}
 
 	/**
@@ -874,6 +949,11 @@ class CMB_Bookings {
 
 		$booking = self::get( $booking->id );
 
+		// نمایندگی: لغو به‌موقع مشتری مبلغ بلوکه را آزاد می‌کند (D12)
+		CMB_Branch_Wallet::sync_fee( $booking );
+
+		$booking = self::get( $booking->id );
+
 		cmb_log( 'Booking cancelled by customer', array( 'booking' => (int) $booking->id, 'user' => (int) $user_id ) );
 
 		do_action( 'cmb_booking_status_changed', (int) $booking->id, 'cancelled', 'confirmed' );
@@ -1017,6 +1097,17 @@ class CMB_Bookings {
 			return $allowed;
 		}
 
+		/* نوبت نمایندگی که هزینه‌اش آزاد شده بود و حالا بازگردانده
+		   می‌شود: هزینه دوباره بلوکه می‌شود، پس موجودی آزاد باید باشد —
+		   پیش از هر تغییری بررسی می‌شود تا وضعیت نیمه‌کاره نماند. */
+		if ( ! empty( $booking->branch_fee ) && in_array( $status, array( 'confirmed' ), true ) ) {
+			$fee_row = CMB_Branch_Wallet::fee_row( $booking->id );
+
+			if ( $fee_row && 'void' === $fee_row->status && CMB_Branch_Wallet::free( (int) $booking->branch_id ) < abs( (int) $fee_row->amount ) ) {
+				return new WP_Error( 'cmb_branch_low', 'موجودی آزاد کیف پول نمایندگی برای بازگرداندن این نوبت کافی نیست.', array( 'status' => 409 ) );
+			}
+		}
+
 		$now = current_time( 'mysql' );
 
 		// لغو نوبتِ پرداخت‌نشده = پایان مهلت پرداخت؛ جا همین حالا آزاد می‌شود
@@ -1110,7 +1201,10 @@ class CMB_Bookings {
 		}
 
 		if ( 'cancelled' === $status && self::has_cancel_columns() ) {
-			$fields['cancelled_by'] = 'branch';
+			/* لغو نوبت نمایندگی توسط مدیر سایت با لغو خود نمایندگی فرق دارد:
+			   اولی هزینه را به انتخاب مدیر آزاد یا کسر می‌کند، دومی همیشه
+			   کسر (D13). نوبت‌های مرکز مثل قبل «توسط شعبه» می‌مانند. */
+			$fields['cancelled_by'] = ( ! empty( $booking->branch_fee ) && current_user_can( 'manage_options' ) ) ? 'admin' : 'branch';
 			$fields['cancelled_at'] = $now;
 		}
 
@@ -1125,6 +1219,15 @@ class CMB_Bookings {
 
 		if ( null !== $refund ) {
 			CMB_Payments::refund_booking( $booking, $refund, 'shop', get_current_user_id() );
+		}
+
+		/* هزینه‌ی نمایندگی با وضعیت تازه هم‌خوان می‌شود: انجام‌شده و عدم
+		   مراجعه کسر قطعی، لغو نمایندگی کسر، لغو مدیر به انتخاب خودش
+		   (پیش‌فرض آزادسازی)، بازگرداندن دوباره بلوکه. */
+		if ( ! empty( $booking->branch_fee ) ) {
+			$choice = isset( $args['fee'] ) && in_array( $args['fee'], array( 'release', 'capture' ), true ) ? $args['fee'] : 'release';
+
+			CMB_Branch_Wallet::sync_fee( self::get( $booking_id ), $choice );
 		}
 
 		// ظرفیت شیفت با لغو آزاد می‌شود؛ شمارشِ کش‌شده باید کهنه نماند.
@@ -1162,6 +1265,16 @@ class CMB_Bookings {
 			}
 		}
 
+		/* نوبت نمایندگی که هزینه‌اش قطعی کسر شده، سابقه‌ی مالی کیف پول
+		   نمایندگی است؛ حذفش فقط برای مدیر سایت (ردیف دفتر می‌ماند). */
+		if ( ! empty( $booking->branch_fee ) && ! current_user_can( 'manage_options' ) ) {
+			$fee_row = CMB_Branch_Wallet::fee_row( $booking->id );
+
+			if ( $fee_row && 'done' === $fee_row->status ) {
+				return new WP_Error( 'cmb_fee_captured', 'هزینه‌ی این نوبت از کیف پول نمایندگی قطعی کسر شده و حذفش فقط برای مدیر سایت ممکن است. به‌جای حذف، وضعیتش را تعیین کنید.', array( 'status' => 409 ) );
+			}
+		}
+
 		// بیعانه‌ای که با کیف پول پرداخت شده هم ردیف پرداخت ندارد ولی سابقه دارد
 		if ( CMB_Wallet::schema_ready() ) {
 			global $wpdb;
@@ -1191,7 +1304,15 @@ class CMB_Bookings {
 			return $allowed;
 		}
 
+		// هزینه‌ی بلوکه‌ی نمایندگی آزاد می‌شود؛ کسر قطعی (فقط مدیر سایت) می‌ماند
+		$fee_row = ! empty( $booking->branch_fee ) ? CMB_Branch_Wallet::fee_row( $booking->id ) : null;
+
 		$wpdb->delete( cmb_table( 'bookings' ), array( 'id' => (int) $booking_id ) );
+
+		if ( $fee_row && 'held' === $fee_row->status ) {
+			$wpdb->update( cmb_table( 'branch_ledger' ), array( 'status' => 'void', 'updated_at' => current_time( 'mysql' ) ), array( 'id' => (int) $fee_row->id, 'status' => 'held' ) );
+			CMB_Branch_Wallet::check_notice( (int) $fee_row->branch_id );
+		}
 
 		if ( CMB_Payments::schema_ready() ) {
 			$wpdb->delete( cmb_table( 'payments' ), array( 'booking_id' => (int) $booking_id ) );
@@ -1270,6 +1391,11 @@ class CMB_Bookings {
 			return;
 		}
 
+		if ( CMB_Branches::is_agency( $booking->branch_id ) ) {
+			self::notify_branch_customer( $booking, 'booking' );
+			return;
+		}
+
 		$args = array(
 			$booking->customer_name,
 			self::service_title( $booking ),
@@ -1302,6 +1428,12 @@ class CMB_Bookings {
 	 */
 	public static function notify_admin( $booking ) {
 		if ( ! $booking || ! CMB_Settings::get( 'admin_sms_enabled', 1 ) ) {
+			return;
+		}
+
+		// نوبت نمایندگی به خود نمایندگی خبر داده می‌شود، نه به admin_phones مرکز
+		if ( CMB_Branches::is_agency( $booking->branch_id ) ) {
+			CMB_Branch_Notify::new_booking( $booking );
 			return;
 		}
 
@@ -1351,6 +1483,10 @@ class CMB_Bookings {
 			return false;
 		}
 
+		if ( CMB_Branches::is_agency( $booking->branch_id ) ) {
+			return self::notify_branch_customer( $booking, 'reminder' );
+		}
+
 		$args = array(
 			$booking->customer_name,
 			self::service_title( $booking ),
@@ -1382,6 +1518,11 @@ class CMB_Bookings {
 	 */
 	public static function notify_cancel( $booking, $by = 'branch' ) {
 		if ( ! $booking ) {
+			return;
+		}
+
+		if ( CMB_Branches::is_agency( $booking->branch_id ) ) {
+			self::notify_branch_customer( $booking, 'cancel', $by );
 			return;
 		}
 
@@ -1424,6 +1565,11 @@ class CMB_Bookings {
 			return;
 		}
 
+		if ( CMB_Branches::is_agency( $booking->branch_id ) ) {
+			CMB_Branch_Notify::cancelled( $booking );
+			return;
+		}
+
 		$phones = CMB_Settings::admin_phones();
 
 		if ( empty( $phones ) ) {
@@ -1455,6 +1601,58 @@ class CMB_Bookings {
 				cmb_log( 'Admin cancel SMS failed: ' . $result->get_error_message(), array( 'phone' => $phone ) );
 			}
 		}
+	}
+
+	/**
+	 * پیامک مشتریِ نوبت نمایندگی: با نام، آدرس و تلفن همان مرکز.
+	 *
+	 * اول پترن تازه‌ی _branch؛ تا آن تأیید نشده همان پترن فعلی (بدون نام
+	 * مرکز) می‌رود تا پیامک قطع نشود؛ در حالت ساده متن کامل.
+	 *
+	 * @param string $event booking | reminder | cancel
+	 *
+	 * @return bool
+	 */
+	protected static function notify_branch_customer( $booking, $event, $by = 'branch' ) {
+		$b       = CMB_Branches::get( $booking->branch_id );
+		$title   = $b ? (string) $b->title : '';
+		$address = $b ? (string) $b->address : '';
+		$phone   = $b ? (string) $b->phone : '';
+		$svc     = self::service_title( $booking );
+		$date    = cmb_jalali_date( $booking->booking_date, 'numeric' );
+		$block   = cmb_block_label( $booking->block_key );
+		$start   = cmb_block_start( $booking->block_key, (int) $booking->branch_id );
+
+		if ( 'booking' === $event ) {
+			$attempts = array(
+				array( 'pattern_booking_branch', array( $booking->customer_name, $svc, $date, $block, $booking->tracking_code, $title, $address, $phone ) ),
+				array( 'pattern_booking', array( $booking->customer_name, $svc, $date, $block, $start, $booking->tracking_code ) ),
+			);
+			$text     = sprintf( "چک موتور — %s\nنوبت شما ثبت شد.\nخدمت: %s\nتاریخ: %s\n%s (ساعت %s)\nکد پیگیری: %s\nنشانی: %s\nتلفن: %s", $title, $svc, $date, $block, $start, $booking->tracking_code, $address, $phone );
+		} elseif ( 'reminder' === $event ) {
+			$attempts = array(
+				array( 'pattern_reminder_branch', array( $svc, $date, $block, $title, $address ) ),
+				array( 'pattern_reminder', array( $booking->customer_name, $svc, $date, $block, $start ) ),
+			);
+			$text     = sprintf( "یادآوری نوبت چک موتور — %s\n%s عزیز، نوبت شما فردا %s، %s ساعت %s است.\nنشانی: %s", $title, $booking->customer_name, $date, $block, $start, $address );
+		} else {
+			$attempts = array(
+				array( 'pattern_cancel_branch', array( $svc, $date, $title, $phone ) ),
+				array( 'pattern_cancel', array( $booking->customer_name, $svc, $date, $block ) ),
+			);
+			$text     = 'customer' === $by
+				? sprintf( "چک موتور — %s\n%s عزیز، نوبت شما در تاریخ %s (%s) به درخواست خودتان لغو شد.\nکد پیگیری: %s", $title, $booking->customer_name, $date, $block, $booking->tracking_code )
+				: sprintf( "چک موتور — %s\n%s عزیز، نوبت شما در تاریخ %s (%s) لغو شد. لطفاً با %s تماس بگیرید.", $title, $booking->customer_name, $date, $block, $phone );
+		}
+
+		$result = CMB_SMS::send_first( $booking->phone, $attempts, $text );
+
+		if ( is_wp_error( $result ) ) {
+			cmb_log( 'Agency customer SMS failed: ' . $result->get_error_message(), array( 'booking' => (int) $booking->id, 'event' => $event ) );
+			return false;
+		}
+
+		return true;
 	}
 
 	protected static function service_title( $booking ) {

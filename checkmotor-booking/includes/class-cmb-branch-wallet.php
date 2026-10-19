@@ -559,6 +559,300 @@ class CMB_Branch_Wallet {
 	}
 
 	/* ------------------------------------------------------------------
+	 * شارژ با درگاه (US-4.3)
+	 * --------------------------------------------------------------- */
+
+	/** سقف شارژهای نیمه‌کاره در یک ساعت، برای هر شعبه. */
+	const TOPUP_RATE = 6;
+
+	/** حداقل شارژ، تومان. */
+	public static function topup_min() {
+		return max( 10000, (int) CMB_Settings::get( 'agency_topup_min', 1000000 ) );
+	}
+
+	/** سقف یک تراکنش درگاه، تومان. */
+	public static function topup_max() {
+		return max( self::topup_min(), (int) apply_filters( 'cmb_branch_topup_max', 50000000 ) );
+	}
+
+	/** مبلغ‌های پیشنهادی (۱، ۲ و ۵ میلیون، هیچ‌کدام کمتر از حداقل). */
+	public static function topup_presets() {
+		$min = self::topup_min();
+		$out = array();
+
+		foreach ( array( 1000000, 2000000, 5000000 ) as $p ) {
+			$out[] = max( $min, $p );
+		}
+
+		return array_values( array_unique( $out ) );
+	}
+
+	/** آیا درگاه برای شارژ نمایندگی آماده است؟ (بیعانه‌ی مشتری لازم نیست روشن باشد.) */
+	public static function topup_ready() {
+		return CMB_Payments::schema_ready() && '' !== CMB_Payments::merchant();
+	}
+
+	/**
+	 * شروع شارژ کیف پول نمایندگی.
+	 *
+	 * @return array|WP_Error { url, id }
+	 */
+	public static function topup_start( $branch_id, $amount, $user_id ) {
+		global $wpdb;
+
+		$b = CMB_Branches::get( $branch_id );
+
+		if ( ! $b || ! CMB_Branches::is_agency( $b ) ) {
+			return new WP_Error( 'cmb_bw_topup', 'شارژ فقط برای کیف پول نمایندگی است.', array( 'status' => 400 ) );
+		}
+
+		if ( ! self::topup_ready() ) {
+			return new WP_Error( 'cmb_bw_pay_off', 'درگاه پرداخت هنوز تنظیم نشده است. با مدیریت مرکز تماس بگیرید.', array( 'status' => 503 ) );
+		}
+
+		$amount = (int) cmb_en_num( (string) $amount );
+		$min    = self::topup_min();
+		$max    = self::topup_max();
+
+		if ( $amount < $min ) {
+			return new WP_Error( 'cmb_bw_topup_min', sprintf( 'حداقل مبلغ شارژ %s است.', cmb_toman( $min ) ), array( 'status' => 400 ) );
+		}
+
+		if ( $amount > $max ) {
+			return new WP_Error( 'cmb_bw_topup_max', sprintf( 'هر بار حداکثر %s می‌شود شارژ کرد.', cmb_toman( $max ) ), array( 'status' => 400 ) );
+		}
+
+		$pt    = cmb_table( 'payments' );
+		$since = gmdate( 'Y-m-d H:i:s', cmb_now()->getTimestamp() - HOUR_IN_SECONDS );
+		$open  = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$pt} WHERE kind = 'btopup' AND branch_id = %d AND status <> 'paid' AND created_gmt >= %s", // phpcs:ignore
+				(int) $b->id,
+				$since
+			)
+		);
+
+		if ( $open >= self::TOPUP_RATE ) {
+			return new WP_Error( 'cmb_bw_topup_rate', 'در یک ساعت گذشته چند بار شارژ نیمه‌کاره ماند. کمی بعد دوباره تلاش کنید.', array( 'status' => 429 ) );
+		}
+
+		$token = wp_generate_password( 32, false, false );
+		$now   = CMB_Payments::now_local();
+		$phone = cmb_get_user_phone( $user_id );
+
+		$wpdb->insert(
+			$pt,
+			array(
+				'booking_id'  => 0,
+				'kind'        => 'btopup',
+				'branch_id'   => (int) $b->id,
+				'phone'       => (string) $phone,
+				'token'       => $token,
+				'user_id'     => (int) $user_id,
+				'sandbox'     => CMB_Payments::sandbox() ? 1 : 0,
+				'amount_rial' => $amount * 10,
+				'status'      => 'created',
+				'ip'          => cmb_get_ip(),
+				'created_at'  => $now,
+				'created_gmt' => cmb_now_gmt(),
+				'updated_at'  => $now,
+			)
+		);
+
+		$pid = (int) $wpdb->insert_id;
+
+		if ( ! $pid ) {
+			return new WP_Error( 'cmb_db_error', 'ثبت پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.', array( 'status' => 500 ) );
+		}
+
+		// بررسی دوره‌ای پرداخت‌ها از این به بعد بیدار می‌ماند
+		update_option( 'cmb_pay_used', 1, false );
+
+		$meta = $phone ? array( 'mobile' => $phone ) : array();
+		$res  = CMB_Payments::gateway_request(
+			$pid,
+			add_query_arg( array( 'cmb_p' => $pid, 'cmb_t' => $token ), cmb_app_url( 'pay/branch' ) ),
+			sprintf( 'شارژ کیف پول نمایندگی %s', $b->title ),
+			$meta
+		);
+
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+
+		cmb_log( 'Branch top-up started', array( 'branch' => (int) $b->id, 'payment' => $pid, 'amount' => $amount ) );
+
+		return array(
+			'url' => $res['url'],
+			'id'  => $pid,
+		);
+	}
+
+	/** پرداخت شارژی که شناسه و توکنش با هم می‌خوانند، وگرنه null. */
+	public static function topup_by_token( $pid, $tok ) {
+		$pid = (int) $pid;
+
+		if ( ! $pid || strlen( (string) $tok ) < 20 ) {
+			return null;
+		}
+
+		$p = CMB_Payments::get_payment( $pid );
+
+		if ( ! $p || 'btopup' !== (string) $p->kind || '' === (string) $p->token || ! hash_equals( (string) $p->token, (string) $tok ) ) {
+			return null;
+		}
+
+		return $p;
+	}
+
+	/**
+	 * بازگشت از درگاه: verify، بعد پنل با نتیجه.
+	 *
+	 * صفحه‌ی بازگشت ممکن است بی‌کوکی باز شود (سافاری جدا در آیفون)؛ verify
+	 * به ورود نیاز ندارد و پنل نتیجه را بعد از ورود با همان توکن نشان می‌دهد.
+	 */
+	public static function handle_return() {
+		nocache_headers();
+
+		// phpcs:disable WordPress.Security.NonceVerification -- توکن تصادفیِ همین پرداخت جای nonce است
+		$pid       = isset( $_GET['cmb_p'] ) ? absint( $_GET['cmb_p'] ) : 0;
+		$tok       = isset( $_GET['cmb_t'] ) ? preg_replace( '/[^A-Za-z0-9]/', '', (string) wp_unslash( $_GET['cmb_t'] ) ) : '';
+		$authority = isset( $_GET['Authority'] ) ? preg_replace( '/[^A-Za-z0-9]/', '', (string) wp_unslash( $_GET['Authority'] ) ) : '';
+		// phpcs:enable
+
+		$payment = self::topup_by_token( $pid, $tok );
+
+		if ( ! $payment ) {
+			wp_safe_redirect( add_query_arg( 'cmb_bt', 'link', cmb_app_url( 'panel' ) ) . '#bwallet' );
+			exit;
+		}
+
+		/* authority باید مال همین پرداخت باشد؛ مبلغ از دیتابیس می‌آید، نه
+		   از نشانی. */
+		if ( '' !== $authority && $authority === (string) $payment->authority ) {
+			CMB_Payments::verify_payment( $payment, 'return' );
+		}
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'cmb_bt' => (int) $payment->id,
+					'cmb_t'  => (string) $payment->token,
+				),
+				cmb_app_url( 'panel' )
+			) . '#bwallet'
+		);
+		exit;
+	}
+
+	/**
+	 * نتیجه‌ی یک شارژ برای پنل.
+	 *
+	 * @return array { state: paid|checking|failed|invalid, message, … }
+	 */
+	public static function topup_state( $pid, $tok, $branch_id ) {
+		$p = self::topup_by_token( $pid, $tok );
+
+		if ( ! $p || (int) $p->branch_id !== (int) $branch_id ) {
+			return array(
+				'state'   => 'invalid',
+				'message' => 'نشانی بازگشت از درگاه معتبر نبود. اگر مبلغی از حسابتان کم شده، چند دقیقه‌ی دیگر خودکار بررسی و به کیف پول نمایندگی اضافه می‌شود.',
+			);
+		}
+
+		// جوابی که هنوز نیامده، همین حالا یک بار دیگر
+		if ( 'requested' === $p->status ) {
+			CMB_Payments::verify_payment( $p, 'result' );
+			$p = CMB_Payments::get_payment( $p->id );
+		}
+
+		$amount = (int) ( $p->amount_rial / 10 );
+		$base   = array(
+			'id'       => (int) $p->id,
+			'amount'   => $amount,
+			'amountFa' => cmb_toman( $amount ),
+		);
+
+		if ( 'paid' === $p->status ) {
+			$free = self::free( (int) $p->branch_id );
+
+			return $base + array(
+				'state'   => 'paid',
+				'message' => sprintf( '%s به کیف پول نمایندگی اضافه شد. موجودی آزاد: %s', cmb_toman( $amount ), cmb_toman( $free ) ),
+				'refId'   => (string) $p->ref_id,
+			);
+		}
+
+		if ( 'requested' === $p->status ) {
+			return $base + array(
+				'state'   => 'checking',
+				'message' => 'نتیجه‌ی پرداخت هنوز از درگاه نرسیده. اگر مبلغ از حسابتان کم شده، چند دقیقه‌ی دیگر خودکار بررسی و به کیف پول اضافه می‌شود.',
+			);
+		}
+
+		return $base + array(
+			'state'   => 'failed',
+			'message' => ( $p->gw_message ? rtrim( (string) $p->gw_message, '.' ) . '. ' : '' ) . 'شارژ انجام نشد و چیزی به کیف پول اضافه نشد. اگر مبلغی از حسابتان کم شده، بانک معمولاً تا ۷۲ ساعت خودش برمی‌گرداند.',
+		);
+	}
+
+	/**
+	 * رسید یک شارژ موفق (US-4.3): مبلغ، تاریخ، شماره‌ی پیگیری درگاه.
+	 *
+	 * @return array|WP_Error
+	 */
+	public static function receipt( $payment_id, $branch_id ) {
+		$p = CMB_Payments::get_payment( (int) $payment_id );
+
+		if ( ! $p || 'btopup' !== (string) $p->kind || (int) $p->branch_id !== (int) $branch_id || 'paid' !== $p->status ) {
+			return new WP_Error( 'cmb_not_found', 'رسید پیدا نشد.', array( 'status' => 404 ) );
+		}
+
+		$b      = CMB_Branches::get( $branch_id );
+		$amount = (int) ( $p->amount_rial / 10 );
+		$at     = $p->paid_at ? (string) $p->paid_at : (string) $p->created_at;
+		$user   = $p->user_id ? get_userdata( (int) $p->user_id ) : null;
+
+		return array(
+			'id'        => (int) $p->id,
+			'branch'    => $b ? (string) $b->title : '',
+			'amount'    => $amount,
+			'amountFa'  => cmb_toman( $amount ),
+			'date'      => cmb_jalali_date( substr( $at, 0, 10 ), 'full' ) . ' — ' . cmb_fa_num( substr( $at, 11, 5 ) ),
+			'refId'     => (string) $p->ref_id,
+			'refIdFa'   => cmb_fa_num( (string) $p->ref_id ),
+			'card'      => (string) $p->card_pan,
+			'by'        => $user ? (string) $user->display_name : '',
+			'sandbox'   => (bool) $p->sandbox,
+		);
+	}
+
+	/** شارژهای موفق یک شعبه (برای فهرست رسیدها). */
+	public static function topups( $branch_id, $limit = 50 ) {
+		global $wpdb;
+
+		$pt   = cmb_table( 'payments' );
+		$rows = (array) $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id FROM {$pt} WHERE kind = 'btopup' AND branch_id = %d AND status = 'paid' ORDER BY id DESC LIMIT %d", // phpcs:ignore
+				(int) $branch_id,
+				(int) $limit
+			)
+		);
+		$out  = array();
+
+		foreach ( $rows as $r ) {
+			$rc = self::receipt( (int) $r->id, $branch_id );
+
+			if ( ! is_wp_error( $rc ) ) {
+				$out[] = $rc;
+			}
+		}
+
+		return $out;
+	}
+
+	/* ------------------------------------------------------------------
 	 * هشدار موجودی
 	 * --------------------------------------------------------------- */
 
@@ -707,17 +1001,26 @@ class CMB_Branch_Wallet {
 	public static function sums( $branch_id, $from, $to ) {
 		global $wpdb;
 
-		$t   = cmb_table( 'branch_ledger' );
+		$t     = cmb_table( 'branch_ledger' );
+		$start = $from . ' 00:00:00';
+		$end   = gmdate( 'Y-m-d', strtotime( $to ) + DAY_IN_SECONDS ) . ' 00:00:00';
+
+		/* کسر قطعی با لحظه‌ی قطعی شدنش (updated_at) در بازه می‌افتد، نه با
+		   لحظه‌ی ثبت نوبت؛ برگشت و شارژ با لحظه‌ی ثبت خودشان. */
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT
-					COALESCE(SUM(CASE WHEN type = 'fee' AND status = 'done' THEN -amount ELSE 0 END),0)
-					 - COALESCE(SUM(CASE WHEN type = 'refund' THEN amount ELSE 0 END),0) AS captured,
-					COALESCE(SUM(CASE WHEN type = 'topup' THEN amount ELSE 0 END),0) AS topup
-				 FROM {$t} WHERE branch_id = %d AND created_at >= %s AND created_at < %s", // phpcs:ignore
-				(int) $branch_id,
-				$from . ' 00:00:00',
-				gmdate( 'Y-m-d', strtotime( $to ) + DAY_IN_SECONDS ) . ' 00:00:00'
+					COALESCE(SUM(CASE WHEN type = 'fee' AND status = 'done' AND updated_at >= %s AND updated_at < %s THEN -amount ELSE 0 END),0)
+					 - COALESCE(SUM(CASE WHEN type = 'refund' AND created_at >= %s AND created_at < %s THEN amount ELSE 0 END),0) AS captured,
+					COALESCE(SUM(CASE WHEN type = 'topup' AND created_at >= %s AND created_at < %s THEN amount ELSE 0 END),0) AS topup
+				 FROM {$t} WHERE branch_id = %d", // phpcs:ignore
+				$start,
+				$end,
+				$start,
+				$end,
+				$start,
+				$end,
+				(int) $branch_id
 			)
 		);
 

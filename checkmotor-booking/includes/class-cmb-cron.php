@@ -164,6 +164,13 @@ class CMB_Cron {
 			cmb_log( sprintf( '%d نوبت گذشته خودکار «انجام شده» شد.', $done ) );
 		}
 
+		/* «انجام‌شده» یعنی «لغو نشده»: هزینه‌ی بلوکه‌ی نوبت‌های نمایندگی
+		   همین‌جا قطعی کسر می‌شود (US-4.4). شرطی است، پس اجرای دوباره
+		   کسر دوم نمی‌زند. */
+		if ( class_exists( 'CMB_Branch_Wallet' ) ) {
+			CMB_Branch_Wallet::reconcile();
+		}
+
 		return $done;
 	}
 
@@ -171,6 +178,11 @@ class CMB_Cron {
 		CMB_OTP::cleanup();
 		self::auto_complete_past();
 		self::send_reminders();
+
+		// جبران هر مرحله‌ی جاافتاده‌ی کیف پول نمایندگی‌ها
+		if ( class_exists( 'CMB_Branch_Wallet' ) ) {
+			CMB_Branch_Wallet::reconcile();
+		}
 
 		// پرداخت‌های بی‌جواب و نوبت‌های پرداخت‌نشده‌ی مانده
 		if ( class_exists( 'CMB_Payments' ) ) {

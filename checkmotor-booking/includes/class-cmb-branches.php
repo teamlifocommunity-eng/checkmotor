@@ -34,6 +34,9 @@ class CMB_Branches {
 	/** شعبه‌ای که مدیر سایت در پنل انتخاب کرده (برای همان درخواست). */
 	protected static $panel_branch = null;
 
+	/** @var int[]|null */
+	protected static $agency_ids = null;
+
 	/* ------------------------------------------------------------------
 	 * پایه
 	 * --------------------------------------------------------------- */
@@ -798,6 +801,7 @@ class CMB_Branches {
 	/** کش درون‌درخواستی برنامه‌ی کاری (از CMB_Services::flush_cache). */
 	public static function forget() {
 		self::$schedule_cache = array();
+		self::$agency_ids     = null;
 	}
 
 	/* ------------------------------------------------------------------
@@ -1100,13 +1104,61 @@ class CMB_Branches {
 		self::$panel_branch = null === $branch_id ? null : (int) $branch_id;
 	}
 
+	/** شناسه‌ی نمایندگی‌ها (کش درون‌درخواستی). */
+	public static function agency_ids() {
+		if ( null === self::$agency_ids ) {
+			self::$agency_ids = array();
+
+			foreach ( self::ready() ? self::all() : array() as $b ) {
+				if ( self::is_agency( $b ) ) {
+					self::$agency_ids[] = (int) $b->id;
+				}
+			}
+		}
+
+		return self::$agency_ids;
+	}
+
+	/**
+	 * آیا ردیفی با این شعبه در دامنه‌ی یک نمای پنل است؟
+	 *
+	 * پنل مرکز پیش از نمایندگی‌ها همه‌ی ردیف‌ها را نشان می‌داد؛ برای اینکه
+	 * چیزی از دیدش پنهان نشود، «هرچه مال نمایندگی نیست» را می‌بیند.
+	 * نمایندگی (و هر شعبه‌ی دیگر) فقط ردیف‌های خودش را.
+	 */
+	public static function in_scope( $row_branch, $view_branch ) {
+		$row_branch  = (int) $row_branch;
+		$view_branch = (int) $view_branch;
+
+		if ( $view_branch === self::center_id() ) {
+			return ! in_array( $row_branch, self::agency_ids(), true );
+		}
+
+		return $row_branch === $view_branch;
+	}
+
+	/**
+	 * همان in_scope به شکل شرط SQL (بدون پارامتر؛ اعداد صحیح‌اند).
+	 */
+	public static function scope_sql( $view_branch, $col = 'branch_id' ) {
+		$view_branch = (int) $view_branch;
+
+		if ( $view_branch === self::center_id() ) {
+			$ids = self::agency_ids();
+
+			return $ids ? "{$col} NOT IN (" . implode( ',', array_map( 'intval', $ids ) ) . ')' : '1=1';
+		}
+
+		return $col . ' = ' . $view_branch;
+	}
+
 	/**
 	 * ردیفی که مال شعبه‌ی جاری پنل نیست، دیده یا تغییر داده نمی‌شود.
 	 *
 	 * @return true|WP_Error
 	 */
 	public static function assert_branch( $branch_id ) {
-		if ( (int) $branch_id === self::panel_branch_id() ) {
+		if ( self::in_scope( $branch_id, self::panel_branch_id() ) ) {
 			return true;
 		}
 

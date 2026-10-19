@@ -109,7 +109,47 @@ class CMB_Panel_Api {
 			return new WP_Error( 'cmb_panel_forbidden', 'شما به پنل مدیریت دسترسی ندارید.', array( 'status' => 403 ) );
 		}
 
+		// کاربری که شعبه‌اش دیگر وجود ندارد، به هیچ داده‌ای دسترسی ندارد
+		if ( ! CMB_Branches::panel_branch_id() ) {
+			return new WP_Error( 'cmb_panel_forbidden', 'حساب شما به هیچ شعبه‌ای وصل نیست. با مدیر سایت تماس بگیرید.', array( 'status' => 403 ) );
+		}
+
 		return true;
+	}
+
+	/**
+	 * گاردِ مسیرهای مخصوص مرکز: کیف پول مشتری‌ها، برگشت‌ها، سلامت سیستم و
+	 * بررسی بیعانه (بخش ۶.۳). کاربران مرکز همان دسترسی قبلی را دارند؛
+	 * نمایندگی‌ها نه.
+	 */
+	public function guard_center() {
+		$base = $this->guard();
+
+		if ( true !== $base ) {
+			return $base;
+		}
+
+		return CMB_Branches::can( 'center' )
+			? true
+			: new WP_Error( 'cmb_panel_forbidden', 'این بخش مخصوص مرکز است.', array( 'status' => 403 ) );
+	}
+
+	/** گاردِ مسیرهای فقط مدیر سایت (مدیریت نمایندگی‌ها، گزارش، برگشت کسر). */
+	public function guard_admin() {
+		$base = $this->guard();
+
+		if ( true !== $base ) {
+			return $base;
+		}
+
+		return current_user_can( 'manage_options' )
+			? true
+			: new WP_Error( 'cmb_panel_forbidden', 'این بخش فقط برای مدیر سایت است.', array( 'status' => 403 ) );
+	}
+
+	/** خطای ۴۰۳ برای کاری که نقش کاربر اجازه نمی‌دهد. */
+	protected static function role_denied( $what = '' ) {
+		return new WP_Error( 'cmb_role_forbidden', '' !== $what ? $what : 'این کار با نقش شما مجاز نیست.', array( 'status' => 403 ) );
 	}
 
 	/* ------------------------------------------------------------------
@@ -141,28 +181,48 @@ class CMB_Panel_Api {
 			)
 		);
 
+		$center = array( $this, 'guard_center' );
+		$admin  = array( $this, 'guard_admin' );
+
 		$routes = array(
-			'panel/summary'   => array( 'GET', 'summary' ),
-			'panel/board'     => array( 'GET', 'board' ),
-			'panel/bookings'  => array( 'GET', 'bookings' ),
-			'panel/booking'   => array( 'POST', 'update_booking' ),
-			'panel/services'  => array( 'GET', 'services' ),
-			'panel/service'   => array( 'POST', 'save_service' ),
-			'panel/service/delete' => array( 'POST', 'delete_service' ),
-			'panel/customers' => array( 'GET', 'customers' ),
-			'panel/settings'  => array( 'GET', 'get_schedule' ),
-			'panel/settings/save' => array( 'POST', 'save_schedule' ),
-			'panel/health'    => array( 'GET', 'health' ),
-			'panel/health/sweep' => array( 'POST', 'health_sweep' ),
-			'panel/closures'  => array( 'GET', 'closures' ),
-			'panel/closure'   => array( 'POST', 'save_closure' ),
-			'panel/refunds'   => array( 'GET', 'refunds' ),
-			'panel/refund'    => array( 'POST', 'update_refund' ),
-			'panel/pay-review' => array( 'GET', 'pay_review' ),
-			'panel/pay-report' => array( 'GET', 'pay_report' ),
-			'panel/wallets'   => array( 'GET', 'wallets' ),
-			'panel/wallet'    => array( 'GET', 'wallet' ),
-			'panel/wallet/adjust' => array( 'POST', 'wallet_adjust' ),
+			'panel/summary'   => array( 'GET', 'summary', $guard ),
+			'panel/board'     => array( 'GET', 'board', $guard ),
+			'panel/bookings'  => array( 'GET', 'bookings', $guard ),
+			'panel/booking'   => array( 'POST', 'update_booking', $guard ),
+			'panel/services'  => array( 'GET', 'services', $guard ),
+			'panel/service'   => array( 'POST', 'save_service', $guard ),
+			'panel/service/delete' => array( 'POST', 'delete_service', $guard ),
+			'panel/customers' => array( 'GET', 'customers', $guard ),
+			'panel/settings'  => array( 'GET', 'get_schedule', $guard ),
+			'panel/settings/save' => array( 'POST', 'save_schedule', $guard ),
+			'panel/health'    => array( 'GET', 'health', $center ),
+			'panel/health/sweep' => array( 'POST', 'health_sweep', $center ),
+			'panel/closures'  => array( 'GET', 'closures', $guard ),
+			'panel/closure'   => array( 'POST', 'save_closure', $guard ),
+			'panel/refunds'   => array( 'GET', 'refunds', $center ),
+			'panel/refund'    => array( 'POST', 'update_refund', $center ),
+			'panel/pay-review' => array( 'GET', 'pay_review', $center ),
+			'panel/pay-report' => array( 'GET', 'pay_report', $center ),
+			'panel/wallets'   => array( 'GET', 'wallets', $center ),
+			'panel/wallet'    => array( 'GET', 'wallet', $center ),
+			'panel/wallet/adjust' => array( 'POST', 'wallet_adjust', $center ),
+
+			/* نمایندگی‌ها (بخش ۶.۵ سند). مسیرها هم‌سبک بقیه‌ی پنل‌اند: شناسه
+			   در بدنه یا پارامتر، نه در خود نشانی. */
+			'panel/branch'            => array( 'GET', 'branch_get', $guard ),
+			'panel/branch/save'       => array( 'POST', 'branch_save', $guard ),
+			'panel/branch/switch'     => array( 'POST', 'branch_switch', $admin ),
+			'panel/branch-wallet'     => array( 'GET', 'branch_wallet', $guard ),
+			'panel/branch-wallet/topup' => array( 'POST', 'branch_topup', $guard ),
+			'panel/branch-wallet/receipt' => array( 'GET', 'branch_receipt', $guard ),
+			'panel/admin/branches'    => array( 'GET', 'admin_branches', $admin ),
+			'panel/admin/branch'      => array( 'POST', 'admin_branch_save', $admin ),
+			'panel/admin/branch/status' => array( 'POST', 'admin_branch_status', $admin ),
+			'panel/admin/branch/users' => array( 'POST', 'admin_branch_users', $admin ),
+			'panel/admin/branch/adjust' => array( 'POST', 'admin_branch_adjust', $admin ),
+			'panel/admin/fee-refund'  => array( 'POST', 'admin_fee_refund', $admin ),
+			'panel/admin/report'      => array( 'GET', 'admin_report', $admin ),
+			'panel/admin/fees'        => array( 'POST', 'admin_fee_settings', $admin ),
 		);
 
 		foreach ( $routes as $path => $conf ) {
@@ -172,7 +232,7 @@ class CMB_Panel_Api {
 				array(
 					'methods'             => 'GET' === $conf[0] ? WP_REST_Server::READABLE : WP_REST_Server::CREATABLE,
 					'callback'            => array( $this, $conf[1] ),
-					'permission_callback' => $guard,
+					'permission_callback' => $conf[2],
 				)
 			);
 		}
@@ -305,9 +365,11 @@ class CMB_Panel_Api {
 
 		$table  = cmb_table( 'bookings' );
 		$today  = cmb_today();
-		$branch = CMB_Services::default_branch_id();
+		$branch = CMB_Branches::panel_branch_id();
+		$scope  = CMB_Branches::scope_sql( $branch );
 
-		/* شش شمارش با یک کوئری، نه شش کوئری جدا. */
+		/* شش شمارش با یک کوئری، نه شش کوئری جدا. فقط نوبت‌های شعبه‌ی جاری
+		   پنل (D4). */
 		$tomorrow = self::day_after( $today );
 		$week_ago = gmdate( 'Y-m-d H:i:s', strtotime( current_time( 'mysql' ) ) - 7 * DAY_IN_SECONDS );
 		$month_ago = gmdate( 'Y-m-d', strtotime( $today ) - 30 * DAY_IN_SECONDS );
@@ -321,7 +383,7 @@ class CMB_Panel_Api {
 					SUM( created_at >= %s AND status NOT IN ('pending','expired') ) AS week_c,
 					SUM( status = 'no_show'   AND booking_date >= %s )          AS no_show_c,
 					SUM( status = 'cancelled' AND booking_date >= %s )          AS cancelled_c
-				 FROM {$table}", // phpcs:ignore
+				 FROM {$table} WHERE {$scope}", // phpcs:ignore
 				$today,
 				$tomorrow,
 				$today,
@@ -336,7 +398,7 @@ class CMB_Panel_Api {
 		}
 
 		$counts = array(
-			'refunds'   => CMB_Payments::count_open_refunds(),
+			'refunds'   => CMB_Branches::can( 'center' ) ? CMB_Payments::count_open_refunds() : 0,
 			'today'     => $row ? (int) $row->today_c : 0,
 			'tomorrow'  => $row ? (int) $row->tomorrow_c : 0,
 			'upcoming'  => $row ? (int) $row->upcoming_c : 0,
@@ -347,7 +409,7 @@ class CMB_Panel_Api {
 
 		// آمار خدمات در ۳۰ روز گذشته.
 		$since    = gmdate( 'Y-m-d', strtotime( $today ) - 30 * DAY_IN_SECONDS );
-		$rows     = $wpdb->get_results( $wpdb->prepare( "SELECT service_id, COUNT(*) AS total FROM {$table} WHERE booking_date >= %s AND status IN ('confirmed','done') GROUP BY service_id ORDER BY total DESC", $since ) ); // phpcs:ignore
+		$rows     = $wpdb->get_results( $wpdb->prepare( "SELECT service_id, COUNT(*) AS total FROM {$table} WHERE {$scope} AND booking_date >= %s AND status IN ('confirmed','done') GROUP BY service_id ORDER BY total DESC", $since ) ); // phpcs:ignore
 		$by_service = array();
 
 		foreach ( (array) $rows as $row ) {
@@ -369,13 +431,74 @@ class CMB_Panel_Api {
 				'id'    => (int) $branch_row->id,
 				'title' => $branch_row->title,
 				'phone' => $branch_row->phone,
+				'type'  => CMB_Branches::is_agency( $branch_row ) ? 'agency' : 'center',
+				'status' => CMB_Branches::status( $branch_row ),
 			) : null,
-			'setup'     => self::setup_state(),
+			'ctx'       => self::context(),
+			// هشدارهای پیکربندی پیامک و درگاه مال مرکز است
+			'setup'     => CMB_Branches::can( 'center' ) ? self::setup_state() : array( 'missing' => array(), 'ready' => true, 'slugClash' => '', 'slug' => '' ),
 			'today'     => array(
 				'date'   => $today,
 				'jalali' => cmb_jalali_date( $today, 'full' ),
 			),
 		);
+	}
+
+	/**
+	 * شعبه و نقش کاربر جاری: کدام بخش‌های پنل دیده شود و کدام دکمه فعال
+	 * باشد. سرور هر کار را دوباره خودش بررسی می‌کند؛ این فقط برای نمایش
+	 * است.
+	 */
+	public static function context() {
+		$branch = CMB_Branches::panel_branch_id();
+		$b      = CMB_Branches::get( $branch );
+		$admin  = current_user_can( 'manage_options' );
+		$agency = CMB_Branches::is_agency( $b );
+
+		$out = array(
+			'role'     => CMB_Branches::user_role( get_current_user_id() ),
+			'isAdmin'  => $admin,
+			'branchId' => (int) $branch,
+			'agency'   => $agency,
+			'branch'   => $b ? array(
+				'id'          => (int) $b->id,
+				'title'       => (string) $b->title,
+				'type'        => $agency ? 'agency' : 'center',
+				'status'      => CMB_Branches::status( $b ),
+				'statusLabel' => CMB_Branches::status_label( CMB_Branches::status( $b ) ),
+				'city'        => isset( $b->city ) ? (string) $b->city : '',
+			) : null,
+			'can'      => array(
+				'schedule'      => CMB_Branches::can( 'schedule' ),
+				'services'      => CMB_Branches::can( 'services' ),
+				'createService' => CMB_Branches::can( 'services' ) && ! $agency,
+				'profile'       => CMB_Branches::can( 'profile' ) && $agency,
+				'wallet'        => CMB_Branches::can( 'wallet' ) && $agency,
+				'topup'         => CMB_Branches::can( 'topup' ),
+				'center'        => CMB_Branches::can( 'center' ),
+			),
+			'fee'      => CMB_Branches::fee(),
+			'feeFa'    => cmb_toman( CMB_Branches::fee() ),
+			'multi'    => CMB_Branches::ready() && count( CMB_Branches::all() ) > 1,
+			'branches' => array(),
+		);
+
+		if ( $admin && CMB_Branches::ready() ) {
+			foreach ( CMB_Branches::all() as $row ) {
+				$out['branches'][] = array(
+					'id'     => (int) $row->id,
+					'title'  => (string) $row->title,
+					'type'   => CMB_Branches::is_agency( $row ) ? 'agency' : 'center',
+					'status' => CMB_Branches::status( $row ),
+				);
+			}
+		}
+
+		if ( $agency && $out['can']['wallet'] ) {
+			$out['wallet'] = CMB_Branch_Wallet::summary( (int) $branch );
+		}
+
+		return $out;
 	}
 
 	/**
@@ -432,7 +555,7 @@ class CMB_Panel_Api {
 	 * --------------------------------------------------------------- */
 
 	public function board( WP_REST_Request $request ) {
-		$branch = CMB_Services::default_branch_id();
+		$branch = CMB_Branches::panel_branch_id();
 		$days   = max( 1, min( 21, (int) $request->get_param( 'days' ) ?: 7 ) );
 		$from   = sanitize_text_field( (string) $request->get_param( 'from' ) );
 
@@ -440,7 +563,7 @@ class CMB_Panel_Api {
 			$from = cmb_today();
 		}
 
-		$blocks = cmb_blocks();
+		$blocks = cmb_blocks( $branch );
 		$out    = array();
 
 		// خدمت‌هایی که سهمیه‌ی جداگانه دارند، کنار ظرفیت اصلی نشان داده می‌شوند.
@@ -560,7 +683,8 @@ class CMB_Panel_Api {
 		$page   = max( 1, (int) $request->get_param( 'page' ) );
 		$per    = 25;
 
-		$where  = array( '1=1' );
+		// فقط نوبت‌های شعبه‌ی جاری پنل (D4)
+		$where  = array( CMB_Branches::scope_sql( CMB_Branches::panel_branch_id() ) );
 		$params = array();
 
 		$has_date = (bool) preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date );
@@ -691,7 +815,30 @@ class CMB_Panel_Api {
 			'createdAt'   => $row->created_at,
 			'createdAtFa' => cmb_jalali_date( substr( (string) $row->created_at, 0, 10 ), 'full' )
 				. ' — ' . cmb_fa_num( substr( (string) $row->created_at, 11, 5 ) ),
+			'branchId'    => (int) $row->branch_id,
+			// هزینه‌ی رزرو نمایندگی: held (بلوکه) | captured | released | refunded
+			'fee'         => isset( $row->branch_fee ) ? (int) $row->branch_fee : 0,
+			'feeStatus'   => isset( $row->fee_status ) ? (string) $row->fee_status : '',
+			'feeLabel'    => self::fee_label( $row ),
 		);
+	}
+
+	/** برچسب وضعیت هزینه‌ی رزرو نمایندگی، برای ردیف نوبت. */
+	protected static function fee_label( $row ) {
+		if ( empty( $row->branch_fee ) || empty( $row->fee_status ) ) {
+			return '';
+		}
+
+		$map = array(
+			'held'     => 'بلوکه',
+			'captured' => 'کسر شد',
+			'released' => 'آزاد شد',
+			'refunded' => 'برگشت داده شد',
+		);
+
+		$label = isset( $map[ $row->fee_status ] ) ? $map[ $row->fee_status ] : $row->fee_status;
+
+		return sprintf( 'هزینه‌ی رزرو %s — %s', cmb_toman( (int) $row->branch_fee ), $label );
 	}
 
 	/**
@@ -715,6 +862,10 @@ class CMB_Panel_Api {
 			return $label . ' (توسط شعبه)';
 		}
 
+		if ( 'admin' === $row->cancelled_by ) {
+			return $label . ' (توسط مدیریت مرکز)';
+		}
+
 		return $label;
 	}
 
@@ -727,6 +878,19 @@ class CMB_Panel_Api {
 
 		if ( ! $id ) {
 			return new WP_Error( 'cmb_bad_id', 'شناسه‌ی نوبت معتبر نیست.', array( 'status' => 400 ) );
+		}
+
+		$current = CMB_Bookings::get( $id );
+
+		if ( ! $current ) {
+			return new WP_Error( 'cmb_not_found', 'نوبت یافت نشد.', array( 'status' => 404 ) );
+		}
+
+		// نوبت شعبه‌ی دیگر دیده و تغییر داده نمی‌شود (D4)
+		$own = CMB_Branches::assert_branch( (int) $current->branch_id );
+
+		if ( is_wp_error( $own ) ) {
+			return $own;
 		}
 
 		if ( 'delete' === $status ) {
@@ -745,6 +909,8 @@ class CMB_Panel_Api {
 			array(
 				'refund' => $request->get_param( 'refund' ),
 				'force'  => (bool) $request->get_param( 'force' ),
+				// لغو مدیر سایت روی نوبت نمایندگی: release (پیش‌فرض) | capture
+				'fee'    => sanitize_key( (string) $request->get_param( 'fee' ) ),
 			)
 		);
 
@@ -767,10 +933,39 @@ class CMB_Panel_Api {
 	 * --------------------------------------------------------------- */
 
 	public function services( WP_REST_Request $request ) {
-		$items = array();
+		$items  = array();
+		$branch = CMB_Branches::panel_branch_id();
+		$agency = CMB_Branches::is_agency( $branch );
 
-		foreach ( CMB_Services::get_services( 0, false ) as $service ) {
+		// خدمت تازه‌ای که مرکز بعد از ساخت نمایندگی اضافه کرده، همین‌جا می‌رسد
+		if ( $agency ) {
+			CMB_Services::ensure_catalog( $branch );
+		}
+
+		foreach ( CMB_Services::get_services( $branch, false ) as $service ) {
 			$poster = $service->poster_id ? wp_get_attachment_image_url( (int) $service->poster_id, 'medium' ) : '';
+
+			if ( $agency ) {
+				/* حالت کاتالوگ (US-3.4): عنوان، توضیح و پوستر مال مرکز است؛
+				   نمایندگی فقط قیمت، روزها و روشن/خاموش. بیعانه‌ی مشتری هم
+				   برای نمایندگی وجود ندارد (D19). */
+				$items[] = array(
+					'id'          => (int) $service->id,
+					'slug'        => $service->slug,
+					'title'       => $service->title,
+					'description' => $service->description,
+					'price'       => (int) $service->price,
+					'duration'    => $service->duration_note,
+					'weekdays'    => CMB_Services::allowed_weekdays( $service ),
+					'active'      => (int) $service->is_active,
+					'posterId'    => (int) $service->poster_id,
+					'poster'      => $poster ? $poster : '',
+					'sortOrder'   => (int) $service->sort_order,
+					'catalog'     => true,
+					'catalogId'   => isset( $service->catalog_id ) ? (int) $service->catalog_id : 0,
+				);
+				continue;
+			}
 
 			$items[] = array(
 				'id'          => (int) $service->id,
@@ -793,13 +988,70 @@ class CMB_Panel_Api {
 			);
 		}
 
-		return rest_ensure_response( array( 'items' => $items ) );
+		return rest_ensure_response(
+			array(
+				'items'   => $items,
+				'catalog' => $agency,
+				'canEdit' => CMB_Branches::can( 'services' ),
+				'canAdd'  => CMB_Branches::can( 'services' ) && ! $agency,
+			)
+		);
 	}
 
 	/**
-	 * آپلود پوستر خدمت به کتابخانه‌ی رسانه.
+	 * خدمتی که کاربر جاری اجازه‌ی ویرایشش را دارد.
+	 *
+	 * @return object|WP_Error
+	 */
+	protected static function own_service( $service_id ) {
+		$service = CMB_Services::get_service( (int) $service_id );
+
+		if ( ! $service ) {
+			return new WP_Error( 'cmb_not_found', 'خدمت یافت نشد.', array( 'status' => 404 ) );
+		}
+
+		$own = CMB_Branches::assert_branch( (int) $service->branch_id );
+
+		if ( is_wp_error( $own ) ) {
+			return $own;
+		}
+
+		if ( ! CMB_Branches::can( 'services' ) ) {
+			return self::role_denied( 'ویرایش خدمات فقط با مدیر شعبه است.' );
+		}
+
+		return $service;
+	}
+
+	/**
+	 * آپلود پوستر خدمت (یا عکس شعبه) به کتابخانه‌ی رسانه.
+	 *
+	 * با for=branch عکس پروفایل شعبه است (مدیر نمایندگی یا مدیر سایت)؛
+	 * پوستر خدمت نمایندگی از مرکز می‌آید و از اینجا عوض نمی‌شود.
 	 */
 	public function upload_poster( WP_REST_Request $request ) {
+		$service_id = (int) $request->get_param( 'service_id' );
+		$for_branch = 'branch' === $request->get_param( 'for' );
+		$service    = null;
+
+		if ( $for_branch ) {
+			if ( ! CMB_Branches::can( 'profile' ) ) {
+				return self::role_denied( 'عکس شعبه را فقط مدیر شعبه عوض می‌کند.' );
+			}
+		} elseif ( $service_id ) {
+			$service = self::own_service( $service_id );
+
+			if ( is_wp_error( $service ) ) {
+				return $service;
+			}
+
+			if ( CMB_Services::is_catalog_copy( $service ) ) {
+				return new WP_Error( 'cmb_catalog_locked', 'پوستر خدمت را مرکز تعیین می‌کند.', array( 'status' => 403 ) );
+			}
+		} elseif ( ! CMB_Branches::can( 'services' ) || CMB_Branches::is_agency( CMB_Branches::panel_branch_id() ) ) {
+			return self::role_denied();
+		}
+
 		$files = $request->get_file_params();
 
 		if ( empty( $files['file'] ) ) {
@@ -835,9 +1087,7 @@ class CMB_Panel_Api {
 			return new WP_Error( 'cmb_upload_failed', 'آپلود ناموفق بود: ' . $id->get_error_message(), array( 'status' => 500 ) );
 		}
 
-		$service_id = (int) $request->get_param( 'service_id' );
-
-		if ( $service_id ) {
+		if ( $service ) {
 			CMB_Services::update_service( $service_id, array( 'poster_id' => (int) $id ) );
 		}
 
@@ -857,6 +1107,46 @@ class CMB_Panel_Api {
 
 		$weekdays = (array) $request->get_param( 'weekdays' );
 		$weekdays = array_values( array_unique( array_map( 'intval', $weekdays ) ) );
+
+		if ( ! CMB_Branches::can( 'services' ) ) {
+			return self::role_denied( 'ویرایش خدمات فقط با مدیر شعبه است.' );
+		}
+
+		$branch = CMB_Branches::panel_branch_id();
+
+		if ( $id ) {
+			$service = self::own_service( $id );
+
+			if ( is_wp_error( $service ) ) {
+				return $service;
+			}
+
+			/* ردیف کاتالوگی نمایندگی: فقط قیمت، روزها و روشن/خاموش (۰ یا ۱).
+			   بقیه‌ی فیلدها حتی اگر فرستاده شوند نادیده گرفته می‌شوند. */
+			if ( CMB_Services::is_catalog_copy( $service ) ) {
+				$data = array();
+
+				if ( null !== $request->get_param( 'price' ) ) {
+					$data['price'] = max( 0, (int) cmb_en_num( (string) $request->get_param( 'price' ) ) );
+				}
+
+				if ( null !== $request->get_param( 'weekdays' ) ) {
+					$data['allowed_weekdays'] = CMB_Services::clean_weekdays( $weekdays );
+				}
+
+				if ( null !== $request->get_param( 'active' ) ) {
+					$data['is_active'] = 1 === (int) $request->get_param( 'active' ) ? 1 : 0;
+				}
+
+				if ( $data ) {
+					CMB_Services::update_service( $id, $data );
+				}
+
+				return rest_ensure_response( array( 'success' => true, 'id' => $id ) );
+			}
+		} elseif ( CMB_Branches::is_agency( $branch ) ) {
+			return new WP_Error( 'cmb_catalog_only', 'خدمات نمایندگی از کاتالوگ مرکز می‌آید؛ خدمت تازه را مرکز اضافه می‌کند.', array( 'status' => 403 ) );
+		}
 
 		$data = array(
 			'title'            => sanitize_text_field( (string) $request->get_param( 'title' ) ),
@@ -907,7 +1197,8 @@ class CMB_Panel_Api {
 		}
 
 		if ( ! $id ) {
-			$created = CMB_Services::create_service( $data );
+			$data['branch_id'] = $branch;
+			$created           = CMB_Services::create_service( $data );
 
 			if ( is_wp_error( $created ) ) {
 				return $created;
@@ -930,6 +1221,12 @@ class CMB_Panel_Api {
 
 	public function delete_service( WP_REST_Request $request ) {
 		$id      = (int) $request->get_param( 'id' );
+		$service = self::own_service( $id );
+
+		if ( is_wp_error( $service ) ) {
+			return $service;
+		}
+
 		$deleted = CMB_Services::delete_service( $id );
 
 		if ( is_wp_error( $deleted ) ) {
@@ -981,17 +1278,26 @@ class CMB_Panel_Api {
 	}
 
 	public function get_schedule( WP_REST_Request $request ) {
-		$out = array();
+		$out    = array();
+		$branch = CMB_Branches::panel_branch_id();
+		$agency = CMB_Branches::is_agency( $branch );
 
-		foreach ( array_keys( CMB_Settings::schedule_rules() ) as $key ) {
-			$out[ $key ] = CMB_Settings::get( $key );
+		/* نمایندگی فقط ساعت و ظرفیت شیفت‌های خودش را دارد؛ بازه‌ی رزرو و
+		   قواعد لغو سراسری است و مرکز تعیینش می‌کند (D7). */
+		$keys = $agency ? CMB_Branches::schedule_keys() : array_keys( CMB_Settings::schedule_rules() );
+
+		foreach ( $keys as $key ) {
+			$out[ $key ] = $agency ? cmb_branch_setting( $branch, $key ) : CMB_Settings::get( $key );
 		}
 
 		return rest_ensure_response(
 			array(
 				'settings' => $out,
+				'keys'     => $keys,
+				'agency'   => $agency,
+				'canEdit'  => CMB_Branches::can( 'schedule' ),
 				// مدیر کل لینک تنظیمات کامل (پیامک و …) را هم می‌بیند
-				'fullUrl'  => current_user_can( 'manage_options' ) ? esc_url_raw( admin_url( 'admin.php?page=cmb-settings' ) ) : '',
+				'fullUrl'  => ( current_user_can( 'manage_options' ) && ! $agency ) ? esc_url_raw( admin_url( 'admin.php?page=cmb-settings' ) ) : '',
 			)
 		);
 	}
@@ -1003,15 +1309,23 @@ class CMB_Panel_Api {
 			return new WP_Error( 'cmb_bad_body', 'داده‌ای ارسال نشد.', array( 'status' => 400 ) );
 		}
 
-		$clean = CMB_Settings::sanitize_schedule( $params );
+		if ( ! CMB_Branches::can( 'schedule' ) ) {
+			return self::role_denied( 'تغییر برنامه‌ی کاری فقط با مدیر شعبه است.' );
+		}
+
+		$branch = CMB_Branches::panel_branch_id();
+
+		if ( CMB_Branches::is_agency( $branch ) ) {
+			$params = array_intersect_key( $params, array_flip( CMB_Branches::schedule_keys() ) );
+		}
+
+		$clean = CMB_Branches::save_schedule( $branch, $params );
 
 		if ( is_wp_error( $clean ) ) {
 			return $clean;
 		}
 
-		CMB_Settings::update( $clean );
-
-		cmb_log( 'Schedule settings updated from panel', array( 'user' => get_current_user_id(), 'keys' => array_keys( $clean ) ) );
+		cmb_log( 'Schedule settings updated from panel', array( 'user' => get_current_user_id(), 'branch' => $branch, 'keys' => array_keys( $clean ) ) );
 
 		return rest_ensure_response(
 			array(
@@ -1043,8 +1357,11 @@ class CMB_Panel_Api {
 		$page  = max( 1, (int) $request->get_param( 'page' ) );
 		$per   = 25;
 
-		// تلاش‌های پرداخت‌نشده مشتری حساب نمی‌شوند
-		$where  = array( "phone <> ''", "status NOT IN ('pending','expired')" );
+		$branch = CMB_Branches::panel_branch_id();
+		$scope  = CMB_Branches::scope_sql( $branch );
+
+		// تلاش‌های پرداخت‌نشده مشتری حساب نمی‌شوند؛ فقط مشتری‌های همین شعبه (D4)
+		$where  = array( $scope, "phone <> ''", "status NOT IN ('pending','expired')" );
 		$params = array();
 
 		if ( '' !== $q ) {
@@ -1127,7 +1444,7 @@ class CMB_Panel_Api {
 					"SELECT DISTINCT b.phone, s.title
 					 FROM {$table} b
 					 LEFT JOIN {$svc_table} s ON s.id = b.service_id
-					 WHERE b.phone IN ({$placeholders})",
+					 WHERE " . CMB_Branches::scope_sql( $branch, 'b.branch_id' ) . " AND b.phone IN ({$placeholders})",
 					$phones
 				)
 			);
@@ -1145,8 +1462,9 @@ class CMB_Panel_Api {
 			}
 		}
 
-		// موجودی کیف پولِ مشتری‌های همین صفحه، با یک کوئری
-		$balances = ( $rows && CMB_Wallet::ready() ) ? CMB_Wallet::balances( wp_list_pluck( $rows, 'phone' ) ) : array();
+		// موجودی کیف پولِ مشتری‌های همین صفحه، با یک کوئری. کیف پول مشتری مال مرکز است.
+		$show_wallet = CMB_Wallet::ready() && CMB_Branches::can( 'center' );
+		$balances    = ( $rows && $show_wallet ) ? CMB_Wallet::balances( wp_list_pluck( $rows, 'phone' ) ) : array();
 
 		$items = array();
 
@@ -1185,7 +1503,7 @@ class CMB_Panel_Api {
 				'total'  => $total,
 				'page'   => $page,
 				'pages'  => (int) ceil( $total / $per ),
-				'wallet' => CMB_Wallet::ready(),
+				'wallet' => $show_wallet,
 			)
 		);
 	}
@@ -1372,7 +1690,7 @@ class CMB_Panel_Api {
 	 * --------------------------------------------------------------- */
 
 	public function closures( WP_REST_Request $request ) {
-		$branch = CMB_Services::default_branch_id();
+		$branch = CMB_Branches::panel_branch_id();
 		$items  = array();
 
 		foreach ( (array) CMB_Availability::get_closures( $branch ) as $row ) {
@@ -1386,14 +1704,28 @@ class CMB_Panel_Api {
 			);
 		}
 
-		return rest_ensure_response( array( 'items' => $items, 'blocks' => self::block_options() ) );
+		return rest_ensure_response( array( 'items' => $items, 'blocks' => self::block_options( $branch ) ) );
 	}
 
 	public function save_closure( WP_REST_Request $request ) {
-		$branch = CMB_Services::default_branch_id();
+		global $wpdb;
+
+		$branch = CMB_Branches::panel_branch_id();
 		$remove = (int) $request->get_param( 'remove' );
 
 		if ( $remove ) {
+			$row = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . cmb_table( 'closures' ) . ' WHERE id = %d', $remove ) ); // phpcs:ignore
+
+			if ( ! $row ) {
+				return rest_ensure_response( array( 'success' => true ) );
+			}
+
+			$own = CMB_Branches::assert_branch( (int) $row->branch_id );
+
+			if ( is_wp_error( $own ) ) {
+				return $own;
+			}
+
 			CMB_Availability::remove_closure( $remove );
 
 			return rest_ensure_response( array( 'success' => true ) );
@@ -1406,8 +1738,22 @@ class CMB_Panel_Api {
 			return new WP_Error( 'cmb_bad_date', 'تاریخ معتبر نیست.', array( 'status' => 400 ) );
 		}
 
-		if ( '' !== $block && ! array_key_exists( $block, cmb_blocks() ) ) {
+		if ( '' !== $block && ! array_key_exists( $block, cmb_blocks( $branch ) ) ) {
 			return new WP_Error( 'cmb_bad_block', 'شیفت معتبر نیست.', array( 'status' => 400 ) );
+		}
+
+		/* نمایندگی: بستن روزی که نوبت فعال دارد، اول هشدار می‌دهد (US-2.3).
+		   نوبت‌ها خودکار لغو نمی‌شوند؛ شعبه باید با مشتری‌ها هماهنگ کند. */
+		if ( CMB_Branches::is_agency( $branch ) && ! $request->get_param( 'confirm' ) ) {
+			$busy = CMB_Branches::future_count( $branch, $date, '' !== $block ? $block : null );
+
+			if ( $busy > 0 ) {
+				return new WP_Error(
+					'cmb_closure_has_bookings',
+					sprintf( 'در این بازه %s نوبت فعال ثبت شده است. بستن آن نوبت‌ها را لغو نمی‌کند؛ اگر لازم است، خودتان با مشتری‌ها هماهنگ و لغوشان کنید.', cmb_fa_num( $busy ) ),
+					array( 'status' => 409, 'count' => $busy )
+				);
+			}
 		}
 
 		$done = CMB_Availability::set_closure(
@@ -1424,10 +1770,10 @@ class CMB_Panel_Api {
 		return rest_ensure_response( array( 'success' => true ) );
 	}
 
-	protected static function block_options() {
+	protected static function block_options( $branch_id = 0 ) {
 		$out = array();
 
-		foreach ( cmb_blocks() as $key => $block ) {
+		foreach ( cmb_blocks( $branch_id ) as $key => $block ) {
 			$out[] = array(
 				'key'   => $key,
 				'label' => $block['label'],
@@ -1449,6 +1795,547 @@ class CMB_Panel_Api {
 	 * تست پیامک
 	 * --------------------------------------------------------------- */
 
+
+	/* ------------------------------------------------------------------
+	 * شعبه‌ی جاری: پروفایل و کیف پول (نمایندگی)
+	 * --------------------------------------------------------------- */
+
+	/** پروفایل شعبه‌ی جاری پنل، کاربرانش و اختیار کاربر. */
+	public function branch_get( WP_REST_Request $request ) {
+		$branch = CMB_Branches::panel_branch_id();
+		$money  = CMB_Branches::can( 'wallet' );
+		$out    = CMB_Branches::panel_array( $branch, $money );
+
+		if ( ! $out ) {
+			return new WP_Error( 'cmb_not_found', 'شعبه یافت نشد.', array( 'status' => 404 ) );
+		}
+
+		$out['users']   = CMB_Branches::can( 'profile' ) ? CMB_Branches::users( $branch ) : array();
+		$out['canEdit'] = CMB_Branches::can( 'profile' ) && ( CMB_Branches::is_agency( $branch ) || current_user_can( 'manage_options' ) );
+
+		return rest_ensure_response( $out );
+	}
+
+	/**
+	 * ویرایش پروفایل توسط مدیر نمایندگی (US-2.5): آدرس، تلفن، عکس، لوکیشن.
+	 * نام، استان و شهر فقط با مدیر سایت است.
+	 */
+	public function branch_save( WP_REST_Request $request ) {
+		$branch = CMB_Branches::panel_branch_id();
+
+		if ( ! CMB_Branches::can( 'profile' ) || ( ! CMB_Branches::is_agency( $branch ) && ! current_user_can( 'manage_options' ) ) ) {
+			return self::role_denied( 'ویرایش پروفایل شعبه فقط با مدیر شعبه است.' );
+		}
+
+		$params = (array) $request->get_json_params();
+		$in     = array();
+
+		foreach ( array( 'address' => 'address', 'phone' => 'phone', 'photoId' => 'photo_id', 'lat' => 'lat', 'lng' => 'lng' ) as $from => $to ) {
+			if ( array_key_exists( $from, $params ) ) {
+				$in[ $to ] = $params[ $from ];
+			}
+		}
+
+		$done = CMB_Branches::update( $branch, $in, 'manager' );
+
+		if ( is_wp_error( $done ) ) {
+			return $done;
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => 'پروفایل شعبه ذخیره شد.',
+				'branch'  => CMB_Branches::panel_array( $branch, CMB_Branches::can( 'wallet' ) ),
+			)
+		);
+	}
+
+	/**
+	 * مدیر سایت: پنل کدام شعبه را نشان بدهد. انتخاب روی حساب خودش می‌ماند
+	 * تا با تازه‌سازی صفحه عوض نشود.
+	 */
+	public function branch_switch( WP_REST_Request $request ) {
+		$id = (int) $request->get_param( 'branch' );
+
+		if ( $id && ! CMB_Branches::get( $id ) ) {
+			return new WP_Error( 'cmb_not_found', 'شعبه یافت نشد.', array( 'status' => 404 ) );
+		}
+
+		if ( ! $id || $id === CMB_Branches::center_id() ) {
+			delete_user_meta( get_current_user_id(), 'cmb_panel_branch' );
+			$id = CMB_Branches::center_id();
+		} else {
+			update_user_meta( get_current_user_id(), 'cmb_panel_branch', $id );
+		}
+
+		CMB_Branches::set_panel_branch( $id );
+
+		$out = self::summary_payload();
+
+		CMB_Branches::set_panel_branch( null );
+
+		return rest_ensure_response( array( 'success' => true ) + $out );
+	}
+
+	/**
+	 * کیف پول نمایندگی (US-4.1): سه عدد، ظرفیت، تاریخچه و رسیدها. با
+	 * pay و tok نتیجه‌ی شارژی را هم برمی‌گرداند که تازه از درگاه برگشته.
+	 */
+	public function branch_wallet( WP_REST_Request $request ) {
+		$branch = CMB_Branches::panel_branch_id();
+
+		if ( ! CMB_Branches::is_agency( $branch ) ) {
+			return new WP_Error( 'cmb_not_agency', 'این شعبه کیف پول ندارد.', array( 'status' => 404 ) );
+		}
+
+		if ( ! CMB_Branches::can( 'wallet' ) ) {
+			return self::role_denied( 'کیف پول نمایندگی را فقط مدیر نمایندگی می‌بیند.' );
+		}
+
+		$out = array(
+			'summary'    => CMB_Branch_Wallet::summary( $branch ),
+			'history'    => CMB_Branch_Wallet::history( $branch, max( 1, (int) $request->get_param( 'page' ) ) ),
+			'receipts'   => CMB_Branch_Wallet::topups( $branch, 20 ),
+			'presets'    => CMB_Branch_Wallet::topup_presets(),
+			'topupMin'   => CMB_Branch_Wallet::topup_min(),
+			'topupMinFa' => cmb_toman( CMB_Branch_Wallet::topup_min() ),
+			'topupMax'   => CMB_Branch_Wallet::topup_max(),
+			'canTopup'   => CMB_Branches::can( 'topup' ) && CMB_Branch_Wallet::topup_ready(),
+			'topupReady' => CMB_Branch_Wallet::topup_ready(),
+			'fee'        => CMB_Branches::fee(),
+			'feeFa'      => cmb_toman( CMB_Branches::fee() ),
+		);
+
+		$pay = $request->get_param( 'pay' );
+
+		if ( null !== $pay && '' !== (string) $pay ) {
+			$out['topup'] = CMB_Branch_Wallet::topup_state(
+				(int) $pay,
+				preg_replace( '/[^A-Za-z0-9]/', '', (string) $request->get_param( 'tok' ) ),
+				$branch
+			);
+
+			// موجودی بعد از نتیجه‌ی تازه
+			$out['summary'] = CMB_Branch_Wallet::summary( $branch );
+			$out['history'] = CMB_Branch_Wallet::history( $branch, 1 );
+		}
+
+		return rest_ensure_response( $out );
+	}
+
+	public function branch_topup( WP_REST_Request $request ) {
+		$branch = CMB_Branches::panel_branch_id();
+
+		if ( ! CMB_Branches::can( 'topup' ) ) {
+			return self::role_denied( 'شارژ کیف پول فقط با مدیر نمایندگی است.' );
+		}
+
+		$res = CMB_Branch_Wallet::topup_start( $branch, $request->get_param( 'amount' ), get_current_user_id() );
+
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+
+		return rest_ensure_response( array( 'success' => true, 'url' => $res['url'] ) );
+	}
+
+	public function branch_receipt( WP_REST_Request $request ) {
+		$branch = CMB_Branches::panel_branch_id();
+
+		if ( ! CMB_Branches::is_agency( $branch ) || ! CMB_Branches::can( 'wallet' ) ) {
+			return self::role_denied();
+		}
+
+		$rc = CMB_Branch_Wallet::receipt( (int) $request->get_param( 'id' ), $branch );
+
+		return is_wp_error( $rc ) ? $rc : rest_ensure_response( $rc );
+	}
+
+	/* ------------------------------------------------------------------
+	 * مدیر سایت: نمایندگی‌ها (بخش ۶.۵)
+	 * --------------------------------------------------------------- */
+
+	/** یک ردیف فهرست نمایندگی‌های مدیر. */
+	protected static function admin_branch_row( $b ) {
+		$out = CMB_Branches::panel_array( $b, true );
+
+		if ( ! $out ) {
+			return null;
+		}
+
+		$reason = '';
+
+		$out['bookable']    = CMB_Branches::bookable( $b, $reason );
+		$out['reason']      = $reason;
+		$out['reasonLabel'] = self::unbookable_label( $reason );
+		$out['future']      = CMB_Branches::future_count( (int) $b->id );
+		$out['users']       = CMB_Branches::users( (int) $b->id );
+		$out['isCenter']    = CMB_Branches::is_center( $b );
+		$out['services']    = count( CMB_Services::get_services( (int) $b->id, true ) );
+
+		return $out;
+	}
+
+	/** چرا نوبت نمی‌گیرد — فقط برای مدیر؛ مشتری فقط «فعلاً نوبت نمی‌گیرد» می‌بیند (D18). */
+	protected static function unbookable_label( $reason ) {
+		$map = array(
+			'inactive'    => 'فعال نیست',
+			'no_services' => 'هیچ خدمت فعالی ندارد',
+			'balance'     => 'موجودی آزاد کیف پول کمتر از هزینه‌ی یک رزرو است',
+		);
+
+		return isset( $map[ $reason ] ) ? $map[ $reason ] : '';
+	}
+
+	public function admin_branches( WP_REST_Request $request ) {
+		if ( ! CMB_Branches::ready() ) {
+			return new WP_Error( 'cmb_branch_schema', 'دیتابیس هنوز به‌روز نشده است؛ یک بار پیشخوان وردپرس را باز کنید.', array( 'status' => 503 ) );
+		}
+
+		$items = array();
+
+		foreach ( CMB_Branches::all() as $b ) {
+			$row = self::admin_branch_row( $b );
+
+			if ( $row ) {
+				$items[] = $row;
+			}
+		}
+
+		return rest_ensure_response(
+			array(
+				'items'    => $items,
+				'settings' => self::fee_settings(),
+				'maxOps'   => CMB_Branches::MAX_OPERATORS,
+			)
+		);
+	}
+
+	/** ساخت (بدون id) یا ویرایش یک نمایندگی. */
+	public function admin_branch_save( WP_REST_Request $request ) {
+		$params = (array) $request->get_json_params();
+		$id     = isset( $params['id'] ) ? (int) $params['id'] : 0;
+		$map    = array(
+			'title'         => 'title',
+			'slug'          => 'slug',
+			'province'      => 'province',
+			'city'          => 'city',
+			'address'       => 'address',
+			'phone'         => 'phone',
+			'lat'           => 'lat',
+			'lng'           => 'lng',
+			'photoId'       => 'photo_id',
+			'contactName'   => 'contact_name',
+			'managerPhone'  => 'manager_phone',
+			'managerPhones' => 'manager_phones',
+			'sortOrder'     => 'sort_order',
+		);
+		$in     = array();
+
+		foreach ( $map as $from => $to ) {
+			if ( array_key_exists( $from, $params ) ) {
+				$in[ $to ] = $params[ $from ];
+			}
+		}
+
+		if ( $id ) {
+			unset( $in['manager_phone'] );
+
+			$done = CMB_Branches::update( $id, $in, 'admin' );
+
+			if ( is_wp_error( $done ) ) {
+				return $done;
+			}
+		} else {
+			$in['type'] = 'agency';
+			$id         = CMB_Branches::create( $in, get_current_user_id() );
+
+			if ( is_wp_error( $id ) ) {
+				return $id;
+			}
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => 'اطلاعات نمایندگی ذخیره شد.',
+				'item'    => self::admin_branch_row( CMB_Branches::get( $id ) ),
+			)
+		);
+	}
+
+	/**
+	 * فعال/غیرفعال کردن. غیرفعال کردنِ نمایندگی‌ای که نوبت آینده دارد، اول
+	 * هشدار می‌دهد (نوبت‌ها لغو نمی‌شوند؛ US-1.3).
+	 */
+	public function admin_branch_status( WP_REST_Request $request ) {
+		$id     = (int) $request->get_param( 'id' );
+		$status = sanitize_key( (string) $request->get_param( 'status' ) );
+
+		if ( 'inactive' === $status && ! $request->get_param( 'confirm' ) ) {
+			$future = CMB_Branches::future_count( $id );
+
+			if ( $future > 0 ) {
+				return new WP_Error(
+					'cmb_branch_has_future',
+					sprintf( 'این نمایندگی %s نوبت آینده دارد. با غیرفعال کردن، نوبت تازه نمی‌گیرد ولی آن نوبت‌ها سر جایشان می‌مانند و باید انجام شوند.', cmb_fa_num( $future ) ),
+					array( 'status' => 409, 'count' => $future )
+				);
+			}
+		}
+
+		$res = CMB_Branches::set_status( $id, $status, get_current_user_id() );
+
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+
+		$message = 'active' === $status ? 'نمایندگی فعال شد.' : 'نمایندگی غیرفعال شد.';
+
+		if ( ! empty( $res['welcome'] ) ) {
+			$message .= sprintf( ' %s اعتبار اولیه به کیف پولش واریز شد.', cmb_toman( (int) $res['welcome'] ) );
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => $message,
+				'item'    => self::admin_branch_row( CMB_Branches::get( $id ) ),
+			)
+		);
+	}
+
+	/** افزودن یا حذف مدیر/اپراتور یک شعبه. */
+	public function admin_branch_users( WP_REST_Request $request ) {
+		$id = (int) $request->get_param( 'id' );
+		$op = sanitize_key( (string) $request->get_param( 'op' ) );
+
+		if ( ! CMB_Branches::get( $id ) ) {
+			return new WP_Error( 'cmb_not_found', 'شعبه یافت نشد.', array( 'status' => 404 ) );
+		}
+
+		if ( 'remove' === $op ) {
+			$res = CMB_Branches::remove_user( $id, (int) $request->get_param( 'userId' ) );
+		} else {
+			$res = CMB_Branches::add_user(
+				$id,
+				(string) $request->get_param( 'phone' ),
+				(string) $request->get_param( 'name' ),
+				sanitize_key( (string) $request->get_param( 'role' ) )
+			);
+		}
+
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => 'remove' === $op ? 'دسترسی پنل این کاربر برداشته شد.' : 'کاربر به پنل شعبه اضافه شد؛ با همین شماره و کد پیامکی وارد می‌شود.',
+				'users'   => CMB_Branches::users( $id ),
+			)
+		);
+	}
+
+	/** افزایش یا کاهش دستی کیف پول نمایندگی، با دلیل (US-4.6). */
+	public function admin_branch_adjust( WP_REST_Request $request ) {
+		$id     = (int) $request->get_param( 'id' );
+		$amount = abs( (int) cmb_en_num( (string) $request->get_param( 'amount' ) ) );
+
+		if ( 'dec' === $request->get_param( 'dir' ) ) {
+			$amount = -$amount;
+		}
+
+		$res = CMB_Branch_Wallet::adjust( $id, $amount, (string) $request->get_param( 'note' ), get_current_user_id() );
+
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => 'کیف پول نمایندگی به‌روز شد.',
+				'item'    => self::admin_branch_row( CMB_Branches::get( $id ) ),
+				'history' => CMB_Branch_Wallet::history( $id, 1 ),
+			)
+		);
+	}
+
+	/** برگشت کسر قطعی یک نوبت (US-4.5). */
+	public function admin_fee_refund( WP_REST_Request $request ) {
+		$booking_id = (int) $request->get_param( 'id' );
+		$res        = CMB_Branch_Wallet::refund_fee( $booking_id, get_current_user_id(), (string) $request->get_param( 'note' ) );
+
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+
+		$booking = CMB_Bookings::get( $booking_id );
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => 'هزینه‌ی این نوبت به کیف پول نمایندگی برگشت.',
+				'item'    => $booking ? self::row_to_array( $booking ) : null,
+			)
+		);
+	}
+
+	/**
+	 * گزارش نمایندگی‌ها در یک بازه (US-5.1): نوبت‌ها، انجام‌شده، لغو
+	 * نمایندگی و نرخش، کسر قطعی، شارژ، موجودی. CSV در مرورگر ساخته می‌شود.
+	 */
+	public function admin_report( WP_REST_Request $request ) {
+		global $wpdb;
+
+		$to   = sanitize_text_field( (string) $request->get_param( 'to' ) );
+		$from = sanitize_text_field( (string) $request->get_param( 'from' ) );
+		$to   = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $to ) ? $to : cmb_today();
+		$from = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $from ) ? $from : gmdate( 'Y-m-d', strtotime( $to ) - 29 * DAY_IN_SECONDS );
+
+		if ( strcmp( $from, $to ) > 0 ) {
+			list( $from, $to ) = array( $to, $from );
+		}
+
+		$table  = cmb_table( 'bookings' );
+		$items  = array();
+		$totals = array( 'bookings' => 0, 'done' => 0, 'noShow' => 0, 'cancelledBranch' => 0, 'cancelledCustomer' => 0, 'captured' => 0, 'topup' => 0, 'free' => 0 );
+
+		foreach ( CMB_Branches::all() as $b ) {
+			if ( ! CMB_Branches::is_agency( $b ) ) {
+				continue;
+			}
+
+			$row = $wpdb->get_row(
+				$wpdb->prepare(
+					"SELECT
+						SUM( status NOT IN ('pending','expired') ) AS total_c,
+						SUM( status = 'done' )    AS done_c,
+						SUM( status = 'no_show' ) AS noshow_c,
+						SUM( status = 'cancelled' AND cancelled_by = 'branch' )   AS cb_c,
+						SUM( status = 'cancelled' AND cancelled_by = 'customer' ) AS cc_c,
+						SUM( status = 'cancelled' AND cancelled_by = 'admin' )    AS ca_c
+					 FROM {$table} WHERE branch_id = %d AND booking_date BETWEEN %s AND %s", // phpcs:ignore
+					(int) $b->id,
+					$from,
+					$to
+				)
+			);
+
+			$sums  = CMB_Branch_Wallet::sums( (int) $b->id, $from, $to );
+			$money = CMB_Branch_Wallet::totals( (int) $b->id );
+			$total = $row ? (int) $row->total_c : 0;
+			$cb    = $row ? (int) $row->cb_c : 0;
+
+			$item = array(
+				'id'                => (int) $b->id,
+				'title'             => (string) $b->title,
+				'city'              => isset( $b->city ) ? (string) $b->city : '',
+				'status'            => CMB_Branches::status( $b ),
+				'statusLabel'       => CMB_Branches::status_label( CMB_Branches::status( $b ) ),
+				'bookings'          => $total,
+				'done'              => $row ? (int) $row->done_c : 0,
+				'noShow'            => $row ? (int) $row->noshow_c : 0,
+				'cancelledBranch'   => $cb,
+				'cancelledCustomer' => $row ? (int) $row->cc_c : 0,
+				'cancelledAdmin'    => $row ? (int) $row->ca_c : 0,
+				'cancelRate'        => $total ? round( 100 * $cb / $total, 1 ) : 0,
+				'captured'          => (int) $sums['captured'],
+				'topup'             => (int) $sums['topup'],
+				'total'             => (int) $money['total'],
+				'held'              => (int) $money['held'],
+				'free'              => (int) $money['free'],
+			);
+
+			foreach ( array( 'captured', 'topup', 'total', 'held', 'free' ) as $k ) {
+				$item[ $k . 'Fa' ] = cmb_toman( $item[ $k ] );
+			}
+
+			$items[] = $item;
+
+			$totals['bookings']          += $item['bookings'];
+			$totals['done']              += $item['done'];
+			$totals['noShow']            += $item['noShow'];
+			$totals['cancelledBranch']   += $item['cancelledBranch'];
+			$totals['cancelledCustomer'] += $item['cancelledCustomer'];
+			$totals['captured']          += $item['captured'];
+			$totals['topup']             += $item['topup'];
+			$totals['free']              += $item['free'];
+		}
+
+		foreach ( array( 'captured', 'topup', 'free' ) as $k ) {
+			$totals[ $k . 'Fa' ] = cmb_toman( $totals[ $k ] );
+		}
+
+		return rest_ensure_response(
+			array(
+				'from'   => $from,
+				'to'     => $to,
+				'fromFa' => cmb_jalali_date( $from, 'numeric' ),
+				'toFa'   => cmb_jalali_date( $to, 'numeric' ),
+				'items'  => $items,
+				'totals' => $totals,
+			)
+		);
+	}
+
+	/** تنظیمات مالی نمایندگی‌ها (بخش ۶.۷). */
+	protected static function fee_settings() {
+		$out = array();
+
+		foreach ( array( 'agency_fee', 'agency_welcome_credit', 'agency_low_balance', 'agency_topup_min' ) as $key ) {
+			$out[ $key ] = (int) CMB_Settings::get( $key );
+		}
+
+		return $out;
+	}
+
+	/**
+	 * تغییر مبلغ‌ها. مبلغ هر رزرو روی خود نوبت ذخیره می‌شود، پس تغییرش فقط
+	 * روی رزروهای تازه اثر دارد.
+	 */
+	public function admin_fee_settings( WP_REST_Request $request ) {
+		$params = (array) $request->get_json_params();
+		$limits = array(
+			'agency_fee'            => array( 0, 50000000 ),
+			'agency_welcome_credit' => array( 0, 100000000 ),
+			'agency_low_balance'    => array( 0, 100000000 ),
+			'agency_topup_min'      => array( 10000, 50000000 ),
+		);
+		$clean  = array();
+
+		foreach ( $limits as $key => $range ) {
+			if ( ! array_key_exists( $key, $params ) ) {
+				continue;
+			}
+
+			$v = (int) cmb_en_num( (string) $params[ $key ] );
+
+			if ( $v < $range[0] || $v > $range[1] ) {
+				return new WP_Error( 'cmb_bad_amount', sprintf( 'مبلغ «%s» خارج از بازه‌ی مجاز است.', $key ), array( 'status' => 400 ) );
+			}
+
+			$clean[ $key ] = $v;
+		}
+
+		if ( $clean ) {
+			CMB_Settings::update( $clean );
+			CMB_Services::flush_cache();
+
+			cmb_log( 'Agency money settings updated', array( 'user' => get_current_user_id() ) + $clean );
+		}
+
+		return rest_ensure_response(
+			array(
+				'success'  => true,
+				'message'  => 'تنظیمات مالی نمایندگی‌ها ذخیره شد؛ مبلغ تازه فقط روی رزروهای بعدی اثر دارد.',
+				'settings' => self::fee_settings(),
+			)
+		);
+	}
 
 	/* --------------------------------------------------------------- */
 
