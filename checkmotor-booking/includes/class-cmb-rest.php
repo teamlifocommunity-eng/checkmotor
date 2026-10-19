@@ -27,6 +27,19 @@ class CMB_Rest {
 	}
 
 	public function register_routes() {
+		/* فهرست مرکز و نمایندگی‌های فعال برای مرحله‌ی «انتخاب مرکز». بدون
+		   هیچ عدد مالی؛ نمایندگی‌ای که نوبت نمی‌گیرد فقط با برچسب «فعلاً
+		   نوبت نمی‌گیرد» می‌آید. */
+		register_rest_route(
+			self::NAMESPACE_V1,
+			'/branches',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'get_branches' ),
+				'permission_callback' => '__return_true',
+			)
+		);
+
 		register_rest_route(
 			self::NAMESPACE_V1,
 			'/services',
@@ -235,20 +248,50 @@ class CMB_Rest {
 
 	/* ------------------------------------------------------------------ */
 
+	public function get_branches( WP_REST_Request $request ) {
+		return rest_ensure_response( self::branches_payload() );
+	}
+
+	/** داده‌ی مرحله‌ی انتخاب مرکز — هم REST، هم تزریق در صفحه. */
+	public static function branches_payload() {
+		$count = CMB_Branches::active_count();
+
+		return array(
+			'groups' => $count > 1 ? CMB_Branches::public_groups() : array(),
+			'count'  => $count,
+			'center' => CMB_Branches::center_id(),
+			// با یک شعبه‌ی فعال، مرحله‌ی انتخاب کلاً نمایش داده نمی‌شود (US-2.1)
+			'picker' => $count > 1,
+		);
+	}
+
 	public function get_services( WP_REST_Request $request ) {
 		/* ساخت و کش پاسخ در CMB_Services::payload() است تا داده‌ی
-		   تزریق‌شده در صفحه و پاسخ REST هرگز از هم فاصله نگیرند. */
+		   تزریق‌شده در صفحه و پاسخ REST هرگز از هم فاصله نگیرند. «قابل رزرو
+		   بودن» شعبه بیرون از کش اضافه می‌شود. */
 		return rest_ensure_response(
-			CMB_Services::payload( (int) $request->get_param( 'branch_id' ) )
+			CMB_Services::payload_live( (int) $request->get_param( 'branch_id' ) )
 		);
 	}
 
 	public function get_availability( WP_REST_Request $request ) {
 		CMB_Payments::maybe_reconcile();
 
+		$service = CMB_Services::get_service( (int) $request->get_param( 'service_id' ) );
+		$branch  = (int) $request->get_param( 'branch_id' );
+
+		// تقویم نمایندگی همیشه با شعبه‌ی خود خدمت ساخته می‌شود
+		if ( $service && CMB_Branches::is_agency( (int) $service->branch_id ) ) {
+			$branch = (int) $service->branch_id;
+
+			if ( ! CMB_Branches::bookable( $branch ) ) {
+				return new WP_Error( 'cmb_branch_unavailable', 'این مرکز فعلاً نوبت نمی‌گیرد. لطفاً مرکز دیگری انتخاب کنید.', array( 'status' => 409 ) );
+			}
+		}
+
 		$calendar = CMB_Availability::get_calendar(
 			(int) $request->get_param( 'service_id' ),
-			(int) $request->get_param( 'branch_id' )
+			$branch
 		);
 
 		if ( is_wp_error( $calendar ) ) {
@@ -345,7 +388,7 @@ class CMB_Rest {
 			return new WP_Error( 'cmb_service_not_found', 'خدمت انتخاب‌شده در دسترس نیست.', array( 'status' => 404 ) );
 		}
 
-		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) || '' === cmb_block_start( $block ) ) {
+		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) || '' === cmb_block_start( $block, (int) $service->branch_id ) ) {
 			return new WP_Error( 'cmb_bad_slot', 'زمان نوبت معتبر نیست.', array( 'status' => 400 ) );
 		}
 

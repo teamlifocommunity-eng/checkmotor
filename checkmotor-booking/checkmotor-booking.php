@@ -642,6 +642,22 @@ function cmb_enqueue_app() {
 	$user = wp_get_current_user();
 	$boot = cmb_boot_payload();
 
+	/* مرحله‌ی «انتخاب مرکز»: فقط وقتی بیش از یک شعبه‌ی فعال هست. با
+	   ?branch=slug مرکز از پیش انتخاب می‌شود (لینک اختصاصی هر نمایندگی). */
+	$branches = CMB_Rest::branches_payload();
+	$want     = null;
+
+	// phpcs:ignore WordPress.Security.NonceVerification
+	if ( $branches['picker'] && isset( $_GET['branch'] ) ) {
+		$picked = CMB_Branches::by_slug( sanitize_title( wp_unslash( (string) $_GET['branch'] ) ) );
+
+		if ( $picked && 'active' === CMB_Branches::status( $picked ) ) {
+			$want = (int) $picked->id;
+		}
+	}
+
+	$branches['preselect'] = $want;
+
 	// پرداخت‌های بی‌جواب، بعد از پاسخ (هر دو دقیقه حداکثر یک بار)
 	CMB_Payments::maybe_reconcile();
 
@@ -688,6 +704,7 @@ function cmb_enqueue_app() {
 			   هزینه‌ای ندارد. */
 			'bookings'  => cmb_user_bookings_payload( $user->ID ),
 			'branch'    => $boot['branch'],
+			'branches'  => $branches,
 			/* بیعانه: روشن بودن و درگاه آزمایشی. مبلغ هر خدمت داخل
 			   خود فهرست خدمات است (deposit). */
 			'pay'       => array(
@@ -774,10 +791,17 @@ function cmb_enqueue_panel() {
 							'label' => $b['label'],
 						);
 					},
-					array_keys( cmb_blocks() ),
-					cmb_blocks()
+					array_keys( cmb_blocks( CMB_Branches::panel_branch_id() ) ),
+					cmb_blocks( CMB_Branches::panel_branch_id() )
 				)
 			),
+			// نتیجه‌ی شارژ کیف پول نمایندگی که تازه از درگاه برگشته
+			// phpcs:disable WordPress.Security.NonceVerification
+			'btopup'   => isset( $_GET['cmb_bt'] ) ? array(
+				'id'  => preg_replace( '/[^A-Za-z0-9]/', '', (string) wp_unslash( $_GET['cmb_bt'] ) ),
+				'tok' => isset( $_GET['cmb_t'] ) ? preg_replace( '/[^A-Za-z0-9]/', '', (string) wp_unslash( $_GET['cmb_t'] ) ) : '',
+			) : null,
+			// phpcs:enable
 		)
 	);
 }

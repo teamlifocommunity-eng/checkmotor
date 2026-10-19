@@ -1341,6 +1341,12 @@ class CMB_Bookings {
 			'servicePrice' => $service ? cmb_fa_num( number_format( (int) $service->price ) ) . ' تومان' : '',
 			'branch'       => $branch ? $branch->title : '',
 			'branchPhone'  => $branch ? $branch->phone : '',
+			// آدرس و نقشه‌ی مرکزی که نوبت در آن است (مهم وقتی چند مرکز هست)
+			'branchId'      => (int) $booking->branch_id,
+			'branchAddress' => $branch ? (string) $branch->address : '',
+			'branchCity'    => ( $branch && isset( $branch->city ) ) ? (string) $branch->city : '',
+			'branchMap'     => $branch ? CMB_Branches::map_url( $branch ) : '',
+			'branchAgency'  => CMB_Branches::is_agency( $branch ),
 			'date'         => $booking->booking_date,
 			'dateFa'       => cmb_jalali_date( $booking->booking_date, 'full' ),
 			'block'        => $booking->block_key,

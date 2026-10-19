@@ -912,6 +912,56 @@ class CMB_Admin {
 					</tr>
 				</table>
 
+				<h2 class="title">نمایندگی‌ها</h2>
+				<p class="description">
+					مبلغ‌ها به تومان. مبلغ هر رزرو روی خود نوبت ثبت می‌شود، پس تغییرش فقط روی رزروهای بعدی اثر دارد.
+					پترن‌های نمایندگی اختیاری‌اند: اگر خالی بمانند، همان پترن‌های مرکز (بالا) فرستاده می‌شوند.
+				</p>
+				<table class="form-table">
+					<?php
+					$agency_money = array(
+						'agency_fee'            => array( 'هزینه‌ی هر رزرو موفق', 'از کیف پول نمایندگی، هنگام ثبت نوبت بلوکه و بعد از انجام قطعی کسر می‌شود.' ),
+						'agency_welcome_credit' => array( 'اعتبار اولیه', 'فقط یک بار، در اولین فعال‌سازی هر نمایندگی.' ),
+						'agency_low_balance'    => array( 'آستانه‌ی هشدار موجودی', 'وقتی موجودی آزاد کمتر از این شود، یک پیامک هشدار می‌رود.' ),
+						'agency_topup_min'      => array( 'حداقل شارژ آنلاین', '' ),
+					);
+
+					foreach ( $agency_money as $key => $label ) :
+						?>
+						<tr>
+							<th><label><?php echo esc_html( $label[0] ); ?></label></th>
+							<td>
+								<input type="number" name="<?php echo esc_attr( $key ); ?>" min="0" step="1000" value="<?php echo esc_attr( (int) $s[ $key ] ); ?>" class="regular-text" dir="ltr" /> تومان
+								<?php if ( '' !== $label[1] ) : ?>
+									<p class="description"><?php echo esc_html( $label[1] ); ?></p>
+								<?php endif; ?>
+							</td>
+						</tr>
+					<?php endforeach; ?>
+					<?php
+					$agency_patterns = array(
+						'pattern_booking_branch'  => array( 'تاییدیه‌ی رزرو نمایندگی (مشتری)', '<code>{0}</code> نام، <code>{1}</code> خدمت، <code>{2}</code> تاریخ، <code>{3}</code> شیفت، <code>{4}</code> کد پیگیری، <code>{5}</code> نام مرکز، <code>{6}</code> آدرس، <code>{7}</code> تلفن' ),
+						'pattern_reminder_branch' => array( 'یادآوری نوبت نمایندگی (مشتری)', '<code>{0}</code> خدمت، <code>{1}</code> تاریخ، <code>{2}</code> شیفت، <code>{3}</code> نام مرکز، <code>{4}</code> آدرس' ),
+						'pattern_cancel_branch'   => array( 'لغو نوبت نمایندگی (مشتری)', '<code>{0}</code> خدمت، <code>{1}</code> تاریخ، <code>{2}</code> نام مرکز، <code>{3}</code> تلفن' ),
+						'pattern_agency_new'      => array( 'نوبت جدید (به نمایندگی)', '<code>{0}</code> نام مشتری، <code>{1}</code> موبایل، <code>{2}</code> خدمت، <code>{3}</code> تاریخ، <code>{4}</code> شیفت' ),
+						'pattern_agency_cancel'   => array( 'لغو توسط مشتری (به نمایندگی)', '<code>{0}</code> نام مشتری، <code>{1}</code> خدمت، <code>{2}</code> تاریخ' ),
+						'pattern_agency_low'      => array( 'هشدار موجودی کم (به نمایندگی)', '<code>{0}</code> موجودی آزاد، <code>{1}</code> تعداد نوبت قابل پذیرش' ),
+						'pattern_agency_topup'    => array( 'شارژ موفق (به نمایندگی)', '<code>{0}</code> مبلغ شارژ، <code>{1}</code> موجودی جدید' ),
+						'pattern_agency_active'   => array( 'فعال شدن پنل (به نمایندگی)', '<code>{0}</code> نام نمایندگی، <code>{1}</code> اعتبار اولیه، <code>{2}</code> لینک پنل' ),
+					);
+
+					foreach ( $agency_patterns as $key => $label ) :
+						?>
+						<tr>
+							<th><label><?php echo esc_html( $label[0] ); ?></label></th>
+							<td>
+								<input type="text" name="<?php echo esc_attr( $key ); ?>" class="regular-text" value="<?php echo esc_attr( $s[ $key ] ); ?>" />
+								<p class="description">متغیرها: <?php echo wp_kses( $label[1], array( 'code' => array() ) ); ?></p>
+							</td>
+						</tr>
+					<?php endforeach; ?>
+				</table>
+
 				<h2 class="title">کد تایید (OTP)</h2>
 				<table class="form-table">
 					<tr>
@@ -1420,6 +1470,20 @@ class CMB_Admin {
 			$values[ $key ] = isset( $_POST[ $key ] ) ? 1 : 0;
 		}
 
+		/* نمایندگی‌ها: فقط اگر فیلدش در فرم بود. فرمی که این بخش را ندارد
+		   (مثلاً نسخه‌ی قدیمیِ کش‌شده‌ی صفحه) مبلغ‌ها را صفر نمی‌کند. */
+		foreach ( array( 'agency_fee', 'agency_welcome_credit', 'agency_low_balance', 'agency_topup_min' ) as $key ) {
+			if ( isset( $_POST[ $key ] ) ) {
+				$values[ $key ] = max( 'agency_topup_min' === $key ? 10000 : 0, (int) cmb_en_num( wp_unslash( $_POST[ $key ] ) ) );
+			}
+		}
+
+		foreach ( array( 'pattern_booking_branch', 'pattern_reminder_branch', 'pattern_cancel_branch', 'pattern_agency_new', 'pattern_agency_cancel', 'pattern_agency_low', 'pattern_agency_topup', 'pattern_agency_active' ) as $key ) {
+			if ( isset( $_POST[ $key ] ) ) {
+				$values[ $key ] = sanitize_text_field( wp_unslash( $_POST[ $key ] ) );
+			}
+		}
+
 		// برنامه‌ی کاری با همان قواعد پنل بررسی می‌شود
 		$schedule = CMB_Settings::sanitize_schedule( $values );
 
@@ -1722,10 +1786,11 @@ class CMB_Admin {
 
 		fwrite( $output, "\xEF\xBB\xBF" ); // BOM
 
-		fputcsv( $output, array( 'کد پیگیری', 'تاریخ شمسی', 'تاریخ میلادی', 'شیفت', 'خدمت', 'نام', 'موبایل', 'استان', 'شهر', 'نوع خودرو', 'نوع موتور', 'سال', 'کارکرد', 'وضعیت', 'ثبت', 'بیعانه (تومان)', 'وضعیت پرداخت', 'برگشت (تومان)' ) );
+		fputcsv( $output, array( 'کد پیگیری', 'تاریخ شمسی', 'تاریخ میلادی', 'شیفت', 'خدمت', 'نام', 'موبایل', 'استان', 'شهر', 'نوع خودرو', 'نوع موتور', 'سال', 'کارکرد', 'وضعیت', 'ثبت', 'بیعانه (تومان)', 'وضعیت پرداخت', 'برگشت (تومان)', 'مرکز', 'هزینه‌ی نمایندگی (تومان)' ) );
 
 		foreach ( (array) $rows as $row ) {
 			$service = CMB_Services::get_service( $row->service_id );
+			$branch  = CMB_Services::get_branch( (int) $row->branch_id );
 
 			fputcsv(
 				$output,
@@ -1751,6 +1816,9 @@ class CMB_Admin {
 					isset( $row->deposit_amount ) ? (int) $row->deposit_amount : '',
 					( isset( $row->pay_status ) && $row->pay_status && CMB_Payments::summary( $row ) ) ? CMB_Payments::summary( $row )['statusLabel'] : '',
 					isset( $row->refund_amount ) && (int) $row->refund_amount ? (int) $row->refund_amount : '',
+					// ستون‌های تازه آخرند تا ترتیب ستون‌های قبلی برای فایل‌های موجود عوض نشود
+					$branch ? $branch->title : '',
+					! empty( $row->branch_fee ) ? (int) $row->branch_fee : '',
 					)
 				)
 			);

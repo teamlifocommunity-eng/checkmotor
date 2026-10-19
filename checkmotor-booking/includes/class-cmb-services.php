@@ -157,7 +157,7 @@ class CMB_Services {
 			   بیرون از کش اضافه می‌شود (with_live). */
 			if ( CMB_Branches::ready() ) {
 				$pub = CMB_Branches::public_array( $branch );
-				unset( $pub['bookable'] );
+				unset( $pub['bookable'], $pub['unavailable'] );
 				$branch_out = array_merge( $branch_out, $pub );
 			}
 		}

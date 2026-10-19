@@ -125,13 +125,25 @@ class CMB_Branches {
 		return (array) $wpdb->get_results( "SELECT * FROM {$table} ORDER BY {$order}" ); // phpcs:ignore
 	}
 
-	/** شعبه‌های فعال (برای فهرست مشتری). */
+	/**
+	 * شعبه‌های فعال برای فهرست مشتری: مرکز و نمایندگی‌های فعال.
+	 *
+	 * ردیف‌های قدیمیِ دیگرِ جدول شعبه‌ها (اگر سایتی داشته باشد) عمداً
+	 * اینجا نمی‌آیند تا با به‌روزرسانی، مرحله‌ی انتخاب مرکز ناگهان برای
+	 * مشتری‌ها پیدا نشود.
+	 */
 	public static function active() {
+		$center = self::center_id();
+
 		return array_values(
 			array_filter(
 				self::all(),
-				function ( $b ) {
-					return 'active' === CMB_Branches::status( $b );
+				function ( $b ) use ( $center ) {
+					if ( 'active' !== CMB_Branches::status( $b ) ) {
+						return false;
+					}
+
+					return (int) $b->id === $center || CMB_Branches::is_agency( $b );
 				}
 			)
 		);
@@ -296,7 +308,7 @@ class CMB_Branches {
 	}
 
 	public static function map_url( $b ) {
-		if ( isset( $b->lat, $b->lng ) && null !== $b->lat && null !== $b->lng && '' !== (string) $b->lat && ( 0.0 !== (float) $b->lat || 0.0 !== (float) $b->lng ) ) {
+		if ( isset( $b->lat, $b->lng ) && '' !== (string) $b->lat && '' !== (string) $b->lng && ( 0.0 !== (float) $b->lat || 0.0 !== (float) $b->lng ) ) {
 			return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode( (float) $b->lat . ',' . (float) $b->lng );
 		}
 
@@ -330,6 +342,8 @@ class CMB_Branches {
 			'map'      => self::map_url( $b ),
 			'verified' => self::is_agency( $b ),
 			'bookable' => $bookable,
+			// دلیل مالی یا هر دلیل دیگر به مشتری گفته نمی‌شود (D18)
+			'unavailable' => $bookable ? '' : 'فعلاً نوبت نمی‌گیرد',
 		);
 	}
 
@@ -406,8 +420,8 @@ class CMB_Branches {
 			'city'         => isset( $b->city ) ? (string) $b->city : '',
 			'address'      => (string) $b->address,
 			'phone'        => (string) $b->phone,
-			'lat'          => ( isset( $b->lat ) && null !== $b->lat ) ? (float) $b->lat : null,
-			'lng'          => ( isset( $b->lng ) && null !== $b->lng ) ? (float) $b->lng : null,
+			'lat'          => ( isset( $b->lat ) && '' !== (string) $b->lat ) ? (float) $b->lat : null,
+			'lng'          => ( isset( $b->lng ) && '' !== (string) $b->lng ) ? (float) $b->lng : null,
 			'photoId'      => isset( $b->photo_id ) ? (int) $b->photo_id : 0,
 			'photo'        => $photo['url'],
 			'contactName'  => isset( $b->contact_name ) ? (string) $b->contact_name : '',
@@ -522,18 +536,20 @@ class CMB_Branches {
 				case 'lat':
 				case 'lng':
 					if ( null === $v || '' === trim( (string) $v ) ) {
-						$out[ $key ] = null;
+						$out[ $key ] = '';
 						break;
 					}
 
-					$f   = (float) cmb_en_num( (string) $v );
+					// ممیز فارسی «٫» و ویرگول هم پذیرفته می‌شود
+					$raw = str_replace( array( '٫', ',' ), '.', trim( cmb_en_num( (string) $v ) ) );
 					$max = 'lat' === $key ? 90 : 180;
 
-					if ( abs( $f ) > $max ) {
-						return new WP_Error( 'cmb_branch_geo', 'مختصات نقشه معتبر نیست.', array( 'status' => 400 ) );
+					if ( ! is_numeric( $raw ) || abs( (float) $raw ) > $max ) {
+						return new WP_Error( 'cmb_branch_geo', 'مختصات نقشه معتبر نیست؛ عدد اعشاری مثل ۳۲٫۴۵۶۱ وارد کنید.', array( 'status' => 400 ) );
 					}
 
-					$out[ $key ] = round( $f, 6 );
+					// رشته، تا روی همه‌ی دیتابیس‌ها یکسان ذخیره شود
+					$out[ $key ] = (string) round( (float) $raw, 6 );
 					break;
 
 				case 'sort_order':
@@ -932,6 +948,11 @@ class CMB_Branches {
 
 		if ( is_wp_error( $conflict ) ) {
 			return $conflict;
+		}
+
+		// نقش با فعال‌سازی افزونه ساخته می‌شود؛ اگر به هر دلیل نبود، همین‌جا
+		if ( ! get_role( CMB_Operators_Role::ROLE ) ) {
+			add_role( CMB_Operators_Role::ROLE, 'مسئول رزرو چک موتور', array( 'read' => true, CMB_Operators_Role::CAP => true ) );
 		}
 
 		$existing = CMB_OTP::users_with_phone( $phone );
