@@ -1033,3 +1033,38 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
 .pn-wal__t { font-size: var(--t-sb); font-weight: 700; line-height: 1.6; }
 .pn-wal__s { font-size: var(--t-cp); color: var(--ink-3); line-height: 1.7; }
 .pn-wal__a { flex: 0 0 auto; font-size: var(--t-cl); font-weight: 800; }
+
+/* ═══ نمایندگی‌ها ═══ */
+
+/* نام شعبه (و انتخابگر شعبه‌ی مدیر سایت) زیر برند نوار کناری */
+.pn-branch {
+  display: block; margin: 0 var(--s2) var(--s4); padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm); background: rgba(255,255,255,.07);
+}
+.pn-branch__l { display: block; font-size: var(--t-cp); color: rgba(255,255,255,.5); margin-bottom: 3px; }
+.pn-branch__t { font-size: var(--t-cl); font-weight: 700; color: #fff; }
+.pn-branch .pn-badge { margin-top: 4px; }
+.pn-branch__sel {
+  width: 100%; font: inherit; font-size: var(--t-sb); font-weight: 700;
+  color: #fff; background: transparent; border: 0; padding: 2px 0; cursor: pointer;
+}
+.pn-branch__sel option { color: var(--ink); }
+
+/* سه عدد کیف پول: مبلغ با واحد، کمی کوچک‌تر از شمارنده‌ها */
+.pn-stats--wallet { grid-template-columns: repeat(3, 1fr); }
+.pn-stat__v--txt { font-size: 20px; letter-spacing: 0; }
+
+.pn-agc__hd { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; }
+.pn-agc__w {
+  display: grid; grid-template-columns: repeat(3, auto); gap: var(--s2) var(--s4);
+  padding: var(--s3) var(--s4); border-radius: var(--r-sm); background: var(--g6);
+}
+.pn-agc__w span { display: block; font-size: var(--t-cp); color: var(--ink-3); }
+.pn-agc__w b { font-size: var(--t-cl); font-weight: 800; }
+
+.pn-table__total td { font-weight: 800; background: var(--g6); }
+
+@media (max-width: 980px) {
+  .pn-stats--wallet { grid-template-columns: 1fr; }
+  .pn-agc__w { grid-template-columns: repeat(3, 1fr); width: 100%; }
+}

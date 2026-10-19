@@ -480,6 +480,8 @@ class CMB_Panel_Api {
 			'fee'      => CMB_Branches::fee(),
 			'feeFa'    => cmb_toman( CMB_Branches::fee() ),
 			'multi'    => CMB_Branches::ready() && count( CMB_Branches::all() ) > 1,
+			// بخش «نمایندگی‌ها» فقط بعد از مهاجرت ۱.۹.۰ معنا دارد
+			'ready'    => CMB_Branches::ready(),
 			'branches' => array(),
 		);
 
