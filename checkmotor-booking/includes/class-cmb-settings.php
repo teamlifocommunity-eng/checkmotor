@@ -80,6 +80,20 @@ class CMB_Settings {
 			// --- محل سکونت (استان و شهر) ---
 			'location_mode'         => 0,       // 0 = شهر به‌صورت تایپ آزاد؛ 1 = انتخاب استان و شهر از فهرست
 
+			// --- نمایندگی‌ها (تومان؛ سراسری) ---
+			'agency_fee'            => 200000,  // مبلغ هر رزرو موفق در نمایندگی
+			'agency_welcome_credit' => 1000000, // اعتبار رایگان اولین فعال‌سازی
+			'agency_low_balance'    => 400000,  // آستانه‌ی هشدار موجودی آزاد
+			'agency_topup_min'      => 1000000, // حداقل شارژ آنلاین
+			'pattern_booking_branch'  => '',    // مشتری: {0} نام، {1} خدمت، {2} تاریخ، {3} شیفت، {4} کد، {5} مرکز، {6} آدرس، {7} تلفن
+			'pattern_reminder_branch' => '',    // مشتری: {0} خدمت، {1} تاریخ، {2} شیفت، {3} مرکز، {4} آدرس
+			'pattern_cancel_branch'   => '',    // مشتری: {0} خدمت، {1} تاریخ، {2} مرکز، {3} تلفن
+			'pattern_agency_new'      => '',    // نمایندگی: {0} نام مشتری، {1} موبایل، {2} خدمت، {3} تاریخ، {4} شیفت
+			'pattern_agency_cancel'   => '',    // نمایندگی: {0} نام مشتری، {1} خدمت، {2} تاریخ
+			'pattern_agency_low'      => '',    // نمایندگی: {0} موجودی آزاد، {1} تعداد نوبت قابل پذیرش
+			'pattern_agency_topup'    => '',    // نمایندگی: {0} مبلغ شارژ، {1} موجودی جدید
+			'pattern_agency_active'   => '',    // نمایندگی: {0} نام نمایندگی، {1} اعتبار اولیه، {2} لینک پنل
+
 			// --- متن‌ها ---
 			'confirm_note'          => 'از این صفحه اسکرین‌شات بگیرید و هنگام مراجعه نشان دهید.',
 			'ecu_note'              => 'برای برخی ECUها ممکن است خدمات قابل انجام نباشد؛ در صورت تردید با شعبه تماس بگیرید.',
@@ -174,7 +188,7 @@ class CMB_Settings {
 	 *
 	 * @return array|WP_Error
 	 */
-	public static function sanitize_schedule( array $input ) {
+	public static function sanitize_schedule( array $input, $branch_id = 0 ) {
 		$clean = array();
 
 		foreach ( self::schedule_rules() as $key => $rule ) {
@@ -212,8 +226,13 @@ class CMB_Settings {
 
 		/* شیفت عصر باید بعد از صبح شروع شود؛ وگرنه ترتیب نمایش و
 		   محاسبه‌ی مهلت لغو به هم می‌ریزد. */
-		$morning   = isset( $clean['morning_start'] ) ? $clean['morning_start'] : self::get( 'morning_start', '10:00' );
-		$afternoon = isset( $clean['afternoon_start'] ) ? $clean['afternoon_start'] : self::get( 'afternoon_start', '17:00' );
+		$current   = function ( $key, $fallback ) use ( $branch_id ) {
+			$v = ( $branch_id && function_exists( 'cmb_branch_setting' ) ) ? cmb_branch_setting( $branch_id, $key ) : self::get( $key, $fallback );
+
+			return '' !== (string) $v ? $v : $fallback;
+		};
+		$morning   = isset( $clean['morning_start'] ) ? $clean['morning_start'] : $current( 'morning_start', '10:00' );
+		$afternoon = isset( $clean['afternoon_start'] ) ? $clean['afternoon_start'] : $current( 'afternoon_start', '17:00' );
 
 		if ( strcmp( $afternoon, $morning ) <= 0 ) {
 			return new WP_Error( 'cmb_bad_order', 'ساعت شروع شیفت بعدازظهر باید بعد از شیفت صبح باشد.', array( 'status' => 400 ) );

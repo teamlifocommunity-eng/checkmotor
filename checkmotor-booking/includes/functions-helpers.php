@@ -163,12 +163,12 @@ function cmb_earliest_slot() {
  *
  * @return DateTime|null
  */
-function cmb_slot_start( $date, $block_key ) {
+function cmb_slot_start( $date, $block_key, $branch_id = 0 ) {
 	if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $date ) ) {
 		return null;
 	}
 
-	$start = (string) cmb_block_start( $block_key );
+	$start = (string) cmb_block_start( $block_key, $branch_id );
 
 	if ( ! preg_match( '/^\d{1,2}:\d{2}$/', $start ) ) {
 		$start = '00:00';
@@ -276,22 +276,34 @@ function cmb_get_ip() {
 
 /**
  * کلید شیفت‌های زمانی و برچسب فارسی آن‌ها.
+ *
+ * ساعت شروع و ظرفیت برای هر نمایندگی جداست (D6). شعبه‌ی صفر یا مرکز
+ * همان تنظیمات سراسری را می‌خواند، دقیقاً مثل پیش از نمایندگی‌ها.
+ * برچسب و کلید شیفت‌ها برای همه یکی است.
  */
-function cmb_blocks() {
+function cmb_blocks( $branch_id = 0 ) {
+	$branch_id = (int) $branch_id;
+
+	$get = function ( $key, $fallback ) use ( $branch_id ) {
+		$v = ( $branch_id && function_exists( 'cmb_branch_setting' ) ) ? cmb_branch_setting( $branch_id, $key ) : CMB_Settings::get( $key, $fallback );
+
+		return '' !== (string) $v ? $v : $fallback;
+	};
+
 	$blocks = array(
 		'morning'   => array(
 			'label'    => 'شیفت صبح',
-			'start'    => CMB_Settings::get( 'morning_start', '10:00' ),
-			'capacity' => (int) CMB_Settings::get( 'morning_capacity', 2 ),
+			'start'    => $get( 'morning_start', '10:00' ),
+			'capacity' => (int) $get( 'morning_capacity', 2 ),
 		),
 		'afternoon' => array(
 			'label'    => 'شیفت بعدازظهر',
-			'start'    => CMB_Settings::get( 'afternoon_start', '17:00' ),
-			'capacity' => (int) CMB_Settings::get( 'afternoon_capacity', 3 ),
+			'start'    => $get( 'afternoon_start', '17:00' ),
+			'capacity' => (int) $get( 'afternoon_capacity', 3 ),
 		),
 	);
 
-	return apply_filters( 'cmb_blocks', $blocks );
+	return apply_filters( 'cmb_blocks', $blocks, $branch_id );
 }
 
 function cmb_block_label( $key ) {
@@ -300,8 +312,8 @@ function cmb_block_label( $key ) {
 	return isset( $blocks[ $key ] ) ? $blocks[ $key ]['label'] : $key;
 }
 
-function cmb_block_start( $key ) {
-	$blocks = cmb_blocks();
+function cmb_block_start( $key, $branch_id = 0 ) {
+	$blocks = cmb_blocks( $branch_id );
 
 	return isset( $blocks[ $key ] ) ? $blocks[ $key ]['start'] : '';
 }

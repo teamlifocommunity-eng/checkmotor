@@ -142,13 +142,28 @@ class CMB_Services {
 			$services[] = self::to_array( $service );
 		}
 
-		$payload = array(
-			'branch'   => $branch ? array(
+		$branch_out = null;
+
+		if ( $branch ) {
+			$branch_out = array(
 				'id'      => (int) $branch->id,
 				'title'   => $branch->title,
 				'phone'   => $branch->phone,
 				'address' => $branch->address,
-			) : null,
+			);
+
+			/* اطلاعات نمایندگی (عکس، شهر، نقشه). «قابل رزرو بودن» عمداً اینجا
+			   نیست: به موجودی کیف پول بسته است و در کش ۱۲ ساعته کهنه می‌شد؛
+			   بیرون از کش اضافه می‌شود (with_live). */
+			if ( CMB_Branches::ready() ) {
+				$pub = CMB_Branches::public_array( $branch );
+				unset( $pub['bookable'] );
+				$branch_out = array_merge( $branch_out, $pub );
+			}
+		}
+
+		$payload = array(
+			'branch'   => $branch_out,
 			'services' => $services,
 			'notes'    => array(
 				'ecu'         => CMB_Settings::get( 'ecu_note', '' ),
@@ -161,9 +176,145 @@ class CMB_Services {
 		return $payload;
 	}
 
+	/**
+	 * همان payload، به‌علاوه‌ی «قابل رزرو بودن» شعبه که لحظه‌ای است.
+	 */
+	public static function payload_live( $branch_id = 0 ) {
+		$payload = self::payload( $branch_id );
+
+		if ( ! empty( $payload['branch']['id'] ) && CMB_Branches::ready() ) {
+			$reason                          = '';
+			$payload['branch']['bookable']   = CMB_Branches::bookable( (int) $payload['branch']['id'], $reason );
+			$payload['branch']['unavailable'] = $reason ? 'فعلاً نوبت نمی‌گیرد' : '';
+		}
+
+		return $payload;
+	}
+
+	/* ------------------------------------------------------------------
+	 * کاتالوگ مرکزی خدمات
+	 * --------------------------------------------------------------- */
+
+	/**
+	 * ردیف خدمات یک نمایندگی را با کاتالوگ مرکز کامل می‌کند.
+	 *
+	 * کاتالوگ همان خدمات مرکز است. هر خدمت نمایندگی یک ردیف با branch_id
+	 * خودش و catalog_id برابر شناسه‌ی خدمت مرکز دارد. ردیف تازه غیرفعال
+	 * است تا خود نمایندگی آن را با قیمت خودش فعال کند (US-3.4). خدمت‌های
+	 * آزمایشی مرکز (is_active=2) کاتالوگ نیستند.
+	 *
+	 * @return int تعداد ردیف‌های تازه.
+	 */
+	public static function ensure_catalog( $branch_id ) {
+		global $wpdb;
+
+		if ( ! CMB_Branches::ready() || ! CMB_Branches::is_agency( $branch_id ) ) {
+			return 0;
+		}
+
+		$table  = cmb_table( 'services' );
+		$center = CMB_Branches::center_id();
+		$have   = array_map( 'intval', (array) $wpdb->get_col( $wpdb->prepare( "SELECT catalog_id FROM {$table} WHERE branch_id = %d", (int) $branch_id ) ) ); // phpcs:ignore
+		$added  = 0;
+
+		foreach ( self::get_services( $center, false ) as $svc ) {
+			if ( 2 === (int) $svc->is_active || in_array( (int) $svc->id, $have, true ) ) {
+				continue;
+			}
+
+			$row = array(
+				'branch_id'        => (int) $branch_id,
+				'slug'             => $svc->slug,
+				'title'            => $svc->title,
+				'description'      => (string) $svc->description,
+				'poster_id'        => (int) $svc->poster_id,
+				'price'            => (int) $svc->price,
+				'duration_note'    => (string) $svc->duration_note,
+				'allowed_weekdays' => (string) $svc->allowed_weekdays,
+				'sort_order'       => (int) $svc->sort_order,
+				'is_active'        => 0,
+				'catalog_id'       => (int) $svc->id,
+				'created_at'       => current_time( 'mysql' ),
+			);
+
+			if ( isset( $svc->own_capacity ) ) {
+				$row['own_capacity'] = (string) $svc->own_capacity;
+			}
+
+			if ( $wpdb->insert( $table, $row ) ) {
+				$added++;
+			}
+		}
+
+		if ( $added ) {
+			self::flush_cache();
+		}
+
+		return $added;
+	}
+
+	/**
+	 * پس از ذخیره‌ی یک خدمت مرکز: عنوان، توضیح، پوستر و مدتش روی ردیف
+	 * همه‌ی نمایندگی‌ها همگام می‌شود. قیمت، روزها و فعال بودن مال خود
+	 * نمایندگی است و دست نمی‌خورد.
+	 */
+	public static function sync_catalog( $service_id ) {
+		global $wpdb;
+
+		$svc = self::get_service( $service_id );
+
+		if ( ! $svc || ! CMB_Branches::ready() || (int) $svc->branch_id !== CMB_Branches::center_id() ) {
+			return;
+		}
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE " . cmb_table( 'services' ) . " SET title = %s, description = %s, poster_id = %d, duration_note = %s
+				 WHERE catalog_id = %d AND branch_id <> %d", // phpcs:ignore
+				$svc->title,
+				(string) $svc->description,
+				(int) $svc->poster_id,
+				(string) $svc->duration_note,
+				(int) $svc->id,
+				(int) $svc->branch_id
+			)
+		);
+
+		self::flush_cache();
+	}
+
+	/** خدمت تازه‌ی مرکز به کاتالوگ همه‌ی نمایندگی‌ها اضافه می‌شود. */
+	public static function catalog_added( $service_id ) {
+		global $wpdb;
+
+		$svc = self::get_service( $service_id );
+
+		if ( ! $svc || ! CMB_Branches::ready() || (int) $svc->branch_id !== CMB_Branches::center_id() ) {
+			return;
+		}
+
+		$wpdb->update( cmb_table( 'services' ), array( 'catalog_id' => (int) $svc->id ), array( 'id' => (int) $svc->id ) );
+		self::flush_cache();
+
+		foreach ( CMB_Branches::all() as $b ) {
+			if ( CMB_Branches::is_agency( $b ) ) {
+				self::ensure_catalog( (int) $b->id );
+			}
+		}
+	}
+
+	/** آیا این خدمت ردیفِ کاتالوگِ یک نمایندگی است (عنوان و توضیحش قفل)؟ */
+	public static function is_catalog_copy( $service ) {
+		return $service && CMB_Branches::ready() && CMB_Branches::is_agency( (int) $service->branch_id );
+	}
+
 	public static function flush_cache() {
 		self::$service_cache = null;
 		self::$branch_cache  = array();
+
+		if ( class_exists( 'CMB_Branches' ) ) {
+			CMB_Branches::forget();
+		}
 
 		/* کش پاسخ REST هم باید باطل شود، وگرنه تغییرات تا ۱۲ ساعت دیده
 		   نمی‌شود. پیش از این فقط کلید صفر و شعبه‌ی پیش‌فرض پاک می‌شد،
@@ -582,9 +733,14 @@ class CMB_Services {
 			return new WP_Error( 'cmb_db_error', 'ثبت خدمت ناموفق بود.', array( 'status' => 500 ) );
 		}
 
+		$id = (int) $wpdb->insert_id;
+
 		self::flush_cache();
 
-		$id = (int) $wpdb->insert_id;
+		// خدمت تازه‌ی مرکز: کاتالوگ نمایندگی‌ها هم کامل می‌شود (غیرفعال)
+		if ( $branch_id === CMB_Branches::center_id() ) {
+			self::catalog_added( $id );
+		}
 
 		cmb_log( 'Service created', array( 'service' => $id, 'title' => $title ) );
 
@@ -610,8 +766,22 @@ class CMB_Services {
 			return new WP_Error( 'cmb_not_found', 'خدمت یافت نشد.', array( 'status' => 404 ) );
 		}
 
+		if ( self::is_catalog_copy( $service ) ) {
+			return new WP_Error( 'cmb_catalog_copy', 'خدمت نمایندگی از کاتالوگ مرکز می‌آید و حذف نمی‌شود؛ اگر ارائه‌اش نمی‌کنید، غیرفعالش کنید.', array( 'status' => 409 ) );
+		}
+
 		$bookings = cmb_table( 'bookings' );
-		$used     = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$bookings} WHERE service_id = %d", $service_id ) ); // phpcs:ignore
+		$copies   = array();
+
+		/* خدمت مرکز: ردیف‌های کاتالوگیِ نمایندگی‌ها هم با آن می‌روند —
+		   مگر نوبتی روی یکی‌شان ثبت شده باشد. */
+		if ( CMB_Branches::ready() && (int) $service->branch_id === CMB_Branches::center_id() ) {
+			$copies = array_map( 'intval', (array) $wpdb->get_col( $wpdb->prepare( 'SELECT id FROM ' . cmb_table( 'services' ) . ' WHERE catalog_id = %d AND id <> %d', $service_id, $service_id ) ) ); // phpcs:ignore
+		}
+
+		$ids          = array_merge( array( $service_id ), $copies );
+		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+		$used         = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$bookings} WHERE service_id IN ({$placeholders})", $ids ) ); // phpcs:ignore
 
 		if ( $used > 0 ) {
 			return new WP_Error(
@@ -624,11 +794,13 @@ class CMB_Services {
 			);
 		}
 
-		$wpdb->delete( cmb_table( 'services' ), array( 'id' => $service_id ) );
+		foreach ( $ids as $del ) {
+			$wpdb->delete( cmb_table( 'services' ), array( 'id' => (int) $del ) );
+		}
 
 		self::flush_cache();
 
-		cmb_log( 'Service deleted', array( 'service' => $service_id ) );
+		cmb_log( 'Service deleted', array( 'service' => $service_id, 'copies' => count( $copies ) ) );
 
 		return true;
 	}
@@ -699,6 +871,15 @@ class CMB_Services {
 			return false;
 		}
 
-		return false !== $wpdb->update( $table, $fields, array( 'id' => (int) $service_id ) );
+		$ok = false !== $wpdb->update( $table, $fields, array( 'id' => (int) $service_id ) );
+
+		self::flush_cache();
+
+		// خدمت مرکز: عنوان و توضیح و پوستر روی کاتالوگ نمایندگی‌ها
+		if ( $ok && array_intersect_key( $fields, array_flip( array( 'title', 'description', 'poster_id', 'duration_note' ) ) ) ) {
+			self::sync_catalog( $service_id );
+		}
+
+		return $ok;
 	}
 }

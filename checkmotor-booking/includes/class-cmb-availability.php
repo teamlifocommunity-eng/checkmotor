@@ -31,7 +31,7 @@ class CMB_Availability {
 		$window   = (int) CMB_Settings::get( 'window_days', 7 );
 
 		$days     = array();
-		$blocks   = cmb_blocks();
+		$blocks   = cmb_blocks( $branch_id );
 		$earliest = cmb_earliest_slot();
 		$hours    = max( 0, (int) CMB_Settings::get( 'min_hours_ahead', 24 ) );
 
@@ -86,7 +86,7 @@ class CMB_Availability {
 				}
 
 				// کمتر از «حداقل زمان تا نوبت» به شروع این شیفت مانده
-				$slot = cmb_slot_start( $ymd, $key );
+				$slot = cmb_slot_start( $ymd, $key, $branch_id );
 				$soon = $earliest && $slot && $slot < $earliest;
 
 				if ( $soon ) {
@@ -286,7 +286,7 @@ class CMB_Availability {
 			return isset( $own[ $block_key ] ) ? (int) $own[ $block_key ] : 0;
 		}
 
-		$blocks = cmb_blocks();
+		$blocks = cmb_blocks( $service ? (int) $service->branch_id : 0 );
 
 		return isset( $blocks[ $block_key ] ) ? (int) $blocks[ $block_key ]['capacity'] : 0;
 	}
@@ -309,7 +309,7 @@ class CMB_Availability {
 	 * با خدمت، ظرفیت همان استخری که آن خدمت از آن کم می‌کند.
 	 */
 	public static function remaining( $branch_id, $date, $block_key, $service = null ) {
-		$blocks = cmb_blocks();
+		$blocks = cmb_blocks( $branch_id );
 
 		if ( ! isset( $blocks[ $block_key ] ) ) {
 			return 0;
@@ -388,7 +388,7 @@ class CMB_Availability {
 		}
 
 		$branch_id = $branch_id ? (int) $branch_id : (int) $service->branch_id;
-		$blocks    = cmb_blocks();
+		$blocks    = cmb_blocks( $branch_id );
 
 		if ( ! isset( $blocks[ $block_key ] ) ) {
 			return new WP_Error( 'cmb_bad_block', 'شیفت معتبر نیست.', array( 'status' => 400 ) );
@@ -418,7 +418,7 @@ class CMB_Availability {
 		}
 
 		$earliest = cmb_earliest_slot();
-		$slot     = cmb_slot_start( $date, $block_key );
+		$slot     = cmb_slot_start( $date, $block_key, $branch_id );
 
 		if ( $earliest && $slot && $slot < $earliest ) {
 			$hours = max( 0, (int) CMB_Settings::get( 'min_hours_ahead', 24 ) );

@@ -107,6 +107,11 @@ class CMB_Payments {
 			return 0;
 		}
 
+		// مشتری برای نوبت نمایندگی بیعانه نمی‌دهد (D19)
+		if ( isset( $service->branch_id ) && class_exists( 'CMB_Branches' ) && CMB_Branches::is_agency( (int) $service->branch_id ) ) {
+			return 0;
+		}
+
 		$own = isset( $service->deposit_amount ) ? $service->deposit_amount : null;
 
 		if ( null === $own || '' === $own ) {

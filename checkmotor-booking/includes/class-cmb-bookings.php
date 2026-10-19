@@ -442,36 +442,32 @@ class CMB_Bookings {
 		$today = cmb_today();
 		$now   = cmb_now();
 
-		// شیفت‌هایی از امروز که هنوز شروع نشده‌اند
-		$upcoming_today = array();
-
-		foreach ( cmb_blocks() as $key => $block ) {
-			$start = DateTime::createFromFormat( '!Y-m-d H:i', $today . ' ' . $block['start'], cmb_timezone() );
-
-			if ( $start && $start > $now ) {
-				$upcoming_today[] = $key;
-			}
-		}
-
 		/* «در انتظار پرداخت» هم تا پایان مهلتش فعال است؛ وگرنه کسی که
 		   هنوز در درگاه است می‌توانست هم‌زمان نوبت دیگری بگیرد. */
 		$active = ( class_exists( 'CMB_Payments' ) && CMB_Payments::schema_ready() )
 			? "( status = 'confirmed' OR ( status = 'pending' AND hold_until_gmt > '" . esc_sql( cmb_now_gmt() ) . "' ) )"
 			: "status = 'confirmed'";
 
-		$sql    = "SELECT * FROM {$table} WHERE user_id = %d AND id <> %d AND {$active} AND ( booking_date > %s";
-		$params = array( $user_id, (int) $exclude_id, $today );
+		$sql  = "SELECT * FROM {$table} WHERE user_id = %d AND id <> %d AND {$active} AND booking_date >= %s ORDER BY booking_date ASC, block_key ASC";
+		$rows = (array) $wpdb->get_results( $wpdb->prepare( $sql, $user_id, (int) $exclude_id, $today ) ); // phpcs:ignore
 
-		if ( $upcoming_today ) {
-			$holders = implode( ',', array_fill( 0, count( $upcoming_today ), '%s' ) );
-			$sql    .= " OR ( booking_date = %s AND block_key IN ({$holders}) )";
-			$params[] = $today;
-			$params  = array_merge( $params, $upcoming_today );
-		}
+		/* نوبتِ امروز فقط تا شروع شیفتش فعال است. ساعت شروع شیفت هر شعبه
+		   جداست، پس این شرط برای هر ردیف با برنامه‌ی همان شعبه سنجیده
+		   می‌شود. */
+		return array_values(
+			array_filter(
+				$rows,
+				function ( $row ) use ( $today, $now ) {
+					if ( (string) $row->booking_date !== $today ) {
+						return true;
+					}
 
-		$sql .= ' ) ORDER BY booking_date ASC, block_key ASC';
+					$start = cmb_slot_start( $today, $row->block_key, (int) $row->branch_id );
 
-		return (array) $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore
+					return $start && $start > $now;
+				}
+			)
+		);
 	}
 
 	/**
@@ -686,7 +682,7 @@ class CMB_Bookings {
 			return null;
 		}
 
-		return cmb_slot_start( (string) $booking->booking_date, $booking->block_key );
+		return cmb_slot_start( (string) $booking->booking_date, $booking->block_key, isset( $booking->branch_id ) ? (int) $booking->branch_id : 0 );
 	}
 
 	/**
@@ -1228,7 +1224,7 @@ class CMB_Bookings {
 			'dateFa'       => cmb_jalali_date( $booking->booking_date, 'full' ),
 			'block'        => $booking->block_key,
 			'blockLabel'   => cmb_block_label( $booking->block_key ),
-			'blockStart'   => cmb_fa_num( cmb_block_start( $booking->block_key ) ),
+			'blockStart'   => cmb_fa_num( cmb_block_start( $booking->block_key, (int) $booking->branch_id ) ),
 			'name'         => $booking->customer_name,
 			'phone'        => $booking->phone,
 			'phoneFa'      => cmb_fa_num( $booking->phone ),
@@ -1279,7 +1275,7 @@ class CMB_Bookings {
 			self::service_title( $booking ),
 			cmb_jalali_date( $booking->booking_date, 'numeric' ),
 			cmb_block_label( $booking->block_key ),
-			cmb_block_start( $booking->block_key ),
+			cmb_block_start( $booking->block_key, (int) $booking->branch_id ),
 			$booking->tracking_code,
 		);
 
@@ -1360,7 +1356,7 @@ class CMB_Bookings {
 			self::service_title( $booking ),
 			cmb_jalali_date( $booking->booking_date, 'numeric' ),
 			cmb_block_label( $booking->block_key ),
-			cmb_block_start( $booking->block_key ),
+			cmb_block_start( $booking->block_key, (int) $booking->branch_id ),
 		);
 
 		$fallback = sprintf(

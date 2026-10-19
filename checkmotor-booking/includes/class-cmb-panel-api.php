@@ -669,7 +669,7 @@ class CMB_Panel_Api {
 			'dateLong'    => cmb_jalali_date( $row->booking_date, 'full' ),
 			'block'       => $row->block_key,
 			'blockLabel'  => cmb_block_label( $row->block_key ),
-			'blockStart'  => cmb_block_start( $row->block_key ),
+			'blockStart'  => cmb_block_start( $row->block_key, (int) $row->branch_id ),
 			'service'     => $service ? $service->title : '—',
 			'serviceId'   => (int) $row->service_id,
 			'name'        => $row->customer_name,

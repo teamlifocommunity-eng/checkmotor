@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CMB_Install {
 
-	const DB_VERSION = '1.8.0';
+	const DB_VERSION = '1.9.0';
 
 	public static function activate() {
 		global $wpdb;
@@ -92,7 +92,7 @@ class CMB_Install {
 
 		$missing = array();
 
-		foreach ( array( 'branches', 'services', 'bookings', 'closures', 'otp', 'payments', 'wallet' ) as $name ) {
+		foreach ( array( 'branches', 'services', 'bookings', 'closures', 'otp', 'payments', 'wallet', 'branch_ledger' ) as $name ) {
 			$table = cmb_table( $name );
 			$found = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ); // phpcs:ignore
 
@@ -174,6 +174,60 @@ class CMB_Install {
 		}
 
 		self::drop_card_refund();
+		self::migrate_branches();
+	}
+
+	/**
+	 * 1.9.0: نمایندگی‌ها. فقط یک بار اثر دارد و به داده‌ی بوشهر جز برچسب
+	 * «مرکز» دست نمی‌زند.
+	 *
+	 *   · شعبه‌ی پیش‌فرض (بوشهر) ← type=center، status=active، استان و شهر
+	 *     اگر خالی‌اند «بوشهر». برنامه‌ی کاری‌اش (schedule) عمداً خالی
+	 *     می‌ماند تا همچنان از تنظیمات سراسری خوانده شود و صفحه‌ی تنظیمات
+	 *     پیشخوان مثل قبل روی بوشهر اثر کند.
+	 *   · شعبه‌ای که پیش‌تر غیرفعال بود (is_active=0) ← status=inactive.
+	 *   · خدمات مرکز ← catalog_id برابر شناسه‌ی خودشان (کاتالوگ مرکزی).
+	 *   · مسئولان رزرو فعلی ← cmb_branch_id = مرکز (رفتارشان عوض نمی‌شود).
+	 */
+	protected static function migrate_branches() {
+		global $wpdb;
+
+		if ( get_option( 'cmb_branches_migrated' ) ) {
+			return;
+		}
+
+		if ( ! cmb_has_column( 'branches', 'type' ) || ! cmb_has_column( 'services', 'catalog_id' ) ) {
+			return;
+		}
+
+		$branches = cmb_table( 'branches' );
+		$services = cmb_table( 'services' );
+		$center   = (int) CMB_Services::default_branch_id();
+
+		$wpdb->query( "UPDATE {$branches} SET status = 'inactive' WHERE is_active = 0" ); // phpcs:ignore
+
+		if ( $center ) {
+			$wpdb->query( $wpdb->prepare( "UPDATE {$branches} SET type = 'center', status = 'active', is_active = 1, activated_at = COALESCE(activated_at, created_at) WHERE id = %d", $center ) ); // phpcs:ignore
+			$wpdb->query( $wpdb->prepare( "UPDATE {$branches} SET province = 'بوشهر' WHERE id = %d AND province = ''", $center ) ); // phpcs:ignore
+			$wpdb->query( $wpdb->prepare( "UPDATE {$branches} SET city = 'بوشهر' WHERE id = %d AND city = ''", $center ) ); // phpcs:ignore
+			$wpdb->query( $wpdb->prepare( "UPDATE {$services} SET catalog_id = id WHERE branch_id = %d AND catalog_id = 0", $center ) ); // phpcs:ignore
+
+			foreach ( get_users( array( 'role' => 'cmb_operator', 'fields' => 'ID' ) ) as $uid ) {
+				if ( '' === (string) get_user_meta( (int) $uid, 'cmb_branch_id', true ) ) {
+					update_user_meta( (int) $uid, 'cmb_branch_id', $center );
+				}
+			}
+		}
+
+		update_option( 'cmb_branches_migrated', current_time( 'mysql' ), false );
+
+		if ( class_exists( 'CMB_Services' ) ) {
+			CMB_Services::flush_cache();
+		}
+
+		if ( class_exists( 'CMB_Availability' ) ) {
+			CMB_Availability::flush_cache();
+		}
 	}
 
 	/**
@@ -231,9 +285,15 @@ class CMB_Install {
 		$otp      = cmb_table( 'otp' );
 		$payments = cmb_table( 'payments' );
 		$wallet   = cmb_table( 'wallet' );
+		$ledger   = cmb_table( 'branch_ledger' );
 
 		$sql = array();
 
+		/* شعبه‌ها: مرکز بوشهر (type=center) و نمایندگی‌ها (agency).
+		   پیش‌فرض ستون‌های type و status عمداً center/active است، نه
+		   agency/draft: ردیف موجودِ بوشهر همان لحظه‌ای که dbDelta ستون را
+		   می‌سازد درست است، حتی پیش از مهاجرت داده‌ها. نمایندگی تازه همیشه
+		   با agency/draft صریح ساخته می‌شود (CMB_Branches::create). */
 		$sql[] = "CREATE TABLE {$branches} (
 			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 			slug VARCHAR(60) NOT NULL,
@@ -242,6 +302,18 @@ class CMB_Install {
 			address TEXT NULL,
 			manager_phones VARCHAR(255) DEFAULT '' NOT NULL,
 			is_active TINYINT(1) DEFAULT 1 NOT NULL,
+			type VARCHAR(10) DEFAULT 'center' NOT NULL,
+			province VARCHAR(60) DEFAULT '' NOT NULL,
+			city VARCHAR(60) DEFAULT '' NOT NULL,
+			lat DECIMAL(9,6) NULL DEFAULT NULL,
+			lng DECIMAL(9,6) NULL DEFAULT NULL,
+			photo_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			contact_name VARCHAR(120) DEFAULT '' NOT NULL,
+			schedule TEXT NULL,
+			status VARCHAR(10) DEFAULT 'active' NOT NULL,
+			activated_at DATETIME NULL,
+			low_notice TINYINT DEFAULT 0 NOT NULL,
+			sort_order INT DEFAULT 0 NOT NULL,
 			created_at DATETIME NOT NULL,
 			PRIMARY KEY  (id),
 			UNIQUE KEY slug (slug)
@@ -262,10 +334,12 @@ class CMB_Install {
 			cancel_refund_amount INT UNSIGNED NULL DEFAULT NULL,
 			sort_order INT DEFAULT 0 NOT NULL,
 			is_active TINYINT(1) DEFAULT 1 NOT NULL,
+			catalog_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
 			created_at DATETIME NOT NULL,
 			PRIMARY KEY  (id),
 			KEY branch_id (branch_id),
-			KEY slug (slug)
+			KEY slug (slug),
+			KEY catalog_id (catalog_id)
 		) {$charset};";
 
 		$sql[] = "CREATE TABLE {$bookings} (
@@ -303,6 +377,8 @@ class CMB_Install {
 			pay_token VARCHAR(64) DEFAULT '' NOT NULL,
 			expire_reason VARCHAR(20) DEFAULT '' NOT NULL,
 			wallet_used INT UNSIGNED DEFAULT 0 NOT NULL,
+			branch_fee INT UNSIGNED DEFAULT 0 NOT NULL,
+			fee_status VARCHAR(10) DEFAULT '' NOT NULL,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL,
 			PRIMARY KEY  (id),
@@ -351,6 +427,7 @@ class CMB_Install {
 			kind VARCHAR(10) DEFAULT 'booking' NOT NULL,
 			phone VARCHAR(20) DEFAULT '' NOT NULL,
 			token VARCHAR(64) DEFAULT '' NOT NULL,
+			branch_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
 			raw TEXT NULL,
 			ip VARCHAR(45) DEFAULT '' NOT NULL,
 			created_at DATETIME NOT NULL,
@@ -390,6 +467,30 @@ class CMB_Install {
 			KEY payment_id (payment_id)
 		) {$charset};";
 
+		/* کیف پول نمایندگی: دفتر کل جدا از کیف پول مشتری. تومان و
+		   علامت‌دار. موجودی کل = جمع ردیف‌های done؛ موجودی آزاد = موجودی
+		   کل + جمع ردیف‌های held (منفی). uniq_ref جلوی واریز یا کسر
+		   تکراری را در خود دیتابیس می‌گیرد (fee:{booking}، welcome:{branch}،
+		   topup:{payment}، refund:{booking}). */
+		$sql[] = "CREATE TABLE {$ledger} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			branch_id BIGINT UNSIGNED NOT NULL,
+			amount BIGINT NOT NULL,
+			type VARCHAR(10) NOT NULL,
+			status VARCHAR(10) DEFAULT 'done' NOT NULL,
+			booking_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			payment_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			uniq_ref VARCHAR(40) NULL DEFAULT NULL,
+			note VARCHAR(190) DEFAULT '' NOT NULL,
+			by_user BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY uniq_ref (uniq_ref),
+			KEY branch_status (branch_id,status),
+			KEY booking_id (booking_id)
+		) {$charset};";
+
 		$sql[] = "CREATE TABLE {$closures} (
 			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 			branch_id BIGINT UNSIGNED NOT NULL DEFAULT 1,
@@ -426,12 +527,17 @@ class CMB_Install {
 		delete_transient( 'cmb_col_bookings_city' );
 		delete_transient( 'cmb_col_bookings_province' );
 
-		foreach ( array( 'deposit_amount', 'pay_status', 'hold_until_gmt', 'wallet_used' ) as $col ) {
+		foreach ( array( 'deposit_amount', 'pay_status', 'hold_until_gmt', 'wallet_used', 'branch_fee', 'fee_status', 'catalog_id' ) as $col ) {
 			delete_transient( 'cmb_col_bookings_' . $col );
 			delete_transient( 'cmb_col_services_' . $col );
 		}
 
+		foreach ( array( 'type', 'status', 'schedule', 'province', 'city' ) as $col ) {
+			delete_transient( 'cmb_col_branches_' . $col );
+		}
+
 		delete_transient( 'cmb_col_payments_kind' );
+		delete_transient( 'cmb_col_payments_branch_id' );
 	}
 
 	/**

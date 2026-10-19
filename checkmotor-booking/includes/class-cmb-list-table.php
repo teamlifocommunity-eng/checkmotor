@@ -188,7 +188,7 @@ class CMB_Bookings_List_Table extends WP_List_Table {
 				return esc_html( cmb_jalali_date( $item->booking_date, 'full' ) ) . '<br /><small>' . esc_html( $item->booking_date ) . '</small>';
 
 			case 'block_key':
-				return esc_html( cmb_block_label( $item->block_key ) ) . '<br /><small>ساعت ' . esc_html( cmb_fa_num( cmb_block_start( $item->block_key ) ) ) . '</small>';
+				return esc_html( cmb_block_label( $item->block_key ) ) . '<br /><small>ساعت ' . esc_html( cmb_fa_num( cmb_block_start( $item->block_key, isset( $item->branch_id ) ? (int) $item->branch_id : 0 ) ) ) . '</small>';
 
 			case 'service_id':
 				$service = CMB_Services::get_service( $item->service_id );

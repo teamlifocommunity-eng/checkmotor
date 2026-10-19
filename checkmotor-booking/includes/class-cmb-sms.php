@@ -127,6 +127,33 @@ class CMB_SMS {
 	}
 
 	/**
+	 * اولین پترنِ تنظیم‌شده از یک فهرست؛ وگرنه متن ساده (فقط در حالت ساده).
+	 *
+	 * برای پیامک‌های نمایندگی: تا پترن تازه (با نام و آدرس مرکز) در پنل
+	 * پیامک تأیید شود، همان پترن قبلی می‌رود — پیامک قطع نمی‌شود.
+	 *
+	 * @param array  $attempts [ [ کلید پترن, مقادیر ], ... ] به ترتیب ترجیح.
+	 * @param string $fallback متن حالت ساده.
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function send_first( $phone, array $attempts, $fallback = '' ) {
+		foreach ( $attempts as $try ) {
+			$body_id = trim( (string) CMB_Settings::get( $try[0], '' ) );
+
+			if ( '' !== $body_id ) {
+				return self::send_pattern( $phone, $body_id, (array) $try[1] );
+			}
+		}
+
+		if ( '' !== $fallback && 'simple' === CMB_Settings::get( 'sms_api_mode', 'pattern' ) ) {
+			return self::send_text( $phone, $fallback );
+		}
+
+		return new WP_Error( 'cmb_sms_no_pattern', 'هیچ‌کدام از پترن‌های این پیامک تنظیم نشده است.' );
+	}
+
+	/**
 	 * دریافت اعتبار پنل (برای تست اتصال در پنل مدیریت).
 	 *
 	 * @return float|WP_Error
