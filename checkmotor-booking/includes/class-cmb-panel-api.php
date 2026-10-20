@@ -118,9 +118,8 @@ class CMB_Panel_Api {
 	}
 
 	/**
-	 * گاردِ مسیرهای مخصوص مرکز: کیف پول مشتری‌ها، برگشت‌ها، سلامت سیستم و
-	 * بررسی بیعانه (بخش ۶.۳). کاربران مرکز همان دسترسی قبلی را دارند؛
-	 * نمایندگی‌ها نه.
+	 * گاردِ کیف پول مشتری‌ها، بازگشت وجه، سلامت سیستم و بررسی بیعانه: طبق
+	 * بند ۶.۳ سند فقط ادمین (CMB_Branches::can( 'center' )).
 	 */
 	public function guard_center() {
 		$base = $this->guard();
@@ -131,7 +130,7 @@ class CMB_Panel_Api {
 
 		return CMB_Branches::can( 'center' )
 			? true
-			: new WP_Error( 'cmb_panel_forbidden', 'این بخش مخصوص مرکز است.', array( 'status' => 403 ) );
+			: new WP_Error( 'cmb_panel_forbidden', 'این بخش فقط برای مدیر کل است.', array( 'status' => 403 ) );
 	}
 
 	/** گاردِ مسیرهای فقط مدیر سایت (مدیریت نمایندگی‌ها، گزارش، برگشت کسر). */
@@ -233,6 +232,34 @@ class CMB_Panel_Api {
 					'methods'             => 'GET' === $conf[0] ? WP_REST_Server::READABLE : WP_REST_Server::CREATABLE,
 					'callback'            => array( $this, $conf[1] ),
 					'permission_callback' => $conf[2],
+				)
+			);
+		}
+
+		/* همان مسیرها با نشانی و متدی که در جدول بخش ۶.۵ سند آمده (شناسه در
+		   نشانی، PUT برای ویرایش). پنل خودش از مسیرهای بالا استفاده می‌کند؛
+		   این‌ها برای هم‌خوانی با سند و هر ابزار بیرونی‌اند و همان گارد را دارند. */
+		$spec = array(
+			array( 'panel/branch', array( 'PUT' ), 'branch_save', $guard ),
+			array( 'panel/schedule', array( 'GET' ), 'get_schedule', $guard ),
+			array( 'panel/schedule', array( 'PUT' ), 'save_schedule', $guard ),
+			array( 'panel/branch-wallet/receipt/(?P<id>\d+)', array( 'GET' ), 'branch_receipt', $guard ),
+			array( 'panel/admin/branches', array( 'POST', 'PUT' ), 'admin_branch_save', $admin ),
+			array( 'panel/admin/branches/(?P<id>\d+)', array( 'PUT' ), 'admin_branch_save', $admin ),
+			array( 'panel/admin/branches/(?P<id>\d+)/status', array( 'POST' ), 'admin_branch_status', $admin ),
+			array( 'panel/admin/branches/(?P<id>\d+)/users', array( 'POST' ), 'admin_branch_users', $admin ),
+			array( 'panel/admin/branches/(?P<id>\d+)/adjust', array( 'POST' ), 'admin_branch_adjust', $admin ),
+			array( 'panel/admin/bookings/(?P<id>\d+)/fee-refund', array( 'POST' ), 'admin_fee_refund', $admin ),
+		);
+
+		foreach ( $spec as $conf ) {
+			register_rest_route(
+				self::NS,
+				'/' . $conf[0],
+				array(
+					'methods'             => $conf[1],
+					'callback'            => array( $this, $conf[2] ),
+					'permission_callback' => $conf[3],
 				)
 			);
 		}
@@ -472,7 +499,9 @@ class CMB_Panel_Api {
 			'can'      => array(
 				'schedule'      => CMB_Branches::can( 'schedule' ),
 				'services'      => CMB_Branches::can( 'services' ),
-				'createService' => CMB_Branches::can( 'services' ),
+				'catalog'       => CMB_Branches::can( 'catalog' ),
+				'rules'         => CMB_Branches::can( 'rules' ),
+				'createService' => $agency ? CMB_Branches::can( 'own_services' ) : CMB_Branches::can( 'catalog' ),
 				'closures'      => CMB_Branches::can( 'closures' ),
 				'delete'        => CMB_Branches::can( 'delete' ),
 				'overbook'      => CMB_Branches::can( 'overbook' ),
@@ -950,6 +979,8 @@ class CMB_Panel_Api {
 		$items  = array();
 		$branch = CMB_Branches::panel_branch_id();
 		$agency = CMB_Branches::is_agency( $branch );
+		// تعریف کاتالوگ مرکزی فقط با ادمین است؛ بقیه‌ی کاربران مرکز هم در حالت کاتالوگ‌اند
+		$define = CMB_Branches::can( 'catalog' );
 
 		// خدمت تازه‌ای که مرکز بعد از ساخت نمایندگی اضافه کرده، همین‌جا می‌رسد
 		if ( $agency ) {
@@ -957,9 +988,14 @@ class CMB_Panel_Api {
 		}
 
 		foreach ( CMB_Services::get_services( $branch, false ) as $service ) {
+			// خدمت آزمایشی (is_active=2) ابزار ادمین است
+			if ( ! $define && 2 === (int) $service->is_active ) {
+				continue;
+			}
+
 			$poster = $service->poster_id ? wp_get_attachment_image_url( (int) $service->poster_id, 'medium' ) : '';
 
-			if ( CMB_Services::is_catalog_copy( $service ) ) {
+			if ( CMB_Services::is_catalog_copy( $service ) || ( ! $agency && ! $define ) ) {
 				/* حالت کاتالوگ (US-3.4): عنوان، توضیح و پوستر مال مرکز است؛
 				   نمایندگی فقط قیمت، روزها و روشن/خاموش. بیعانه‌ی مشتری هم
 				   برای نمایندگی وجود ندارد (D19). */
@@ -1026,9 +1062,10 @@ class CMB_Panel_Api {
 		return rest_ensure_response(
 			array(
 				'items'   => $items,
-				'catalog' => $agency,
+				'catalog' => $agency || ! $define,
+				'center'  => ! $agency,
 				'canEdit' => CMB_Branches::can( 'services' ),
-				'canAdd'  => CMB_Branches::can( 'services' ),
+				'canAdd'  => $agency ? CMB_Branches::can( 'own_services' ) : $define,
 			)
 		);
 	}
@@ -1080,10 +1117,10 @@ class CMB_Panel_Api {
 				return $service;
 			}
 
-			if ( CMB_Services::is_catalog_copy( $service ) ) {
-				return new WP_Error( 'cmb_catalog_locked', 'پوستر خدمت را مرکز تعیین می‌کند.', array( 'status' => 403 ) );
+			if ( CMB_Services::is_catalog_copy( $service ) || ( ! CMB_Branches::is_agency( (int) $service->branch_id ) && ! CMB_Branches::can( 'catalog' ) ) ) {
+				return new WP_Error( 'cmb_catalog_locked', 'پوستر خدمت را مدیر کل در کاتالوگ مرکز تعیین می‌کند.', array( 'status' => 403 ) );
 			}
-		} elseif ( ! CMB_Branches::can( 'services' ) ) {
+		} elseif ( CMB_Branches::is_agency( CMB_Branches::panel_branch_id() ) ? ! CMB_Branches::can( 'own_services' ) : ! CMB_Branches::can( 'catalog' ) ) {
 			return self::role_denied();
 		}
 
@@ -1156,9 +1193,14 @@ class CMB_Panel_Api {
 				return $service;
 			}
 
-			/* ردیف کاتالوگی نمایندگی: فقط قیمت، روزها و روشن/خاموش (۰ یا ۱).
+			/* ردیف کاتالوگی نمایندگی، یا خدمت مرکز برای کاربری که ادمین نیست:
+			   فقط قیمت، روزها و روشن/خاموش (۰ یا ۱) — US-3.4 و جدول بخش ۴.
 			   بقیه‌ی فیلدها حتی اگر فرستاده شوند نادیده گرفته می‌شوند. */
-			if ( CMB_Services::is_catalog_copy( $service ) ) {
+			if ( CMB_Services::is_catalog_copy( $service ) || ( ! CMB_Branches::is_agency( (int) $service->branch_id ) && ! CMB_Branches::can( 'catalog' ) ) ) {
+				if ( 2 === (int) $service->is_active && ! CMB_Branches::can( 'catalog' ) ) {
+					return self::role_denied( 'خدمت آزمایشی را فقط مدیر کل تغییر می‌دهد.' );
+				}
+
 				$data = array();
 
 				if ( null !== $request->get_param( 'price' ) ) {
@@ -1179,9 +1221,13 @@ class CMB_Panel_Api {
 
 				return rest_ensure_response( array( 'success' => true, 'id' => $id ) );
 			}
+		} elseif ( CMB_Branches::is_agency( $branch ) ? ! CMB_Branches::can( 'own_services' ) : ! CMB_Branches::can( 'catalog' ) ) {
+			return CMB_Branches::is_agency( $branch )
+				? new WP_Error( 'cmb_catalog_only', 'خدمات نمایندگی از کاتالوگ مرکز می‌آید؛ خدمت تازه را مدیر کل به کاتالوگ اضافه می‌کند.', array( 'status' => 403 ) )
+				: self::role_denied( 'تعریف خدمت تازه در کاتالوگ مرکز فقط با مدیر کل است.' );
 		}
 
-		// خدمت خود نمایندگی: هر نمایندگی خدمات خودش را هم ارائه می‌دهد
+		// خدمت خود نمایندگی (فقط وقتی ادمین در تنظیمات اجازه داده): بیعانه و حالت آزمایشی ندارد
 		$agency = CMB_Branches::is_agency( $branch );
 
 		$data = array(
@@ -1262,6 +1308,10 @@ class CMB_Panel_Api {
 
 		if ( is_wp_error( $service ) ) {
 			return $service;
+		}
+
+		if ( ! CMB_Branches::is_agency( (int) $service->branch_id ) && ! CMB_Branches::can( 'catalog' ) ) {
+			return self::role_denied( 'حذف خدمت از کاتالوگ مرکز فقط با مدیر کل است.' );
 		}
 
 		$deleted = CMB_Services::delete_service( $id );
@@ -2064,7 +2114,8 @@ class CMB_Panel_Api {
 	/** ساخت (بدون id) یا ویرایش یک نمایندگی. */
 	public function admin_branch_save( WP_REST_Request $request ) {
 		$params = (array) $request->get_json_params();
-		$id     = isset( $params['id'] ) ? (int) $params['id'] : 0;
+		// شناسه در بدنه، یا در نشانی (PUT /panel/admin/branches/{id})
+		$id     = isset( $params['id'] ) ? (int) $params['id'] : (int) $request->get_param( 'id' );
 		$map    = array(
 			'title'         => 'title',
 			'slug'          => 'slug',
@@ -2295,6 +2346,7 @@ class CMB_Panel_Api {
 				'cancelledCustomer' => $row ? (int) $row->cc_c : 0,
 				'cancelledAdmin'    => $row ? (int) $row->ca_c : 0,
 				'cancelRate'        => $total ? round( 100 * $cb / $total, 1 ) : 0,
+				'customerCancelRate' => ( $total && $row ) ? round( 100 * (int) $row->cc_c / $total, 1 ) : 0,
 				'captured'          => (int) $sums['captured'],
 				'topup'             => (int) $sums['topup'],
 				'total'             => (int) $money['total'],
@@ -2322,6 +2374,11 @@ class CMB_Panel_Api {
 			$totals[ $k . 'Fa' ] = cmb_toman( $totals[ $k ] );
 		}
 
+		// خروجی CSV همین جدول (US-6.1 و ?format=csv در بخش ۶.۵)
+		if ( 'csv' === $request->get_param( 'format' ) ) {
+			return self::report_csv( $items, $from, $to );
+		}
+
 		return rest_ensure_response(
 			array(
 				'from'   => $from,
@@ -2332,6 +2389,53 @@ class CMB_Panel_Api {
 				'totals' => $totals,
 			)
 		);
+	}
+
+	/**
+	 * گزارش نمایندگی‌ها به‌صورت فایل CSV (UTF-8 با BOM تا اکسل فارسی را
+	 * درست نشان دهد). خانه‌ای که با = + - @ شروع شود با ' شروع می‌شود تا
+	 * اکسل آن را فرمول حساب نکند.
+	 */
+	protected static function report_csv( array $items, $from, $to ) {
+		$cell = function ( $v ) {
+			$v = (string) $v;
+			return preg_match( '/^[=+\-@]/', $v ) ? "'" . $v : $v;
+		};
+		$rows = array( array( 'نمایندگی', 'شهر', 'وضعیت', 'نوبت‌ها', 'انجام‌شده', 'عدم مراجعه', 'لغو مشتری', 'لغو نمایندگی', 'لغو مدیریت', 'نرخ لغو نمایندگی (٪)', 'نرخ لغو مشتری (٪)', 'کسر قطعی (تومان)', 'شارژ (تومان)', 'موجودی کل', 'بلوکه', 'موجودی آزاد' ) );
+
+		foreach ( $items as $x ) {
+			$rows[] = array_map( $cell, array( $x['title'], $x['city'], $x['statusLabel'], $x['bookings'], $x['done'], $x['noShow'], $x['cancelledCustomer'], $x['cancelledBranch'], $x['cancelledAdmin'], $x['cancelRate'], $x['customerCancelRate'], $x['captured'], $x['topup'], $x['total'], $x['held'], $x['free'] ) );
+		}
+
+		$fh = fopen( 'php://temp', 'r+' ); // phpcs:ignore
+		foreach ( $rows as $r ) {
+			fputcsv( $fh, $r );
+		}
+		rewind( $fh );
+		$csv = "\xEF\xBB\xBF" . stream_get_contents( $fh );
+		fclose( $fh ); // phpcs:ignore
+
+		$name = 'agencies-' . $from . '-' . $to . '.csv';
+
+		// پاسخ REST معمولاً JSON است؛ این یکی خود فایل را می‌فرستد
+		add_filter(
+			'rest_pre_serve_request',
+			function ( $served, $result ) use ( $csv, $name ) {
+				if ( $served || ! ( $result instanceof WP_REST_Response ) || $result->get_data() !== $csv ) {
+					return $served;
+				}
+
+				header( 'Content-Type: text/csv; charset=utf-8' );
+				header( 'Content-Disposition: attachment; filename="' . $name . '"' );
+				echo $csv; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+
+				return true;
+			},
+			10,
+			2
+		);
+
+		return new WP_REST_Response( $csv, 200 );
 	}
 
 	/** تنظیمات مالی نمایندگی‌ها (بخش ۶.۷). */

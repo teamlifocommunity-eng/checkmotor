@@ -190,6 +190,7 @@ class CMB_Operators {
 		if ( $existing ) {
 			// حساب هست: فقط دسترسی بده (و اگر رمز داده شده، عوضش کن).
 			$existing->add_cap( self::CAP );
+			self::attach_center( $existing->ID );
 
 			if ( '' !== $pass ) {
 				wp_set_password( $pass, $existing->ID );
@@ -228,6 +229,8 @@ class CMB_Operators {
 		if ( '' !== $phone ) {
 			update_user_meta( $user_id, 'cmb_phone', $phone );
 		}
+
+		self::attach_center( $user_id );
 
 		$this->back( sprintf( 'حساب «%s» ساخته شد و به پنل رزرو دسترسی دارد.', $login ) );
 	}
@@ -381,8 +384,20 @@ class CMB_Operators {
 		}
 
 		$user->add_cap( self::CAP );
+		self::attach_center( $user->ID );
 
 		$this->back( sprintf( 'به «%s» دسترسی پنل رزرو داده شد.', $user->user_login ) );
+	}
+
+	/**
+	 * کاربر پنلی که از پیشخوان ساخته می‌شود کاربر بوشهر (مرکز) است؛ شعبه‌اش
+	 * صریح ثبت می‌شود (بند ۶.۳ و ۶.۸ سند). کاربری که از قبل شعبه دارد دست
+	 * نمی‌خورد.
+	 */
+	protected static function attach_center( $user_id ) {
+		if ( class_exists( 'CMB_Branches' ) && CMB_Branches::ready() && '' === (string) get_user_meta( (int) $user_id, 'cmb_branch_id', true ) ) {
+			update_user_meta( (int) $user_id, 'cmb_branch_id', CMB_Branches::center_id() );
+		}
 	}
 
 	/* ------------------------------------------------------------------ */

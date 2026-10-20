@@ -1127,6 +1127,9 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
   .pn-user__role { grid-column: 1 / -1; grid-row: 2; }
 }
 
+/* فیلد فقط‌خواندنی هم‌شکل ورودی‌ها */
+.pn-in--ro { display: flex; align-items: center; min-height: 44px; background: var(--g6); color: var(--ink-2); cursor: default; }
+
 /* نقش کاربر زیر نامش در منو */
 .pn-side__role { display: block; margin-top: 2px; font-size: var(--t-cp); font-weight: 600; color: var(--flame); }
 

@@ -1051,14 +1051,17 @@ function viewServices() {
      روزها و روشن/خاموش بودن را؛ خدمتی که خود نمایندگی ساخته همه‌اش مال
      خودش است (جز بیعانه، که مشتری نمایندگی نمی‌دهد). */
   var html = head('خدمات', m.catalog
-      ? 'خدمات کاتالوگ مرکز را با قیمت خودتان فعال کنید، یا خدمت مخصوص نمایندگی خودتان را اضافه کنید'
+      ? (m.center ? 'عنوان، شرح و پوستر خدمات را مدیر کل تعیین می‌کند؛ قیمت، روزها و فعال بودن را اینجا تغییر دهید'
+        : (m.canAdd ? 'خدمات کاتالوگ مرکز را با قیمت خودتان فعال کنید، یا خدمت مخصوص نمایندگی خودتان را اضافه کنید'
+          : 'خدمات از کاتالوگ مرکز می‌آید؛ قیمت، روزها و فعال بودن هر خدمت مال شماست'))
       : 'قیمت، شرح و روزهای ارائه‌ی هر خدمت را اینجا تغییر دهید',
     m.canAdd ? '<button class="pn-btn pn-btn--dark" data-svc-new>' + I.plus + ' افزودن خدمت</button>' : '');
 
   if (!S.services) { return html + skel(3); }
 
-  if (m.catalog && !S.services.some(function (x) { return Number(x.active) === 1; })) {
-    html += note('warn', I.info, 'هنوز هیچ خدمتی فعال نیست؛ تا یکی فعال نشود، مشتری‌ها نمی‌توانند در این نمایندگی نوبت بگیرند. یک خدمت کاتالوگ را با قیمت خودتان فعال کنید، یا با «افزودن خدمت» خدمت خودتان را بسازید.');
+  if (m.catalog && !m.center && !S.services.some(function (x) { return Number(x.active) === 1; })) {
+    html += note('warn', I.info, 'هنوز هیچ خدمتی فعال نیست؛ تا یکی فعال نشود، مشتری‌ها نمی‌توانند در این نمایندگی نوبت بگیرند. روی «ویرایش» یک خدمت بزنید، قیمت خودتان را بگذارید و فعالش کنید' +
+      (m.canAdd ? '، یا با «افزودن خدمت» خدمت خودتان را بسازید.' : '.'));
   }
 
   if (!m.canEdit) {
@@ -1077,7 +1080,7 @@ function viewServices() {
             '<h3 style="font-size:17px;font-weight:800">' + esc(s.title) + '</h3>' +
             (s.active ? '<span class="pn-badge pn-badge--confirmed">فعال</span>'
                       : '<span class="pn-badge pn-badge--cancelled">غیرفعال</span>') +
-            (m.catalog ? (s.catalog ? '<span class="pn-badge pn-badge--quick">کاتالوگ مرکز</span>'
+            (m.catalog && !m.center ? (s.catalog ? '<span class="pn-badge pn-badge--quick">کاتالوگ مرکز</span>'
                                     : '<span class="pn-badge pn-badge--pending">خدمت نمایندگی</span>') : '') +
           '</div>' +
           (s.description ? '<p style="font-size:13px;color:var(--ink-2);margin-top:8px;line-height:1.85">' + esc(s.description) + '</p>' : '') +
@@ -1097,7 +1100,7 @@ function viewServices() {
           '<button class="pn-btn pn-btn--soft pn-btn--sm" data-svc-toggle="' + s.id + '">' +
             (s.active ? 'غیرفعال کن' : 'فعال کن') + '</button>' +
           (s.catalog ? '</div>' : m.catalog
-            ? '<button class="pn-btn pn-btn--soft pn-btn--sm" data-svc-copy="' + s.id + '">کپی</button></div>' :
+            ? (m.canAdd ? '<button class="pn-btn pn-btn--soft pn-btn--sm" data-svc-copy="' + s.id + '">کپی</button>' : '') + '</div>' :
           '<button class="pn-btn pn-btn--soft pn-btn--sm" data-svc-copy="' + s.id + '">کپی</button>' +
           '<button class="pn-btn pn-btn--soft pn-btn--sm" data-svc-move="' + s.id + ':up"' +
             (i === 0 ? ' disabled' : '') + ' aria-label="بالا">' + I.chevU + '</button>' +
@@ -1118,7 +1121,7 @@ var BLOCKS = C.blocks || [
 function capText(cap) {
   return BLOCKS.map(function (b) {
     return esc(b.label) + ' ' + fa(cap[b.key] || 0);
-  }).join(' · ');
+  }).join('، ');
 }
 
 var WD = { 6: 'شنبه', 0: 'یکشنبه', 1: 'دوشنبه', 2: 'سه‌شنبه', 3: 'چهارشنبه', 4: 'پنجشنبه', 5: 'جمعه' };
@@ -1133,14 +1136,16 @@ function weekdayText(list) {
 function catalogModal() {
   var s = S.svcEdit;
 
+  var agency = ctx().agency;
+
   return '<div class="pn-modal__hd"><div><div class="pn-modal__t">' + esc(s.title) + '</div>' +
-      '<div style="font-size:12px;color:var(--ink-3);margin-top:3px">از کاتالوگ مرکز</div></div>' +
+      '<div style="font-size:12px;color:var(--ink-3);margin-top:3px">' + (agency ? 'از کاتالوگ مرکز' : 'تعریف خدمت با مدیر کل') + '</div></div>' +
     '<button class="pn-modal__x" data-close>' + I.x + '</button></div>' +
 
     (s.poster ? '<img class="pn-poster__img" style="margin-bottom:14px" src="' + esc(s.poster) + '" alt="">' : '') +
     (s.description ? '<p class="pn-hint" style="margin:0 0 14px;font-size:13px">' + esc(s.description) + '</p>' : '') +
 
-    '<label class="pn-field"><span class="pn-field__l">قیمت در این نمایندگی (تومان)</span>' +
+    '<label class="pn-field"><span class="pn-field__l">' + (agency ? 'قیمت در این نمایندگی (تومان)' : 'قیمت (تومان)') + '</span>' +
     '<input class="pn-in num" id="sv-price" type="number" min="0" step="10000" value="' + Number(s.price) + '"></label>' +
 
     '<div class="pn-field"><span class="pn-field__l">روزهای قابل رزرو</span>' +
@@ -1157,7 +1162,8 @@ function catalogModal() {
         '<button type="button" class="pn-seg__b' + (Number(s.active) !== 1 ? ' is-on' : '') + '" data-svc-active="0">ارائه نمی‌کنیم</button>' +
       '</div></div>' +
 
-    '<div class="pn-hint">عنوان، شرح و پوستر را مدیریت مرکز برای همه‌ی نمایندگی‌ها یکسان تعیین می‌کند.</div>' +
+    '<div class="pn-hint">' + (agency ? 'عنوان، شرح و پوستر را مدیر کل برای همه‌ی نمایندگی‌ها یکسان تعیین می‌کند.'
+      : 'عنوان، شرح، پوستر، سهمیه و بیعانه‌ی خدمت را فقط مدیر کل تعیین می‌کند (کاتالوگ مرکزی).') + '</div>' +
 
     '<div class="pn-modal__ft">' +
       '<button class="pn-btn pn-btn--pri" data-svc-save' + (S.busy ? ' disabled' : '') + '>' +
@@ -1863,9 +1869,11 @@ function viewBWallet() {
   }
 
   if (w.blocked) {
-    html += note('bad', I.alert, '<b>نوبت‌گیری متوقف است.</b> موجودی آزاد کمتر از هزینه‌ی یک نوبت (' + esc(fa(W.feeFa)) + ') است و مشتری‌ها فعلاً نمی‌توانند در این نمایندگی نوبت بگیرند. با شارژ، همان لحظه دوباره نوبت می‌گیرید.');
+    html += note('bad', I.alert, '<b>نوبت‌گیری متوقف است.</b> موجودی آزاد کمتر از هزینه‌ی یک نوبت (' + esc(fa(W.feeFa)) + ') است و مشتری‌ها فعلاً نمی‌توانند در این نمایندگی نوبت بگیرند. با شارژ، همان لحظه دوباره نوبت می‌گیرید.' +
+      (W.canTopup ? ' <a href="#bw-amt" data-bw-focus>شارژ کیف پول</a>' : ''));
   } else if (w.low) {
-    html += note('warn', I.wallet, 'موجودی کم است: فقط برای <b>' + fa(w.capacity) + '</b> نوبت دیگر.');
+    html += note('warn', I.wallet, 'موجودی کم است: فقط برای <b>' + fa(w.capacity) + '</b> نوبت دیگر.' +
+      (W.canTopup ? ' <a href="#bw-amt" data-bw-focus>شارژ کیف پول</a>' : ''));
   }
 
   html += '<div class="pn-stats pn-stats--wallet">' +
@@ -2125,8 +2133,8 @@ function profileGeo() {
   }, { enableHighAccuracy: true, timeout: 15000 });
 }
 
-/** عکس مرکز: همان مسیر آپلود پوستر، با for=branch. */
-function uploadBranchPhoto(file) {
+/** عکس مرکز: همان مسیر آپلود پوستر، با for=branch. بدون done، روی پروفایل ذخیره می‌شود. */
+function uploadBranchPhoto(file, done) {
   if (!file) { return; }
 
   if (file.size > 4 * 1024 * 1024) { toast('حجم تصویر باید کمتر از ۴ مگابایت باشد.', 'bad'); return; }
@@ -2149,6 +2157,7 @@ function uploadBranchPhoto(file) {
         return;
       }
 
+      if (done) { done(j); return; }
       saveProfile({ photoId: j.posterId });
     })
     .catch(function () {
@@ -2244,6 +2253,9 @@ function agencyModal() {
   return '<div class="pn-modal__hd"><div class="pn-modal__t">' + (isNew ? 'نمایندگی تازه' : 'ویرایش ' + esc(f.title)) + '</div>' +
       '<button class="pn-modal__x" data-close>' + I.x + '</button></div>' +
     fld('ag-title', 'نام نمایندگی', f.title, '', 'مثلاً «نمایندگی اندیمشک»') +
+    '<div class="pn-field"><span class="pn-field__l">نوع</span>' +
+      '<div class="pn-in pn-in--ro">' + (f.isCenter ? 'مرکز اصلی (بدون کیف پول و کسر)' : 'نمایندگی (کیف پول و کسر هر رزرو)') + '</div>' +
+      '<div class="pn-hint">مرکز اصلی فقط یکی است (بوشهر)؛ هر شعبه‌ی تازه نمایندگی است.</div></div>' +
     '<div class="pn-grid pn-grid--2">' +
       (f.isCenter
         ? fld('ag-slug', 'نامک لینک (لاتین)', f.slug, ' dir="ltr" readonly', 'نامک مرکز اصلی ثابت است.')
@@ -2265,6 +2277,19 @@ function agencyModal() {
       fld('ag-lng', 'طول جغرافیایی', f.lng === null ? '' : f.lng, ' dir="ltr" inputmode="decimal" placeholder="48.3500"') +
     '</div>' +
     (window.CMBLocation ? window.CMBLocation.html({editable:true,lat:f.lat,lng:f.lng,latInput:'ag-lat',lngInput:'ag-lng'}) : '') +
+    '<div class="pn-field" style="margin-top:16px"><span class="pn-field__l">عکس</span>' +
+      '<div class="pn-poster">' +
+        (f.photo ? '<img class="pn-poster__img" src="' + esc(f.photo) + '" alt="">'
+                 : '<div class="pn-poster__ph">' + I.grid + '<span>عکسی ندارد</span></div>') +
+        '<div class="pn-poster__act">' +
+          '<label class="pn-btn pn-btn--soft pn-btn--sm" style="cursor:pointer">' +
+            '<input type="file" id="ag-photo" accept="image/jpeg,image/png,image/webp" hidden>' +
+            (S.uploading ? 'در حال آپلود…' : 'انتخاب عکس') + '</label>' +
+          (f.photo ? '<button type="button" class="pn-btn pn-btn--bad pn-btn--sm" data-ag-photo-clear>حذف</button>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="pn-hint">عکس نمای بیرونی، در کارت انتخاب مرکز به مشتری نشان داده می‌شود. با «ذخیره» ثبت می‌شود.</div>' +
+    '</div>' +
     (isNew ? note('info', I.info, 'نمایندگی به‌صورت <b>پیش‌نویس</b> ساخته می‌شود و تا فعالش نکنید به مشتری‌ها نشان داده نمی‌شود. خدمات کاتالوگ مرکز غیرفعال برایش کپی می‌شوند.') : '') +
     '<div class="pn-modal__ft">' +
       '<button class="pn-btn pn-btn--pri" data-ag-save' + (S.busy ? ' disabled' : '') + '>' +
@@ -2291,6 +2316,7 @@ function saveAgency() {
   };
 
   if ($('#ag-mphone')) { body.managerPhone = en(val('#ag-mphone')).trim(); }
+  if (typeof f.photoId !== 'undefined') { body.photoId = Number(f.photoId) || 0; }
 
   // نامک مرکز اصلی عوض نمی‌شود؛ اصلاً فرستاده نمی‌شود
   if (f.isCenter) { delete body.slug; }
@@ -2316,9 +2342,10 @@ function saveAgency() {
 }
 
 /**
- * کاربران پنل یک شعبه (مرکز یا نمایندگی) و نقششان. مدیر شعبه همه‌ی کارهای
- * همان شعبه را دارد؛ اپراتور فقط نوبت‌ها و مشتری‌ها را (بدون حذف نوبت، خدمات،
- * بستن روز، تنظیمات، کیف پول و خروجی). همه‌چیزِ همه‌ی شعبه‌ها فقط با مدیر کل.
+ * کاربران پنل یک شعبه (مرکز یا نمایندگی) و نقششان، مطابق جدول بخش ۴ سند:
+ * مدیر همه‌ی کارهای همان شعبه را دارد؛ اپراتور نوبت‌ها، مشتری‌ها و تعطیلی را
+ * (بدون خدمات، تنظیمات شیفت، پروفایل و کیف پول). همه‌چیزِ همه‌ی شعبه‌ها
+ * فقط با مدیر کل.
  */
 function agUsersModal() {
   var b = S.modal.agUsers;
@@ -2337,15 +2364,15 @@ function agUsersModal() {
         '<button class="pn-btn pn-btn--bad pn-btn--sm" data-ag-user-del="' + u.id + '"' + (S.busy ? ' disabled' : '') + '>برداشتن دسترسی</button>' +
       '</div>';
     }).join('') : empty('هنوز کاربری ندارد')) +
-    '<div class="pn-hint" style="margin-top:8px"><b>مدیر ' + where + ':</b> همه‌ی کارهای همین ' + where + ' (خدمات، بستن روز، تنظیمات شیفت' + (center ? '، کیف پول مشتری‌ها' : '، پروفایل و کیف پول نمایندگی') + '). ' +
-      '<b>اپراتور:</b> فقط نوبت‌ها و مشتری‌ها؛ حذف نوبت، خدمات، بستن روز، تنظیمات و خروجی اکسل را ندارد. ' +
-      'نمایندگی‌های دیگر، گزارش‌ها و تنظیمات سایت فقط با مدیر کل است.</div>' +
+    '<div class="pn-hint" style="margin-top:8px"><b>مدیر ' + where + ':</b> همه‌ی کارهای همین ' + where + ' (نوبت‌ها، مشتری‌ها، تعطیلی، قیمت و فعال بودن خدمات، تنظیمات شیفت' + (center ? '' : '، پروفایل و کیف پول نمایندگی') + '). ' +
+      '<b>اپراتور:</b> نوبت‌ها، مشتری‌ها و تعطیلی؛ خدمات و تنظیمات شیفت' + (center ? '' : ' و کیف پول') + ' را ندارد. ' +
+      'تعریف خدمات، کیف پول مشتری‌ها، شعبه‌های دیگر، گزارش‌ها و تنظیمات سایت فقط با مدیر کل است.</div>' +
     '<div class="pn-card__t" style="margin-top:16px">' + I.plus + ' افزودن کاربر</div>' +
     '<div class="pn-grid">' +
       '<label class="pn-field"><span class="pn-field__l">موبایل</span><input class="pn-in num" id="agu-phone" dir="ltr" inputmode="tel" placeholder="09…"></label>' +
       '<label class="pn-field"><span class="pn-field__l">نام</span><input class="pn-in" id="agu-name"></label>' +
       '<label class="pn-field"><span class="pn-field__l">نقش</span><select class="pn-in" id="agu-role">' +
-        '<option value="operator">اپراتور (نوبت‌ها و مشتری‌ها)</option><option value="manager">مدیر ' + where + '</option></select></label>' +
+        '<option value="operator">اپراتور (نوبت‌ها، مشتری‌ها و تعطیلی)</option><option value="manager">مدیر ' + where + '</option></select></label>' +
     '</div>' +
     '<div class="pn-hint">' + (center ? '' : 'هر نمایندگی یک مدیر و حداکثر ' + fa((S.agencies && S.agencies.maxOps) || 2) + ' اپراتور دارد. ') + 'هر شماره فقط در یک شعبه کاربر پنل می‌شود. ورود با همین شماره و کد پیامکی است.</div>' +
     '<div class="pn-modal__ft">' +
@@ -2505,7 +2532,7 @@ function viewReport() {
   if (!R.items.length) { return html + empty('هنوز نمایندگی‌ای نیست') + '</div>'; }
 
   html += '<div class="pn-tablewrap"><table class="pn-table"><thead><tr>' +
-    '<th>نمایندگی</th><th>نوبت‌ها</th><th>انجام‌شده</th><th>عدم مراجعه</th><th>لغو نمایندگی</th><th>کسر قطعی</th><th>شارژ</th><th>موجودی آزاد</th>' +
+    '<th>نمایندگی</th><th>نوبت‌ها</th><th>انجام‌شده</th><th>عدم مراجعه</th><th>لغو مشتری</th><th>لغو نمایندگی</th><th>کسر قطعی</th><th>شارژ</th><th>موجودی آزاد</th>' +
     '</tr></thead><tbody>';
 
   R.items.forEach(function (x) {
@@ -2514,6 +2541,7 @@ function viewReport() {
       '<td class="num" data-label="نوبت‌ها">' + fa(x.bookings) + '</td>' +
       '<td class="num" data-label="انجام‌شده">' + fa(x.done) + '</td>' +
       '<td class="num" data-label="عدم مراجعه">' + fa(x.noShow) + '</td>' +
+      '<td class="num" data-label="لغو مشتری">' + fa(x.cancelledCustomer || 0) + ' <span class="pn-table__s">(' + fa(x.customerCancelRate || 0) + '٪)</span></td>' +
       '<td class="num" data-label="لغو نمایندگی">' + fa(x.cancelledBranch) + ' <span class="pn-table__s">(' + fa(x.cancelRate) + '٪)</span></td>' +
       '<td class="num" data-label="کسر قطعی">' + esc(fa(x.capturedFa)) + '</td>' +
       '<td class="num" data-label="شارژ">' + esc(fa(x.topupFa)) + '</td>' +
@@ -2525,7 +2553,7 @@ function viewReport() {
 
   html += '<tr class="pn-table__total"><td data-label="">جمع</td>' +
     '<td class="num" data-label="نوبت‌ها">' + fa(t.bookings) + '</td><td class="num" data-label="انجام‌شده">' + fa(t.done) + '</td>' +
-    '<td class="num" data-label="عدم مراجعه">' + fa(t.noShow) + '</td><td class="num" data-label="لغو نمایندگی">' + fa(t.cancelledBranch) + '</td>' +
+    '<td class="num" data-label="عدم مراجعه">' + fa(t.noShow) + '</td><td class="num" data-label="لغو مشتری">' + fa(t.cancelledCustomer || 0) + '</td><td class="num" data-label="لغو نمایندگی">' + fa(t.cancelledBranch) + '</td>' +
     '<td class="num" data-label="کسر قطعی">' + esc(fa(t.capturedFa)) + '</td><td class="num" data-label="شارژ">' + esc(fa(t.topupFa)) + '</td>' +
     '<td class="num" data-label="موجودی آزاد">' + esc(fa(t.freeFa)) + '</td></tr>';
 
@@ -2540,10 +2568,10 @@ function exportAgReport() {
   var R = S.agReport;
   if (!R || !R.items.length) { return; }
 
-  var lines = [['نمایندگی', 'شهر', 'وضعیت', 'نوبت‌ها', 'انجام‌شده', 'عدم مراجعه', 'لغو نمایندگی', 'لغو مشتری', 'لغو مدیریت', 'نرخ لغو نمایندگی (٪)', 'کسر قطعی (تومان)', 'شارژ (تومان)', 'موجودی کل', 'بلوکه', 'موجودی آزاد'].map(csvCell).join(',')];
+  var lines = [['نمایندگی', 'شهر', 'وضعیت', 'نوبت‌ها', 'انجام‌شده', 'عدم مراجعه', 'لغو نمایندگی', 'لغو مشتری', 'لغو مدیریت', 'نرخ لغو نمایندگی (٪)', 'نرخ لغو مشتری (٪)', 'کسر قطعی (تومان)', 'شارژ (تومان)', 'موجودی کل', 'بلوکه', 'موجودی آزاد'].map(csvCell).join(',')];
 
   R.items.forEach(function (x) {
-    lines.push([x.title, x.city, x.statusLabel, x.bookings, x.done, x.noShow, x.cancelledBranch, x.cancelledCustomer, x.cancelledAdmin, x.cancelRate, x.captured, x.topup, x.total, x.held, x.free].map(csvCell).join(','));
+    lines.push([x.title, x.city, x.statusLabel, x.bookings, x.done, x.noShow, x.cancelledBranch, x.cancelledCustomer, x.cancelledAdmin, x.cancelRate, x.customerCancelRate, x.captured, x.topup, x.total, x.held, x.free].map(csvCell).join(','));
   });
 
   var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
@@ -2917,7 +2945,7 @@ function jobs() {
                 function (r) { S.customers = r; }],
     services: ['panel/services', function (r) {
       S.services = r.items || [];
-      S.svcMeta = { catalog: !!r.catalog, canEdit: r.canEdit !== false, canAdd: r.canAdd !== false };
+      S.svcMeta = { catalog: !!r.catalog, center: !!r.center, canEdit: r.canEdit !== false, canAdd: r.canAdd !== false };
       openPendingSvc();
     }],
     bwallet:  ['panel/branch-wallet?page=' + S.bwPage +
@@ -4179,6 +4207,13 @@ function bind() {
 
     /* ── کیف پول نمایندگی ── */
 
+    if (up('[data-bw-focus]')) {
+      e.preventDefault();
+      var amtBox = $('#bw-amt');
+      if (amtBox) { amtBox.scrollIntoView({ block: 'center' }); amtBox.focus(); }
+      return;
+    }
+
     if ((el = up('[data-bw-amt]'))) {
       e.preventDefault();
       S.bwAmount = el.getAttribute('data-bw-amt');
@@ -4214,6 +4249,7 @@ function bind() {
     if (up('[data-bp-save]')) { e.preventDefault(); saveProfile(); return; }
     if (up('[data-bp-geo]')) { e.preventDefault(); profileGeo(); return; }
     if (up('[data-bp-photo-clear]')) { e.preventDefault(); saveProfile({ photoId: 0 }); return; }
+    if (up('[data-ag-photo-clear]') && S.modal && S.modal.agency) { e.preventDefault(); S.modal.agency.photoId = 0; S.modal.agency.photo = ''; paintModal(); return; }
 
     /* ── مدیر سایت: نمایندگی‌ها ── */
 
@@ -4358,6 +4394,15 @@ function bind() {
 
     if (e.target && e.target.id === 'bp-photo' && e.target.files && e.target.files[0]) {
       uploadBranchPhoto(e.target.files[0]);
+    }
+
+    // فرم ساخت/ویرایش نمایندگی (ادمین): عکس با همان فرم ذخیره می‌شود (US-1.1)
+    if (e.target && e.target.id === 'ag-photo' && e.target.files && e.target.files[0] && S.modal && S.modal.agency) {
+      uploadBranchPhoto(e.target.files[0], function (j) {
+        S.modal.agency.photoId = j.posterId;
+        S.modal.agency.photo = j.poster || '';
+        paintModal();
+      });
     }
 
     // مدیر سایت: نمایش پنل یک شعبه‌ی دیگر

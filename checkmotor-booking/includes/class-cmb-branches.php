@@ -1293,36 +1293,43 @@ class CMB_Branches {
 	}
 
 	/**
-	 * اختیار کاربر جاری در پنل (۱.۴۰.۰). فقط مدیر کل (مدیر سایت) همه‌چیز
-	 * را دارد؛ بقیه فقط شعبه‌ی خودشان را می‌بینند و به اندازه‌ی نقششان:
+	 * اختیار کاربر جاری در پنل، مطابق جدول بخش ۴ و بند ۶.۳ سند نمایندگی‌ها.
+	 * فقط ادمین مرکز (مدیر سایت) همه‌چیز را دارد؛ بقیه فقط شعبه‌ی خودشان.
 	 *
-	 *   کار                                   مدیر  مدیر   اپراتور  مدیر      اپراتور
-	 *                                          کل    مرکز   مرکز     نمایندگی  نمایندگی
-	 *   bookings  دیدن نوبت و تغییر وضعیت       ✓     ✓      ✓        ✓         ✓
-	 *   delete    حذف نوبت                     ✓     ✓      –        ✓         –
-	 *   closures  بستن روز / شیفت              ✓     ✓      –        ✓         –
-	 *   services  ساخت و ویرایش خدمت           ✓     ✓      –        ✓         –
-	 *   schedule  تنظیمات شیفت                 ✓     ✓      –        ✓         –
-	 *   export    خروجی اکسل مشتری‌ها           ✓     ✓      –        ✓         –
-	 *   refund_amount  مبلغ برگشت دلخواه در لغو  ✓    ✓      –        ✓         –
-	 *   overbook  بازگرداندن نوبت به شیفت پر    ✓     ✓      –        ✓         –
-	 *   center    کیف پول مشتری‌ها، برگشت‌ها،
-	 *             سلامت سیستم، بررسی بیعانه    ✓     ✓      –        –         –
-	 *   money     تغییر کیف پول مشتری و برگشت  ✓     (۱)    –        –         –
-	 *   profile / wallet  پروفایل و کیف پول نمایندگی  ✓  –  –  ✓  –
-	 *   topup     شارژ کیف پول نمایندگی        ✓(۲)  –      –        ✓         –
+	 *   کار (بند سند)                                ادمین  مدیر   اپراتور  مدیر      اپراتور
+	 *                                                       مرکز   مرکز     نمایندگی  نمایندگی
+	 *   bookings  نوبت‌ها: دیدن، تغییر وضعیت، لغو، حذف و
+	 *             بازگرداندن — «همان امکانات پنل بوشهر» (US-3.2)  ✓  ✓  ✓  ✓  ✓
+	 *   export    مشتری‌های همان شعبه و خروجی‌شان            ✓    ✓      ✓        ✓         ✓
+	 *   closures  تعطیلی روز/بلاک — اپراتور «فقط تعطیلی»    ✓    ✓      ✓        ✓         ✓
+	 *   schedule  ساعت و ظرفیت بلاک‌ها                      ✓    ✓      –        ✓         –
+	 *   services  فعال‌سازی خدمت، قیمت و روزها (US-3.4)      ✓    ✓      –        ✓         –
+	 *   catalog   تعریف کاتالوگ مرکزی: ساخت، عنوان، شرح،
+	 *             پوستر، سهمیه، بیعانه و حذف خدمت مرکز     ✓    –      –        –         –
+	 *   profile / wallet  پروفایل و کیف پول نمایندگی        ✓    –      –        ✓         –
+	 *   topup     شارژ آنلاین کیف پول نمایندگی              –    –      –        ✓         –
+	 *   center / money  کیف پول مشتری، بازگشت وجه، سلامت
+	 *             سیستم و بررسی بیعانه (۶.۳)               ✓    –      –        –         –
+	 *   rules     بازه‌ی رزرو و قواعد لغو سراسری (D7)      ✓    –      –        –         –
+	 *   own_services  ساخت خدمت مخصوص نمایندگی — خارج از سند
+	 *             (US-3.4)؛ فقط اگر ادمین در تنظیمات روشن کند   ✓*  –   –   ✓*  –
 	 *
-	 *   (۱) فقط اگر مدیر سایت در تنظیمات اجازه داده باشد.
-	 *   (۲) فقط در نمای همان نمایندگی.
-	 *
-	 * مدیریت نمایندگی‌ها و کاربرانشان، گزارش، مبلغ‌ها، جابه‌جایی بین شعبه‌ها و
-	 * تنظیمات وردپرس فقط مال مدیر کل است (guard_admin و پیشخوان).
+	 * ادمین شارژ آنلاین نمی‌کند (جدول ۴)؛ واریز یا برداشت دستی دارد. مدیریت
+	 * نمایندگی‌ها و کاربرانشان، گزارش، مبلغ‌ها و جابه‌جایی بین شعبه‌ها هم فقط
+	 * با ادمین است (guard_admin). «مدیر مرکز / اپراتور مرکز» برای کاربران
+	 * بوشهر است؛ کاربران فعلی بوشهر مدیر مرکزند.
 	 */
 	public static function can( $what ) {
 		$branch = self::panel_branch_id();
+		$admin  = current_user_can( 'manage_options' );
 
-		if ( current_user_can( 'manage_options' ) ) {
-			return 'topup' !== $what || self::is_agency( $branch );
+		if ( 'own_services' === $what ) {
+			return (bool) CMB_Settings::get( 'agency_own_services', 0 ) && $branch > 0 && self::is_agency( $branch )
+				&& ( $admin || 'manager' === self::user_role( get_current_user_id() ) );
+		}
+
+		if ( $admin ) {
+			return 'topup' !== $what;
 		}
 
 		if ( $branch < 1 ) {
@@ -1334,13 +1341,16 @@ class CMB_Branches {
 
 		switch ( $what ) {
 			case 'bookings':
+			case 'delete':
+			case 'overbook':
+			case 'refund_amount':
+			case 'export':
+			case 'closures':
 				return true;
 
-			case 'center':
-				return $manager && ! $agency;
-
-			case 'money':
-				return $manager && ! $agency && (bool) CMB_Settings::get( 'pay_refund_operators', 0 );
+			case 'schedule':
+			case 'services':
+				return $manager;
 
 			case 'profile':
 			case 'wallet':
@@ -1348,8 +1358,8 @@ class CMB_Branches {
 				return $manager && $agency;
 
 			default:
-				// delete | closures | services | schedule | export | refund_amount | overbook
-				return $manager;
+				// center | money | catalog | rules: فقط ادمین
+				return false;
 		}
 	}
 

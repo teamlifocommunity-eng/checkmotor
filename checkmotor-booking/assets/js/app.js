@@ -454,7 +454,7 @@ function branchCard(b) {
   return '<article class="cmb-branch' + (off ? ' is-off' : '') + '">' +
     '<div class="cmb-branch__ph">' + (b.photo ? '<img src="' + esc(b.photo) + '" alt="نمای ' + esc(b.title) + '" width="64" height="64" loading="lazy">' : I.engine) + '</div>' +
     '<div class="cmb-branch__body"><h3 class="cmb-branch__t">' + esc(b.title) + '</h3>' +
-      '<span class="cmb-branch__tag' + (b.type === 'agency' ? '' : ' cmb-branch__tag--hq') + '">' + (b.type === 'agency' ? 'نمایندگی رسمی' : 'مرکز اصلی') + '</span>' +
+      '<span class="cmb-branch__tag' + (b.type === 'agency' ? '' : ' cmb-branch__tag--hq') + '">' + (b.type === 'agency' ? 'تأییدشده توسط چک موتور' : 'مرکز اصلی چک موتور') + '</span>' +
       '<p class="cmb-branch__s">' + esc([b.city, b.address].filter(Boolean).join(' — ')) + '</p>' +
       (off ? '<p class="cmb-branch__off">' + esc(b.unavailable || 'فعلاً نوبت نمی‌گیرد') + '</p>' :
         '<button type="button" class="cmb-branch__select" data-branch="' + b.id + '" aria-label="انتخاب ' + esc(b.title) + '">انتخاب این مرکز ' + I.chevL + '</button>') +
@@ -1181,6 +1181,7 @@ function viewReceipt() {
         kv('خدمت', r.service) +
         (r.branch ? kv('مرکز', r.branch + (r.branchCity ? ' — ' + r.branchCity : '')) : '') +
         (r.branchAddress ? kv('نشانی', r.branchAddress) : '') +
+        (r.branch && r.branchPhone ? kv('تلفن مرکز', fa(r.branchPhone)) : '') +
         kv('تاریخ', fa(r.dateFa)) +
         kv('ساعت', r.blockLabel + ' — ' + fa(r.blockStart)) +
         kv('خودرو', r.car) +
@@ -1400,7 +1401,8 @@ function viewMine() {
         '<div class="cmb-bk__row">' + I.cal + '<b>' + fa(esc(b.dateFa)) + '</b></div>' +
         '<div class="cmb-bk__row">' + I.clock + esc(b.blockLabel) + ' — ساعت ' + fa(esc(b.blockStart)) + '</div>' +
         '<div class="cmb-bk__row">' + I.car + esc(b.car) + '</div>' +
-        (b.branch ? '<div class="cmb-bk__row">' + I.pin + '<span>' + esc(b.branch) + '</span></div>' : '') +
+        (b.branch ? '<div class="cmb-bk__row">' + I.pin + '<span><b>' + esc(b.branch) + '</b>' + (b.branchAddress ? ' — ' + esc(b.branchAddress) : '') + '</span></div>' : '') +
+        (b.branch && b.branchPhone ? '<div class="cmb-bk__row">' + I.phone + '<span>تلفن مرکز: <bdi dir="ltr">' + fa(esc(b.branchPhone)) + '</bdi></span></div>' : '') +
         payLine(b) +
         (b.branch ? branchActs(b.branchPhone, b.branchMap, 'تماس با مرکز', true) : '') +
       '</div>' +
@@ -1751,6 +1753,12 @@ function restoreFocus(f) {
 function render() {
   var root = document.getElementById('cmb-app');
   if (!root) { return; }
+
+  /* فرم مشخصات خودرو فقط با «change» (خروج از فیلد) در state می‌نشست؛ هر
+     رندر دیگری در همان فاصله (پیام خوش‌آمد، تازه شدن نوبت‌ها، یا رندرِ بعد از
+     انتخاب شهر) متنِ در حال تایپ را پاک می‌کرد. پیش از رندرِ همین گام، فرم
+     خوانده می‌شود. */
+  if (S.page === 'book' && !S.receipt && S.step === 4) { grabForm(); }
 
   var keep = grabFocus();
   var y = window.pageYOffset;
@@ -2788,7 +2796,12 @@ function bind() {
       grabForm();
       /* بعد از خواندنِ فرم: با تغییرِ استان، شهرِ قبلی پاک می‌شود (DOMِ
          فهرستِ شهر هنوز متعلق به استانِ قبلی است، پس بعد از grabForm). */
-      if (e.target.id === 'cmb-f-province') { S.cityOther = false; S.form.city = ''; }
+      if (e.target.id === 'cmb-f-province') {
+        S.cityOther = false; S.form.city = '';
+        // رندر بعدی هم فرم را می‌خواند؛ شهرِ استانِ قبلی نباید برگردد
+        var oldCity = $('#cmb-f-city-sel'); if (oldCity) { oldCity.value = ''; }
+        var oldOther = $('#cmb-f-city-other'); if (oldOther) { oldOther.value = ''; }
+      }
       paint();
       return;
     }

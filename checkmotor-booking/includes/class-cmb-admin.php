@@ -205,8 +205,8 @@ class CMB_Admin {
 			<tr>
 				<th><label>تغییر دستی کیف پول</label></th>
 				<td>
-					<label><input type="checkbox" name="pay_refund_operators" value="1" <?php checked( (int) $s['pay_refund_operators'], 1 ); ?> /> مدیر مرکز (کاربر پنل با نقش «مدیر مرکز») هم بتواند کیف پول مشتری را دستی کم و زیاد کند و برگشت‌های مانده را تعیین تکلیف کند — اپراتورها و نمایندگی‌ها هرگز</label>
-					<p class="description">بدون این، دیدن کیف پول‌ها برای همه آزاد است ولی تغییرش فقط با مدیر سایت. هر تغییر با نام انجام‌دهنده و توضیح ثبت می‌شود.</p>
+					<p class="description">کیف پول مشتری‌ها، بازگشت وجه و بررسی سلامت سیستم طبق بند ۶.۳ سند نمایندگی‌ها فقط برای مدیر سایت باز است؛
+						کاربران پنل (بوشهر و نمایندگی‌ها) آن را نمی‌بینند. هر تغییر با نام انجام‌دهنده و توضیح ثبت می‌شود.</p>
 				</td>
 			</tr>
 			<?php if ( $ready ) : ?>
@@ -943,6 +943,13 @@ class CMB_Admin {
 						</p>
 						<a href="https://platform.neshan.org/docs/sdk/web/leaflet/neshan-leaflet-sdk/" target="_blank" rel="noopener">راهنمای دریافت کلید نشان</a></td>
 					</tr>
+					<tr>
+						<th><label for="cmb-agency-own">خدمت مخصوص نمایندگی</label></th>
+						<td><label><input id="cmb-agency-own" type="checkbox" name="agency_own_services" value="1" <?php checked( (int) $s['agency_own_services'], 1 ); ?> />
+							مدیر نمایندگی بتواند علاوه بر کاتالوگ مرکز، خدمت مخصوص خودش را بسازد</label>
+						<p class="description">طبق سند فاز ۱ (US-3.4) خاموش است: خدمات نمایندگی فقط از کاتالوگ مرکز می‌آید و نمایندگی قیمت، روزها و
+							فعال بودن را تعیین می‌کند. با روشن کردن، خدمت نمایندگی فقط در همان نمایندگی دیده می‌شود و بیعانه ندارد.</p></td>
+					</tr>
 					<?php
 					$agency_money = array(
 						'agency_fee'            => array( 'هزینه‌ی هر رزرو موفق', 'از کیف پول نمایندگی، هنگام ثبت نوبت بلوکه و بعد از انجام قطعی کسر می‌شود.' ),
@@ -1505,6 +1512,11 @@ class CMB_Admin {
 			if ( isset( $_POST[ $key ] ) ) {
 				$values[ $key ] = max( 'agency_topup_min' === $key ? 10000 : 0, (int) cmb_en_num( wp_unslash( $_POST[ $key ] ) ) );
 			}
+		}
+
+		// تیک «خدمت مخصوص نمایندگی» فقط وقتی بخش نمایندگی‌ها در فرم بوده
+		if ( isset( $_POST['agency_fee'] ) ) {
+			$values['agency_own_services'] = isset( $_POST['agency_own_services'] ) ? 1 : 0;
 		}
 
 		foreach ( array( 'pattern_booking_branch', 'pattern_reminder_branch', 'pattern_cancel_branch', 'pattern_agency_new', 'pattern_agency_cancel', 'pattern_agency_low', 'pattern_agency_topup', 'pattern_agency_active' ) as $key ) {
