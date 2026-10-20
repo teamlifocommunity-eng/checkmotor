@@ -3,6 +3,7 @@
 'use strict';
 var config = window.CMB_MAP || {};
 var sdk = null, pending = null, instances = [], nextId = 0;
+var keyFail = null; // پاسخ ردِ کلید از نشان: {code, msg}
 var base = 'https://static.neshan.org/sdk/leaflet/v1.9.4/neshan-sdk/v1.0.8/';
 function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function number(v) {
@@ -29,6 +30,55 @@ function html(o) {
       '<p class="cmb-location__status" role="status" aria-live="polite"></p>' +
       (o.editable ? '<p class="cmb-location__hint">روی محل مرکز بزنید یا نشانگر را جابه‌جا کنید؛ سپس فرم را ذخیره کنید. ورود دستی مختصات هم امکان‌پذیر است.</p>' : '') +
     '</div></section>';
+}
+/* SDK نشان پیش از نمایش، کلید را با یک درخواست PUT به /v1/quota می‌سنجد. اگر
+   کلید رد شود (مثلاً کلید «سرویس‌ها» به‌جای «نقشهٔ وب»: خطای ۴۸۳)، همهٔ کاشی‌ها
+   خاکستری با آرم نشان می‌شوند و کلیک روی آن نقطه‌ای بی‌معنا ثبت می‌کرد. پاسخ همان
+   درخواست را می‌خوانیم (بی‌درخواست اضافه) و نقشه را با پیام روشن جایگزین می‌کنیم. */
+var KEY_ERR = {
+  480: 'کلید نقشه در نشان پیدا نشد یا نادرست وارد شده است.',
+  481: 'سقف استفادهٔ این کلید نشان پر شده است.',
+  482: 'درخواست‌ها به نشان از حد مجاز گذشته است؛ کمی بعد دوباره امتحان کنید.',
+  483: 'این کلید از نوع «سرویس‌ها» است؛ نقشهٔ وب کلیدی از نوع «نقشهٔ وب» می‌خواهد.',
+  484: 'دامنهٔ این سایت در «دامنه‌های مجاز» این کلید نشان ثبت نشده است.',
+  485: 'سرویس نقشهٔ وب برای این کلید فعال نیست.'
+};
+function keyMessage(editable) {
+  if (!editable) { return 'نمایش نقشه فعلاً در دسترس نیست. از آدرس و دکمهٔ «مسیریابی با نشان» استفاده کنید.'; }
+  var c = keyFail.code, fix = ' در پنل نشان یک کلید از نوع «نقشهٔ وب» با دامنهٔ همین سایت بسازید و در تنظیمات چک موتور (بخش نمایندگی‌ها) بگذارید.';
+  var why = !c ? 'ارتباط با نشان برای تأیید کلید نقشه برقرار نشد. اتصال اینترنت را بررسی کنید؛ اگر درست است، نوع کلید («نقشهٔ وب») و دامنه‌های مجاز آن را در پنل نشان ببینید.'
+    : (KEY_ERR[c] || 'نشان کلید نقشه را نپذیرفت (کد ' + c + ').') + (c === 481 || c === 482 ? '' : fix);
+  return why + ' تا آن موقع می‌توانید مختصات را دستی وارد کنید.';
+}
+function rejected(x) {
+  var editable = x.host.dataset.editable === '1';
+  instances = instances.filter(function (i) { return i !== x; });
+  // نقطه‌ای که روی نقشهٔ خالی زده شده بود برمی‌گردد
+  if (x.picked) {
+    var a = document.getElementById(x.host.dataset.latInput), b = document.getElementById(x.host.dataset.lngInput);
+    if (a && b) { a.value = x.orig[0]; b.value = x.orig[1]; a.dispatchEvent(new Event('input', {bubbles:true})); b.dispatchEvent(new Event('input', {bubbles:true})); }
+  }
+  x.map.remove();
+  x.host.querySelector('.cmb-location__canvas').hidden = true;
+  status(x.host, keyMessage(editable));
+}
+function watchKey() {
+  if (watchKey.on || !window.XMLHttpRequest) { return; }
+  watchKey.on = true;
+  var open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (method, url) {
+    if (/^https:\/\/api\.neshan\.org\/v\d+\/quota/.test(String(url))) {
+      var xhr = this;
+      xhr.addEventListener('loadend', function () {
+        if (xhr.status >= 200 && xhr.status < 300) { return; }
+        var body = {};
+        try { body = JSON.parse(xhr.responseText) || {}; } catch (e) { body = {}; }
+        keyFail = { code: Number(body.code || xhr.status) || 0, msg: String(body.message || '') };
+        instances.slice().forEach(rejected);
+      });
+    }
+    return open.apply(this, arguments);
+  };
 }
 function load() {
   if (sdk) { return Promise.resolve(sdk); }
@@ -62,13 +112,18 @@ function open(host) {
   var button = host.querySelector('[data-cmb-map-open]'), content = host.querySelector('.cmb-location__content');
   if (host.dataset.loading === '1') { return; }
   var existing = instances.filter(function (x) { return x.host === host; })[0];
-  if (!existing && !config.key && !content.hidden) { content.hidden = true; button.setAttribute('aria-expanded','false'); return; }
+  if (!existing && (!config.key || keyFail) && !content.hidden) { content.hidden = true; button.setAttribute('aria-expanded','false'); return; }
   if (existing) {
     content.hidden = !content.hidden; button.setAttribute('aria-expanded', String(!content.hidden));
     if (!content.hidden) { existing.map.invalidateSize(); }
     return;
   }
   content.hidden = false; button.setAttribute('aria-expanded', 'true');
+  if (config.key && keyFail) {
+    host.querySelector('.cmb-location__canvas').hidden = true;
+    status(host, keyMessage(host.dataset.editable === '1'));
+    return;
+  }
   if (!config.key) {
     status(host, host.dataset.editable === '1' ? 'نقشه هنوز راه‌اندازی نشده است. مدیریت سایت باید کلید وب نشان را در تنظیمات وارد کند. می‌توانید مختصات را دستی ثبت کنید.' : 'نمایش نقشه فعلاً در دسترس نیست. از آدرس و دکمهٔ «مسیریابی با نشان» استفاده کنید.');
     host.querySelector('.cmb-location__canvas').hidden = true;
@@ -82,8 +137,10 @@ function open(host) {
     try {
       canvas.hidden = false;
       var point = read(host), editable = host.dataset.editable === '1';
+      var la = document.getElementById(host.dataset.latInput), lo = document.getElementById(host.dataset.lngInput);
+      watchKey();
       map = new L.Map(canvas, { key: config.key, maptype: 'dreamy', center: point || [32.4, 53.7], zoom: point ? 15 : 5, scrollWheelZoom: false });
-      var instance = { host: host, map: map, marker: null, set: null };
+      var instance = { host: host, map: map, marker: null, set: null, picked: false, orig: [la ? la.value : '', lo ? lo.value : ''] };
       instance.set = function (p, move) {
         if (!p) { if (instance.marker) { map.removeLayer(instance.marker); instance.marker = null; } return; }
         if (instance.marker) { instance.marker.setLatLng(p); }
@@ -96,7 +153,8 @@ function open(host) {
       };
       function commit(p) {
         var a = document.getElementById(host.dataset.latInput), b = document.getElementById(host.dataset.lngInput);
-        if (!a || !b || a.disabled || b.disabled) { return; }
+        if (!a || !b || a.disabled || b.disabled || keyFail) { return; }
+        instance.picked = true;
         a.value = p[0].toFixed(6); b.value = p[1].toFixed(6);
         a.dispatchEvent(new Event('input', {bubbles:true})); b.dispatchEvent(new Event('input', {bubbles:true}));
         instance.set(p, false); status(host, 'موقعیت انتخاب شد؛ برای ثبت نهایی، فرم را ذخیره کنید.');

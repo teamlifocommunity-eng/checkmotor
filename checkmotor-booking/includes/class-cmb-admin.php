@@ -920,10 +920,27 @@ class CMB_Admin {
 				<table class="form-table">
 					<?php
 					?>
+					<?php
+					// دامنه‌هایی که باید در «دامنه‌های مجاز» کلید نشان باشند (با و بی www)
+					$map_host  = strtolower( (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST ) );
+					$map_bare  = preg_replace( '/^www\./', '', $map_host );
+					$map_hosts = array_unique( array_filter( array( $map_bare, $map_bare ? 'www.' . $map_bare : '' ) ) );
+					?>
 					<tr>
 						<th><label for="cmb-neshan-key">کلید وب نقشهٔ نشان</label></th>
 						<td><input id="cmb-neshan-key" name="neshan_web_key" type="text" dir="ltr" class="regular-text" autocomplete="off" value="<?php echo esc_attr( $s['neshan_web_key'] ); ?>" />
-						<p class="description">کلید مخصوص Web SDK را از پنل نشان بگیرید و به دامنهٔ سایت محدود کنید. کلید سرویس سمت سرور را اینجا وارد نکنید. نقشه پس از درخواست کاربر بارگذاری می‌شود؛ بدون کلید، ورود دستی مختصات و لینک نشان در دسترس است.</p>
+						<button type="button" class="button" id="cmb-neshan-test">آزمایش کلید</button>
+						<span id="cmb-neshan-result" role="status" style="margin-inline-start:8px;font-weight:600"></span>
+						<p class="description">
+							در پنل نشان یک کلید دسترسی بسازید که نوعش مخصوص <b>نقشهٔ وب</b> (Web SDK) باشد، <b>نه «سرویس‌ها»</b>.
+							کلید «سرویس‌ها» (جستجو، مسیریابی، تبدیل نقطه به آدرس و…) برای نقشهٔ وب پذیرفته نمی‌شود (خطای ۴۸۳) و نقشه
+							خاکستری با آرم نشان می‌ماند. در «دامنه‌های مجاز» کلید این دامنه‌ها را وارد کنید:
+							<code dir="ltr"><?php echo esc_html( implode( '  ', $map_hosts ) ); ?></code>
+						</p>
+						<p class="description">
+							«آزمایش کلید» همان بررسی‌ای را انجام می‌دهد که نقشه هنگام باز شدن انجام می‌دهد (یک بار از سهمیهٔ کلید). نقشه فقط
+							با درخواست کاربر بار می‌شود؛ بدون کلید معتبر، ورود دستی مختصات و دکمهٔ «مسیریابی با نشان» کار می‌کنند.
+						</p>
 						<a href="https://platform.neshan.org/docs/sdk/web/leaflet/neshan-leaflet-sdk/" target="_blank" rel="noopener">راهنمای دریافت کلید نشان</a></td>
 					</tr>
 					<?php
