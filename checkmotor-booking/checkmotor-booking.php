@@ -3,7 +3,7 @@
  * Plugin Name: چک موتور — سیستم رزرو نوبت
  * Plugin URI:  https://checkmotor.ir
  * Description: سیستم رزرو نوبت آنلاین چک موتور (MVP) — ورود با کد تایید پیامکی ملی‌پیامک، تقویم ۷ روزه، شیفت صبح/بعدازظهر، پنل مدیریت نوبت‌ها.
- * Version:     1.39.3
+ * Version:     1.40.0
  * Author:      رضا امام‌حسنی
  * Text Domain: checkmotor-booking
  * Domain Path: /languages
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMB_VERSION', '1.39.3' );
+define( 'CMB_VERSION', '1.40.0' );
 define( 'CMB_FILE', __FILE__ );
 define( 'CMB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMB_URL', plugin_dir_url( __FILE__ ) );
@@ -776,8 +776,9 @@ function cmb_enqueue_panel() {
 			'me'       => $user->ID ? $user->display_name : '',
 			'app'      => cmb_app_url(),
 			'login'    => cmb_login_url( cmb_app_url( 'panel' ) ),
-			'wpAdmin'  => esc_url_raw( admin_url( 'admin.php?page=cmb-bookings' ) ),
-			'wpSettings' => esc_url_raw( admin_url( 'admin.php?page=cmb-settings' ) ),
+			// پیشخوان وردپرس فقط مال مدیر کل است؛ بقیه دکمه‌اش را نمی‌بینند
+			'wpAdmin'  => current_user_can( 'manage_options' ) ? esc_url_raw( admin_url( 'admin.php?page=cmb-bookings' ) ) : '',
+			'wpSettings' => current_user_can( 'manage_options' ) ? esc_url_raw( admin_url( 'admin.php?page=cmb-settings' ) ) : '',
 			/* بیعانه: بخش «بیعانه و کیف پول» و پنجره‌ی لغو با مبلغ. */
 			'pay'      => array(
 				'on'        => CMB_Payments::enabled(),

@@ -456,8 +456,9 @@ class CMB_Panel_Api {
 		$agency = CMB_Branches::is_agency( $b );
 
 		$out = array(
-			'role'     => CMB_Branches::user_role( get_current_user_id() ),
-			'isAdmin'  => $admin,
+			'role'      => CMB_Branches::user_role( get_current_user_id() ),
+			'roleLabel' => CMB_Branches::role_label(),
+			'isAdmin'   => $admin,
 			'branchId' => (int) $branch,
 			'agency'   => $agency,
 			'branch'   => $b ? array(
@@ -471,7 +472,12 @@ class CMB_Panel_Api {
 			'can'      => array(
 				'schedule'      => CMB_Branches::can( 'schedule' ),
 				'services'      => CMB_Branches::can( 'services' ),
-				'createService' => CMB_Branches::can( 'services' ) && ! $agency,
+				'createService' => CMB_Branches::can( 'services' ),
+				'closures'      => CMB_Branches::can( 'closures' ),
+				'delete'        => CMB_Branches::can( 'delete' ),
+				'overbook'      => CMB_Branches::can( 'overbook' ),
+				'export'        => CMB_Branches::can( 'export' ),
+				'money'         => CMB_Branches::can( 'money' ),
 				'profile'       => CMB_Branches::can( 'profile' ) && $agency,
 				'wallet'        => CMB_Branches::can( 'wallet' ) && $agency,
 				'topup'         => CMB_Branches::can( 'topup' ),
@@ -810,7 +816,8 @@ class CMB_Panel_Api {
 			'status'      => $row->status,
 			'statusLabel' => self::status_label_for( $row ),
 			'pay'         => CMB_Payments::summary( $row ),
-			'actions'     => CMB_Bookings::actions_for( $row ),
+			// دکمه‌ی حذف فقط برای کسی که اجازه‌اش را دارد
+			'actions'     => array_values( array_diff( CMB_Bookings::actions_for( $row ), CMB_Branches::can( 'delete' ) ? array() : array( 'delete' ) ) ),
 			'holdLeft'    => ( 'pending' === $row->status && ! empty( $row->hold_until_gmt ) )
 				? max( 0, strtotime( $row->hold_until_gmt . ' UTC' ) - cmb_now()->getTimestamp() )
 				: 0,
@@ -896,6 +903,10 @@ class CMB_Panel_Api {
 		}
 
 		if ( 'delete' === $status ) {
+			if ( ! CMB_Branches::can( 'delete' ) ) {
+				return self::role_denied( 'حذف نوبت فقط با مدیر شعبه است؛ اپراتور می‌تواند نوبت را لغو کند.' );
+			}
+
 			$deleted = CMB_Bookings::delete( $id );
 
 			if ( is_wp_error( $deleted ) ) {
@@ -909,8 +920,9 @@ class CMB_Panel_Api {
 			$id,
 			$status,
 			array(
-				'refund' => $request->get_param( 'refund' ),
-				'force'  => (bool) $request->get_param( 'force' ),
+				// مبلغ برگشت دلخواه و ثبت بیش از ظرفیت تصمیم مدیر است؛ اپراتور با پیش‌فرض‌ها
+				'refund' => CMB_Branches::can( 'refund_amount' ) ? $request->get_param( 'refund' ) : null,
+				'force'  => CMB_Branches::can( 'overbook' ) && (bool) $request->get_param( 'force' ),
 				// لغو مدیر سایت روی نوبت نمایندگی: release (پیش‌فرض) | capture
 				'fee'    => sanitize_key( (string) $request->get_param( 'fee' ) ),
 			)
@@ -947,7 +959,7 @@ class CMB_Panel_Api {
 		foreach ( CMB_Services::get_services( $branch, false ) as $service ) {
 			$poster = $service->poster_id ? wp_get_attachment_image_url( (int) $service->poster_id, 'medium' ) : '';
 
-			if ( $agency ) {
+			if ( CMB_Services::is_catalog_copy( $service ) ) {
 				/* حالت کاتالوگ (US-3.4): عنوان، توضیح و پوستر مال مرکز است؛
 				   نمایندگی فقط قیمت، روزها و روشن/خاموش. بیعانه‌ی مشتری هم
 				   برای نمایندگی وجود ندارد (D19). */
@@ -965,6 +977,27 @@ class CMB_Panel_Api {
 					'sortOrder'   => (int) $service->sort_order,
 					'catalog'     => true,
 					'catalogId'   => isset( $service->catalog_id ) ? (int) $service->catalog_id : 0,
+				);
+				continue;
+			}
+
+			if ( $agency ) {
+				// خدمتی که خود نمایندگی ساخته: همه‌چیزش مال خودش، جز بیعانه (D19)
+				$items[] = array(
+					'id'          => (int) $service->id,
+					'slug'        => $service->slug,
+					'title'       => $service->title,
+					'description' => $service->description,
+					'price'       => (int) $service->price,
+					'duration'    => $service->duration_note,
+					'weekdays'    => CMB_Services::allowed_weekdays( $service ),
+					'active'      => (int) $service->is_active,
+					'posterId'    => (int) $service->poster_id,
+					'poster'      => $poster ? $poster : '',
+					'sortOrder'   => (int) $service->sort_order,
+					'ownCapacity' => CMB_Services::own_capacity( $service ),
+					'catalog'     => false,
+					'own'         => true,
 				);
 				continue;
 			}
@@ -995,7 +1028,7 @@ class CMB_Panel_Api {
 				'items'   => $items,
 				'catalog' => $agency,
 				'canEdit' => CMB_Branches::can( 'services' ),
-				'canAdd'  => CMB_Branches::can( 'services' ) && ! $agency,
+				'canAdd'  => CMB_Branches::can( 'services' ),
 			)
 		);
 	}
@@ -1050,7 +1083,7 @@ class CMB_Panel_Api {
 			if ( CMB_Services::is_catalog_copy( $service ) ) {
 				return new WP_Error( 'cmb_catalog_locked', 'پوستر خدمت را مرکز تعیین می‌کند.', array( 'status' => 403 ) );
 			}
-		} elseif ( ! CMB_Branches::can( 'services' ) || CMB_Branches::is_agency( CMB_Branches::panel_branch_id() ) ) {
+		} elseif ( ! CMB_Branches::can( 'services' ) ) {
 			return self::role_denied();
 		}
 
@@ -1146,9 +1179,10 @@ class CMB_Panel_Api {
 
 				return rest_ensure_response( array( 'success' => true, 'id' => $id ) );
 			}
-		} elseif ( CMB_Branches::is_agency( $branch ) ) {
-			return new WP_Error( 'cmb_catalog_only', 'خدمات نمایندگی از کاتالوگ مرکز می‌آید؛ خدمت تازه را مرکز اضافه می‌کند.', array( 'status' => 403 ) );
 		}
+
+		// خدمت خود نمایندگی: هر نمایندگی خدمات خودش را هم ارائه می‌دهد
+		$agency = CMB_Branches::is_agency( $branch );
 
 		$data = array(
 			'title'            => sanitize_text_field( (string) $request->get_param( 'title' ) ),
@@ -1156,8 +1190,8 @@ class CMB_Panel_Api {
 			'price'            => (int) $request->get_param( 'price' ),
 			'duration_note'    => sanitize_text_field( (string) $request->get_param( 'duration' ) ),
 			'allowed_weekdays' => implode( ',', $weekdays ),
-			// ۱ برای همه، ۲ آزمایشی (فقط مدیران)، ۰ غیرفعال
-			'is_active'        => max( 0, min( 2, (int) $request->get_param( 'active' ) ) ),
+			// ۱ برای همه، ۲ آزمایشی (فقط مدیران؛ نه در نمایندگی)، ۰ غیرفعال
+			'is_active'        => max( 0, min( $agency ? 1 : 2, (int) $request->get_param( 'active' ) ) ),
 			'sort_order'       => (int) $request->get_param( 'sortOrder' ),
 		);
 
@@ -1174,12 +1208,13 @@ class CMB_Panel_Api {
 			$data['own_capacity'] = is_array( $params['ownCapacity'] ) ? $params['ownCapacity'] : null;
 		}
 
-		// بیعانه‌ی خدمت: null = پیش‌فرض، ۰ = ندارد، عدد = مبلغ دلخواه (تومان)
-		if ( is_array( $params ) && array_key_exists( 'deposit', $params ) ) {
+		// بیعانه‌ی خدمت: null = پیش‌فرض، ۰ = ندارد، عدد = مبلغ دلخواه (تومان).
+		// مشتری نمایندگی بیعانه نمی‌دهد (D19)، پس برای نمایندگی نادیده گرفته می‌شود.
+		if ( ! $agency && is_array( $params ) && array_key_exists( 'deposit', $params ) ) {
 			$data['deposit_amount'] = $params['deposit'];
 		}
 
-		if ( is_array( $params ) && array_key_exists( 'cancelRefund', $params ) ) {
+		if ( ! $agency && is_array( $params ) && array_key_exists( 'cancelRefund', $params ) ) {
 			$data['cancel_refund_amount'] = $params['cancelRefund'];
 		}
 
@@ -1284,9 +1319,11 @@ class CMB_Panel_Api {
 		$branch = CMB_Branches::panel_branch_id();
 		$agency = CMB_Branches::is_agency( $branch );
 
-		/* نمایندگی فقط ساعت و ظرفیت شیفت‌های خودش را دارد؛ بازه‌ی رزرو و
-		   قواعد لغو سراسری است و مرکز تعیینش می‌کند (D7). */
-		$keys = $agency ? CMB_Branches::schedule_keys() : array_keys( CMB_Settings::schedule_rules() );
+		/* شعبه فقط ساعت و ظرفیت شیفت‌های خودش را دارد؛ بازه‌ی رزرو، سقف نوبت
+		   مشتری و قواعد لغو برای همه‌ی شعبه‌ها یکی است و فقط مدیر کل
+		   تغییرش می‌دهد (D7). */
+		$global = current_user_can( 'manage_options' ) && ! $agency;
+		$keys   = $global ? array_keys( CMB_Settings::schedule_rules() ) : CMB_Branches::schedule_keys();
 
 		foreach ( $keys as $key ) {
 			$out[ $key ] = $agency ? cmb_branch_setting( $branch, $key ) : CMB_Settings::get( $key );
@@ -1297,6 +1334,7 @@ class CMB_Panel_Api {
 				'settings' => $out,
 				'keys'     => $keys,
 				'agency'   => $agency,
+				'global'   => $global,
 				'canEdit'  => CMB_Branches::can( 'schedule' ),
 				// مدیر کل لینک تنظیمات کامل (پیامک و …) را هم می‌بیند
 				'fullUrl'  => ( current_user_can( 'manage_options' ) && ! $agency ) ? esc_url_raw( admin_url( 'admin.php?page=cmb-settings' ) ) : '',
@@ -1317,7 +1355,8 @@ class CMB_Panel_Api {
 
 		$branch = CMB_Branches::panel_branch_id();
 
-		if ( CMB_Branches::is_agency( $branch ) ) {
+		// قواعد سراسری (بازه‌ی رزرو، سقف نوبت، لغو) فقط با مدیر کل؛ بقیه فقط شیفت‌ها
+		if ( CMB_Branches::is_agency( $branch ) || ! current_user_can( 'manage_options' ) ) {
 			$params = array_intersect_key( $params, array_flip( CMB_Branches::schedule_keys() ) );
 		}
 
@@ -1353,6 +1392,10 @@ class CMB_Panel_Api {
 	 */
 	public function customers( WP_REST_Request $request ) {
 		global $wpdb;
+
+		if ( $request->get_param( 'all' ) && ! CMB_Branches::can( 'export' ) ) {
+			return self::role_denied( 'خروجی اکسل مشتری‌ها فقط با مدیر شعبه است.' );
+		}
 
 		$table = cmb_table( 'bookings' );
 		$q     = sanitize_text_field( (string) $request->get_param( 'q' ) );
@@ -1617,11 +1660,11 @@ class CMB_Panel_Api {
 	 * آیا کاربر فعلی می‌تواند کیف پول را دستی تغییر دهد و برگشت‌های مانده
 	 * را تعیین تکلیف کند؟
 	 *
-	 * دیدن برای همه‌ی مسئولان رزرو آزاد است؛ تغییر با پول سروکار دارد و
-	 * پیش‌فرض فقط مدیر کل.
+	 * دیدن با مدیر مرکز است؛ تغییر با پول سروکار دارد و پیش‌فرض فقط مدیر
+	 * کل — مدیر مرکز فقط اگر در تنظیمات اجازه داده شده باشد.
 	 */
 	public static function can_refund() {
-		return current_user_can( 'manage_options' ) || (bool) CMB_Settings::get( 'pay_refund_operators', 0 );
+		return CMB_Branches::can( 'money' );
 	}
 
 	/**
@@ -1711,6 +1754,10 @@ class CMB_Panel_Api {
 
 	public function save_closure( WP_REST_Request $request ) {
 		global $wpdb;
+
+		if ( ! CMB_Branches::can( 'closures' ) ) {
+			return self::role_denied( 'بستن یا باز کردن روز فقط با مدیر شعبه است.' );
+		}
 
 		$branch = CMB_Branches::panel_branch_id();
 		$remove = (int) $request->get_param( 'remove' );
@@ -2119,6 +2166,8 @@ class CMB_Panel_Api {
 
 		if ( 'remove' === $op ) {
 			$res = CMB_Branches::remove_user( $id, (int) $request->get_param( 'userId' ) );
+		} elseif ( 'role' === $op ) {
+			$res = CMB_Branches::set_user_role( $id, (int) $request->get_param( 'userId' ), sanitize_key( (string) $request->get_param( 'role' ) ) );
 		} else {
 			$res = CMB_Branches::add_user(
 				$id,
@@ -2135,7 +2184,8 @@ class CMB_Panel_Api {
 		return rest_ensure_response(
 			array(
 				'success' => true,
-				'message' => 'remove' === $op ? 'دسترسی پنل این کاربر برداشته شد.' : 'کاربر به پنل شعبه اضافه شد؛ با همین شماره و کد پیامکی وارد می‌شود.',
+				'message' => 'remove' === $op ? 'دسترسی پنل این کاربر برداشته شد.'
+					: ( 'role' === $op ? 'نقش کاربر عوض شد؛ از درخواست بعدی‌اش اعمال می‌شود.' : 'کاربر به پنل شعبه اضافه شد؛ با همین شماره و کد پیامکی وارد می‌شود.' ),
 				'users'   => CMB_Branches::users( $id ),
 			)
 		);

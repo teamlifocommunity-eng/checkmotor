@@ -12,8 +12,8 @@
  *
  * کاربر پنل: هر کاربرِ غیرمدیر دقیقاً به یک شعبه وصل است (user meta
  * cmb_branch_id) و نقشش manager یا operator است (cmb_branch_role).
- * مسئولان رزرو قبلی که هنوز شعبه ندارند، کاربر مرکز با همان اختیارات
- * قبلی‌اند — تا هیچ‌کدام بعد از به‌روزرسانی قفل نشوند.
+ * مسئولان رزرو قبلی که هنوز شعبه ندارند، کاربر مرکز با نقش «مدیر مرکز»اند —
+ * تا هیچ‌کدام بعد از به‌روزرسانی قفل نشوند. اختیار هر نقش در can() است.
  *
  * تا مهاجرت ۱.۹.۰ اجرا نشده (ready() = false)، همه‌چیز دقیقاً مثل قبل
  * رفتار می‌کند: یک شعبه، بدون کسر، بدون مرحله‌ی انتخاب مرکز.
@@ -881,8 +881,8 @@ class CMB_Branches {
 	/**
 	 * نقش کاربر در پنل: admin | manager | operator.
 	 *
-	 * کاربر مرکز بدون نقش صریح، همان اختیارات کامل قبلی را دارد
-	 * (manager)؛ کاربر نمایندگی بدون نقش صریح، کمترین اختیار (operator).
+	 * کاربر مرکز بدون نقش صریح مدیر مرکز است (manager، مثل قبل)؛ کاربر
+	 * نمایندگی بدون نقش صریح، کمترین اختیار (operator).
 	 */
 	public static function user_role( $user_id ) {
 		$user_id = (int) $user_id;
@@ -906,12 +906,30 @@ class CMB_Branches {
 	 * @return array[]
 	 */
 	public static function users( $branch_id ) {
-		$out = array();
+		$out   = array();
+		$found = get_users( array( 'meta_key' => 'cmb_branch_id', 'meta_value' => (string) (int) $branch_id ) ); // phpcs:ignore
+		$seen  = array();
 
-		foreach ( get_users( array( 'meta_key' => 'cmb_branch_id', 'meta_value' => (string) (int) $branch_id ) ) as $u ) { // phpcs:ignore
-			if ( ! CMB_Panel_Api::user_can_manage( $u ) || user_can( $u, 'manage_options' ) ) {
+		/* مسئولان رزروی که پیش از نمایندگی‌ها (یا از پیشخوان) ساخته شده‌اند و
+		   هنوز شعبه ندارند، کاربر مرکزند و باید در فهرست مرکز دیده شوند. */
+		if ( (int) $branch_id === self::center_id() ) {
+			$found = array_merge(
+				$found,
+				get_users(
+					array(
+						'role'       => CMB_Operators_Role::ROLE,
+						'meta_query' => array( array( 'key' => 'cmb_branch_id', 'compare' => 'NOT EXISTS' ) ), // phpcs:ignore
+					)
+				)
+			);
+		}
+
+		foreach ( $found as $u ) {
+			if ( isset( $seen[ $u->ID ] ) || ! CMB_Panel_Api::user_can_manage( $u ) || user_can( $u, 'manage_options' ) ) {
 				continue;
 			}
+
+			$seen[ $u->ID ] = true;
 
 			$out[] = array(
 				'id'      => (int) $u->ID,
@@ -1003,11 +1021,13 @@ class CMB_Branches {
 			}
 		}
 
-		if ( 'manager' === $role && $counts['manager'] >= 1 ) {
+		$limits = self::is_agency( $b );
+
+		if ( $limits && 'manager' === $role && $counts['manager'] >= 1 ) {
 			return new WP_Error( 'cmb_manager_exists', 'این نمایندگی همین حالا مدیر دارد. اول مدیر فعلی را حذف کنید.', array( 'status' => 409 ) );
 		}
 
-		if ( 'operator' === $role && $counts['operator'] >= self::MAX_OPERATORS ) {
+		if ( $limits && 'operator' === $role && $counts['operator'] >= self::MAX_OPERATORS ) {
 			return new WP_Error( 'cmb_operator_limit', sprintf( 'هر نمایندگی حداکثر %s اپراتور دارد.', cmb_fa_num( self::MAX_OPERATORS ) ), array( 'status' => 409 ) );
 		}
 
@@ -1052,6 +1072,56 @@ class CMB_Branches {
 		return (int) $user->ID;
 	}
 
+	/** آیا این حساب کاربر پنلِ همین شعبه است؟ (کاربر مرکز ممکن است meta شعبه نداشته باشد.) */
+	protected static function is_member( $user, $branch_id ) {
+		if ( ! $user || self::user_branch_id( $user->ID ) !== (int) $branch_id || ! CMB_Panel_Api::user_can_manage( $user ) ) {
+			return false;
+		}
+
+		return '' !== (string) get_user_meta( $user->ID, 'cmb_branch_id', true ) || (int) $branch_id === self::center_id();
+	}
+
+	/**
+	 * تغییر نقش کاربر یک شعبه (مدیر ↔ اپراتور)، با همان سقف نمایندگی:
+	 * یک مدیر و حداکثر MAX_OPERATORS اپراتور.
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function set_user_role( $branch_id, $user_id, $role ) {
+		$user = get_userdata( (int) $user_id );
+		$role = 'manager' === $role ? 'manager' : 'operator';
+		$b    = self::get( $branch_id );
+
+		if ( ! $b || ! self::is_member( $user, $branch_id ) ) {
+			return new WP_Error( 'cmb_not_found', 'این کاربر عضو این شعبه نیست.', array( 'status' => 404 ) );
+		}
+
+		if ( self::is_agency( $b ) && self::user_role( $user->ID ) !== $role ) {
+			$counts = array( 'manager' => 0, 'operator' => 0 );
+
+			foreach ( self::users( (int) $b->id ) as $u ) {
+				if ( $u['id'] !== (int) $user->ID ) {
+					$counts[ $u['role'] ]++;
+				}
+			}
+
+			if ( 'manager' === $role && $counts['manager'] >= 1 ) {
+				return new WP_Error( 'cmb_manager_exists', 'این نمایندگی همین حالا مدیر دارد. اول نقش مدیر فعلی را عوض کنید.', array( 'status' => 409 ) );
+			}
+
+			if ( 'operator' === $role && $counts['operator'] >= self::MAX_OPERATORS ) {
+				return new WP_Error( 'cmb_operator_limit', sprintf( 'هر نمایندگی حداکثر %s اپراتور دارد.', cmb_fa_num( self::MAX_OPERATORS ) ), array( 'status' => 409 ) );
+			}
+		}
+
+		update_user_meta( $user->ID, 'cmb_branch_id', (int) $b->id );
+		update_user_meta( $user->ID, 'cmb_branch_role', $role );
+
+		cmb_log( 'Branch user role', array( 'branch' => (int) $b->id, 'user' => (int) $user->ID, 'role' => $role ) );
+
+		return true;
+	}
+
 	/**
 	 * گرفتن دسترسی پنل از کاربرِ یک شعبه. حساب خودش (و نوبت‌های مشتری‌اش)
 	 * سر جایش می‌ماند.
@@ -1061,7 +1131,7 @@ class CMB_Branches {
 	public static function remove_user( $branch_id, $user_id ) {
 		$user = get_userdata( (int) $user_id );
 
-		if ( ! $user || self::user_branch_id( $user->ID ) !== (int) $branch_id || '' === (string) get_user_meta( $user->ID, 'cmb_branch_id', true ) ) {
+		if ( ! self::is_member( $user, $branch_id ) ) {
 			return new WP_Error( 'cmb_not_found', 'این کاربر عضو این شعبه نیست.', array( 'status' => 404 ) );
 		}
 
@@ -1223,35 +1293,77 @@ class CMB_Branches {
 	}
 
 	/**
-	 * اختیار کاربر جاری در پنل.
+	 * اختیار کاربر جاری در پنل (۱.۴۰.۰). فقط مدیر کل (مدیر سایت) همه‌چیز
+	 * را دارد؛ بقیه فقط شعبه‌ی خودشان را می‌بینند و به اندازه‌ی نقششان:
 	 *
-	 * @param string $what schedule | services | profile | wallet | topup |
-	 *                     closures | bookings | center (ابزارهای مرکز:
-	 *                     کیف پول مشتری، برگشت‌ها، سلامت، بررسی بیعانه)
+	 *   کار                                   مدیر  مدیر   اپراتور  مدیر      اپراتور
+	 *                                          کل    مرکز   مرکز     نمایندگی  نمایندگی
+	 *   bookings  دیدن نوبت و تغییر وضعیت       ✓     ✓      ✓        ✓         ✓
+	 *   delete    حذف نوبت                     ✓     ✓      –        ✓         –
+	 *   closures  بستن روز / شیفت              ✓     ✓      –        ✓         –
+	 *   services  ساخت و ویرایش خدمت           ✓     ✓      –        ✓         –
+	 *   schedule  تنظیمات شیفت                 ✓     ✓      –        ✓         –
+	 *   export    خروجی اکسل مشتری‌ها           ✓     ✓      –        ✓         –
+	 *   refund_amount  مبلغ برگشت دلخواه در لغو  ✓    ✓      –        ✓         –
+	 *   overbook  بازگرداندن نوبت به شیفت پر    ✓     ✓      –        ✓         –
+	 *   center    کیف پول مشتری‌ها، برگشت‌ها،
+	 *             سلامت سیستم، بررسی بیعانه    ✓     ✓      –        –         –
+	 *   money     تغییر کیف پول مشتری و برگشت  ✓     (۱)    –        –         –
+	 *   profile / wallet  پروفایل و کیف پول نمایندگی  ✓  –  –  ✓  –
+	 *   topup     شارژ کیف پول نمایندگی        ✓(۲)  –      –        ✓         –
+	 *
+	 *   (۱) فقط اگر مدیر سایت در تنظیمات اجازه داده باشد.
+	 *   (۲) فقط در نمای همان نمایندگی.
+	 *
+	 * مدیریت نمایندگی‌ها و کاربرانشان، گزارش، مبلغ‌ها، جابه‌جایی بین شعبه‌ها و
+	 * تنظیمات وردپرس فقط مال مدیر کل است (guard_admin و پیشخوان).
 	 */
 	public static function can( $what ) {
+		$branch = self::panel_branch_id();
+
 		if ( current_user_can( 'manage_options' ) ) {
-			return 'topup' !== $what || self::is_agency( self::panel_branch_id() );
+			return 'topup' !== $what || self::is_agency( $branch );
 		}
 
-		$branch = self::panel_branch_id();
-		$role   = self::user_role( get_current_user_id() );
+		if ( $branch < 1 ) {
+			return false;
+		}
+
+		$agency  = self::is_agency( $branch );
+		$manager = 'manager' === self::user_role( get_current_user_id() );
 
 		switch ( $what ) {
 			case 'bookings':
-			case 'closures':
-				return $branch > 0;
+				return true;
 
 			case 'center':
-				// کاربران مرکز همان ابزارهای قبلی را دارند؛ نمایندگی نه
-				return $branch > 0 && ! self::is_agency( $branch );
+				return $manager && ! $agency;
 
+			case 'money':
+				return $manager && ! $agency && (bool) CMB_Settings::get( 'pay_refund_operators', 0 );
+
+			case 'profile':
+			case 'wallet':
 			case 'topup':
-				return 'manager' === $role && self::is_agency( $branch );
+				return $manager && $agency;
 
 			default:
-				return 'manager' === $role && $branch > 0;
+				// delete | closures | services | schedule | export | refund_amount | overbook
+				return $manager;
 		}
+	}
+
+	/** برچسب نقش کاربر جاری برای نمایش در پنل. */
+	public static function role_label( $user_id = 0 ) {
+		$user_id = $user_id ? (int) $user_id : get_current_user_id();
+
+		if ( user_can( $user_id, 'manage_options' ) ) {
+			return 'مدیر کل';
+		}
+
+		$where = self::is_agency( self::user_branch_id( $user_id ) ) ? 'نمایندگی' : 'مرکز';
+
+		return ( 'manager' === self::user_role( $user_id ) ? 'مدیر ' : 'اپراتور ' ) . $where;
 	}
 }
 

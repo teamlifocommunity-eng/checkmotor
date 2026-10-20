@@ -404,6 +404,12 @@ class CMB_Operators {
 		<div class="wrap cmb-admin" dir="rtl">
 			<h1>کاربران پنل رزرو</h1>
 
+			<div class="notice notice-info inline" style="max-width:760px"><p>
+				<b>نقش‌ها:</b> هر کاربر پنل یا «مدیر» شعبه‌ی خودش است یا «اپراتور» (فقط نوبت‌ها و مشتری‌ها). کاربرانی که اینجا
+				ساخته می‌شوند کاربر مرکز با نقش مدیر مرکزند. نقش را در پنل ← «نمایندگی‌ها» ← کارت مرکز یا هر نمایندگی ←
+				«کاربران و نقش‌ها» عوض کنید. همه‌چیزِ همه‌ی شعبه‌ها فقط با مدیر سایت است.
+			</p></div>
+
 			<?php if ( $message ) : ?>
 				<div class="notice notice-<?php echo esc_attr( $type ); ?> is-dismissible"><p><?php echo esc_html( $message ); ?></p></div>
 			<?php endif; ?>

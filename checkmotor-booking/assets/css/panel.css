@@ -1112,6 +1112,24 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
 .pn-agc__w span { display: block; font-size: var(--t-cp); color: var(--ink-3); }
 .pn-agc__w b { font-size: var(--t-cl); font-weight: 800; }
 
+/* کاربران پنل یک شعبه و نقششان */
+.pn-user {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--s3);
+  padding: 10px 0; border-bottom: 1px solid var(--g5);
+}
+.pn-user__who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pn-user__who b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pn-user__who span { font-size: var(--t-cp); color: var(--ink-3); text-align: right; }
+.pn-user__role { padding: 3px; }
+.pn-user__role .pn-seg__b { white-space: nowrap; padding-inline: 10px; }
+@media (max-width: 560px) {
+  .pn-user { grid-template-columns: minmax(0, 1fr) auto; }
+  .pn-user__role { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* نقش کاربر زیر نامش در منو */
+.pn-side__role { display: block; margin-top: 2px; font-size: var(--t-cp); font-weight: 600; color: var(--flame); }
+
 .pn-table__total td { font-weight: 800; background: var(--g6); }
 
 @media (max-width: 980px) {

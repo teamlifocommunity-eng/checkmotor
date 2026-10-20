@@ -205,7 +205,7 @@ class CMB_Admin {
 			<tr>
 				<th><label>تغییر دستی کیف پول</label></th>
 				<td>
-					<label><input type="checkbox" name="pay_refund_operators" value="1" <?php checked( (int) $s['pay_refund_operators'], 1 ); ?> /> مسئولان رزرو هم بتوانند کیف پول مشتری را دستی کم و زیاد کنند</label>
+					<label><input type="checkbox" name="pay_refund_operators" value="1" <?php checked( (int) $s['pay_refund_operators'], 1 ); ?> /> مدیر مرکز (کاربر پنل با نقش «مدیر مرکز») هم بتواند کیف پول مشتری را دستی کم و زیاد کند و برگشت‌های مانده را تعیین تکلیف کند — اپراتورها و نمایندگی‌ها هرگز</label>
 					<p class="description">بدون این، دیدن کیف پول‌ها برای همه آزاد است ولی تغییرش فقط با مدیر سایت. هر تغییر با نام انجام‌دهنده و توضیح ثبت می‌شود.</p>
 				</td>
 			</tr>

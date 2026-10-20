@@ -303,9 +303,13 @@ class CMB_Services {
 		}
 	}
 
-	/** آیا این خدمت ردیفِ کاتالوگِ یک نمایندگی است (عنوان و توضیحش قفل)؟ */
+	/**
+	 * آیا این خدمت ردیفِ کاتالوگِ یک نمایندگی است (عنوان و توضیحش قفل)؟
+	 * خدمتی که خود نمایندگی ساخته catalog_id صفر دارد و مال خودش است.
+	 */
 	public static function is_catalog_copy( $service ) {
-		return $service && CMB_Branches::ready() && CMB_Branches::is_agency( (int) $service->branch_id );
+		return $service && CMB_Branches::ready() && CMB_Branches::is_agency( (int) $service->branch_id )
+			&& ! empty( $service->catalog_id );
 	}
 
 	public static function flush_cache() {

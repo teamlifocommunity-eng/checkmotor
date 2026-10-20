@@ -313,7 +313,8 @@ function side() {
       }).join('') +
     '</nav>' +
     '<div class="pn-side__foot">' +
-      '<div class="pn-side__me">' + esc(C.me || '') + '</div>' +
+      '<div class="pn-side__me">' + esc(C.me || '') +
+        (ctx().roleLabel ? '<span class="pn-side__role">' + esc(ctx().roleLabel) + '</span>' : '') + '</div>' +
       installBtn('pn-side__b', 'نصب روی گوشی') +
       '<a class="pn-side__b" href="' + esc(C.app || '/') + '">' + I.car + '<span>دیدن اپ مشتری</span></a>' +
       '<button class="pn-side__b pn-side__b--out" data-logout>' + I.out + '<span>خروج از حساب</span></button>' +
@@ -731,10 +732,11 @@ function viewSettings() {
     '<div class="pn-hint">صفر برای یک شیفت یعنی آن شیفت برای خدمات اصلی بسته است. برای بستن موقت یک روز خاص، از بخش «بستن روز» استفاده کنید.</div>' +
   '</div>';
 
-  /* نمایندگی فقط شیفت‌های خودش را دارد؛ بازه‌ی رزرو و قواعد لغو سراسری
-     است و مرکز تعیینش می‌کند. */
-  if (agency) {
-    return html + note('info', I.info, 'بازه‌ی رزرو آنلاین و مهلت لغو مشتری برای همه‌ی شعبه‌ها یکی است و مدیریت مرکز تعیینش می‌کند.') +
+  /* شعبه فقط شیفت‌های خودش را دارد؛ بازه‌ی رزرو و قواعد لغو سراسری است
+     و فقط مدیر کل تغییرش می‌دهد. */
+  if (agency || !S.schedGlobal) {
+    return html + note('info', I.info, 'بازه‌ی رزرو آنلاین، سقف نوبت هر مشتری و مهلت لغو برای همه‌ی شعبه‌ها یکی است و فقط مدیر کل تغییرش می‌دهد.') +
+      (!agency && ctx().can.center ? healthCard() : '') +
       '<div class="pn-actions">' +
         '<button class="pn-btn pn-btn--pri" data-sched-save' + (S.busy ? ' disabled' : '') + '>' +
           (S.busy ? '<span class="pn-spin"></span> در حال ذخیره…' : 'ذخیره‌ی تنظیمات') + '</button>' +
@@ -916,8 +918,8 @@ function viewCustomers() {
   var c = S.customers;
 
   var html = head('مشتری‌ها', c ? fa(c.total) + ' مشتری' : '',
-    '<button class="pn-btn pn-btn--dark" data-cust-export' + (S.exporting ? ' disabled' : '') + '>' +
-      (S.exporting ? '<span class="pn-spin"></span> در حال آماده‌سازی…' : I.down + ' خروجی اکسل') + '</button>' +
+    (ctx().can.export === false ? '' : '<button class="pn-btn pn-btn--dark" data-cust-export' + (S.exporting ? ' disabled' : '') + '>' +
+      (S.exporting ? '<span class="pn-spin"></span> در حال آماده‌سازی…' : I.down + ' خروجی اکسل') + '</button>') +
     '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>');
 
   html += '<div class="pn-card">' +
@@ -1044,17 +1046,19 @@ function exportCustomers() {
 function viewServices() {
   var m = S.svcMeta || { catalog: false, canEdit: true, canAdd: true };
 
-  /* نمایندگی: کاتالوگ مرکز (US-3.4). عنوان، شرح و پوستر را مرکز تعیین
-     می‌کند؛ نمایندگی قیمت، روزها و روشن/خاموش بودن را. */
+  /* نمایندگی: کاتالوگ مرکز (US-3.4) به‌علاوه‌ی خدمات خود نمایندگی. در
+     خدمت کاتالوگ عنوان، شرح و پوستر را مرکز تعیین می‌کند و نمایندگی قیمت،
+     روزها و روشن/خاموش بودن را؛ خدمتی که خود نمایندگی ساخته همه‌اش مال
+     خودش است (جز بیعانه، که مشتری نمایندگی نمی‌دهد). */
   var html = head('خدمات', m.catalog
-      ? 'خدمات از کاتالوگ مرکز می‌آید؛ قیمت، روزها و فعال بودن هر خدمت مال شماست'
+      ? 'خدمات کاتالوگ مرکز را با قیمت خودتان فعال کنید، یا خدمت مخصوص نمایندگی خودتان را اضافه کنید'
       : 'قیمت، شرح و روزهای ارائه‌ی هر خدمت را اینجا تغییر دهید',
     m.canAdd ? '<button class="pn-btn pn-btn--dark" data-svc-new>' + I.plus + ' افزودن خدمت</button>' : '');
 
   if (!S.services) { return html + skel(3); }
 
   if (m.catalog && !S.services.some(function (x) { return Number(x.active) === 1; })) {
-    html += note('warn', I.info, 'هنوز هیچ خدمتی را فعال نکرده‌اید؛ تا یکی فعال نشود، مشتری‌ها نمی‌توانند در این نمایندگی نوبت بگیرند. روی «ویرایش» بزنید، قیمت خودتان را بگذارید و فعالش کنید.');
+    html += note('warn', I.info, 'هنوز هیچ خدمتی فعال نیست؛ تا یکی فعال نشود، مشتری‌ها نمی‌توانند در این نمایندگی نوبت بگیرند. یک خدمت کاتالوگ را با قیمت خودتان فعال کنید، یا با «افزودن خدمت» خدمت خودتان را بسازید.');
   }
 
   if (!m.canEdit) {
@@ -1073,6 +1077,8 @@ function viewServices() {
             '<h3 style="font-size:17px;font-weight:800">' + esc(s.title) + '</h3>' +
             (s.active ? '<span class="pn-badge pn-badge--confirmed">فعال</span>'
                       : '<span class="pn-badge pn-badge--cancelled">غیرفعال</span>') +
+            (m.catalog ? (s.catalog ? '<span class="pn-badge pn-badge--quick">کاتالوگ مرکز</span>'
+                                    : '<span class="pn-badge pn-badge--pending">خدمت نمایندگی</span>') : '') +
           '</div>' +
           (s.description ? '<p style="font-size:13px;color:var(--ink-2);margin-top:8px;line-height:1.85">' + esc(s.description) + '</p>' : '') +
           '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--ink-3)">' +
@@ -1090,7 +1096,8 @@ function viewServices() {
           '<button class="pn-btn pn-btn--soft pn-btn--sm" data-svc="' + s.id + '">' + I.edit + ' ویرایش</button>' +
           '<button class="pn-btn pn-btn--soft pn-btn--sm" data-svc-toggle="' + s.id + '">' +
             (s.active ? 'غیرفعال کن' : 'فعال کن') + '</button>' +
-          (m.catalog ? '</div>' :
+          (s.catalog ? '</div>' : m.catalog
+            ? '<button class="pn-btn pn-btn--soft pn-btn--sm" data-svc-copy="' + s.id + '">کپی</button></div>' :
           '<button class="pn-btn pn-btn--soft pn-btn--sm" data-svc-copy="' + s.id + '">کپی</button>' +
           '<button class="pn-btn pn-btn--soft pn-btn--sm" data-svc-move="' + s.id + ':up"' +
             (i === 0 ? ' disabled' : '') + ' aria-label="بالا">' + I.chevU + '</button>' +
@@ -1165,6 +1172,7 @@ function svcModal() {
   if (s.catalog) { return catalogModal(); }
 
   var isNew = !s.id;
+  var agency = ctx().agency;
 
   return '<div class="pn-modal__hd"><div class="pn-modal__t">' + (isNew ? 'خدمت تازه' : 'ویرایش خدمت') + '</div>' +
     '<button class="pn-modal__x" data-close>' + I.x + '</button></div>' +
@@ -1230,9 +1238,17 @@ function svcModal() {
         : '<div class="pn-hint">هر نوبت این خدمت یک جا از ظرفیت اصلی شیفت می‌گیرد — مناسب کارهای طولانی مثل تنظیم موتور.</div>') +
     '</div>' +
 
-    depositFields(s) +
+    (agency ? '' : depositFields(s)) +
 
-    '<div class="pn-field"><span class="pn-field__l">وضعیت</span>' +
+    (agency
+      ? '<div class="pn-field"><span class="pn-field__l">وضعیت</span>' +
+          '<div class="pn-seg">' +
+            '<button type="button" class="pn-seg__b' + (Number(s.active) === 1 ? ' is-on' : '') + '" data-svc-active="1">ارائه می‌کنیم</button>' +
+            '<button type="button" class="pn-seg__b' + (Number(s.active) !== 1 ? ' is-on' : '') + '" data-svc-active="0">ارائه نمی‌کنیم</button>' +
+          '</div>' +
+          '<div class="pn-hint">این خدمت فقط در همین نمایندگی به مشتری نشان داده می‌شود. مشتری نمایندگی بیعانه نمی‌دهد.</div>' +
+        '</div>'
+      : '<div class="pn-field"><span class="pn-field__l">وضعیت</span>' +
       '<div class="pn-seg pn-seg--3">' +
         '<button type="button" class="pn-seg__b' + (Number(s.active) === 1 ? ' is-on' : '') + '" data-svc-active="1">برای همه</button>' +
         '<button type="button" class="pn-seg__b' + (Number(s.active) === 2 ? ' is-on' : '') + '" data-svc-active="2">آزمایشی</button>' +
@@ -1241,7 +1257,7 @@ function svcModal() {
       '<div class="pn-hint">' + (Number(s.active) === 2
         ? 'فقط مدیران و مسئولان رزرو این خدمت را در اپ می‌بینند (با نشان «آزمایشی») — برای امتحان مسیر واقعی رزرو، پرداخت و برگشت به کیف پول. بهتر است سهمیه‌ی جداگانه و بیعانه‌ی ۱,۰۰۰ تومان داشته باشد.'
         : (Number(s.active) === 1 ? 'در اپ برای همه‌ی مشتری‌ها قابل رزرو است.' : 'در اپ دیده نمی‌شود.')) + '</div>' +
-    '</div>' +
+    '</div>') +
 
     '<div class="pn-modal__ft">' +
       '<button class="pn-btn pn-btn--pri" data-svc-save' + (S.busy ? ' disabled' : '') + '>' +
@@ -1775,8 +1791,13 @@ function viewClosures() {
   if (!S.closures) { return html + skel(2); }
 
   var blocks = S.closures.blocks || [];
+  var canClose = ctx().can.closures !== false;
 
-  html += '<div class="pn-card"><div class="pn-card__t">' + I.plus + ' بستن یک بازه</div>' +
+  if (!canClose) {
+    html += note('info', I.lock, 'بستن یا باز کردن روز فقط با مدیر شعبه است؛ اینجا فقط بازه‌های بسته را می‌بینید.');
+  }
+
+  html += !canClose ? '' : '<div class="pn-card"><div class="pn-card__t">' + I.plus + ' بستن یک بازه</div>' +
     '<div class="pn-grid" style="margin-bottom:16px">' +
       '<label class="pn-field"><span class="pn-field__l">تاریخ</span>' +
       J.fieldHTML('cl-date', S.closeForm.date, { min: J.todayG() }) + '</label>' +
@@ -1810,7 +1831,7 @@ function viewClosures() {
         '<td class="pn-table__b" data-label="تاریخ">' + fa(esc(c.dateFa)) + '</td>' +
         '<td data-label="محدوده">' + esc(c.label) + '</td>' +
         '<td class="pn-table__s" data-label="دلیل">' + (esc(c.reason) || '—') + '</td>' +
-        '<td data-label=""><button class="pn-btn pn-btn--soft pn-btn--sm" data-close-del="' + c.id + '">باز کردن</button></td>' +
+        '<td data-label="">' + (canClose ? '<button class="pn-btn pn-btn--soft pn-btn--sm" data-close-del="' + c.id + '">باز کردن</button>' : '') + '</td>' +
         '</tr>';
     });
 
@@ -2188,8 +2209,8 @@ function viewAgencies() {
       '<div class="pn-svcacts" style="margin-top:12px">' +
         '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-enter="' + b.id + '">' + I.out + ' ورود به پنل این شعبه</button>' +
         '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-edit="' + b.id + '">' + I.edit + (agency ? ' ویرایش' : ' اطلاعات و موقعیت مرکز') + '</button>' +
+        '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-users="' + b.id + '">' + I.users + ' کاربران و نقش‌ها</button>' +
         (agency ?
-          '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-users="' + b.id + '">' + I.users + ' کاربران</button>' +
           '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-adjust="' + b.id + '">' + I.wallet + ' تغییر موجودی</button>' +
           (b.status === 'active'
             ? '<button class="pn-btn pn-btn--bad pn-btn--sm" data-ag-status="' + b.id + ':inactive">غیرفعال کن</button>'
@@ -2294,24 +2315,39 @@ function saveAgency() {
   });
 }
 
+/**
+ * کاربران پنل یک شعبه (مرکز یا نمایندگی) و نقششان. مدیر شعبه همه‌ی کارهای
+ * همان شعبه را دارد؛ اپراتور فقط نوبت‌ها و مشتری‌ها را (بدون حذف نوبت، خدمات،
+ * بستن روز، تنظیمات، کیف پول و خروجی). همه‌چیزِ همه‌ی شعبه‌ها فقط با مدیر کل.
+ */
 function agUsersModal() {
   var b = S.modal.agUsers;
+  var center = b.type !== 'agency';
+  var where = center ? 'مرکز' : 'نمایندگی';
 
   return '<div class="pn-modal__hd"><div class="pn-modal__t">کاربران پنل ' + esc(b.title) + '</div>' +
       '<button class="pn-modal__x" data-close>' + I.x + '</button></div>' +
     ((b.users || []).length ? (b.users || []).map(function (u) {
-      return '<div class="pn-kv"><span class="pn-kv__k">' + (u.role === 'manager' ? 'مدیر' : 'اپراتور') + '</span>' +
-        '<span class="pn-kv__v">' + esc(u.name) + ' — <span class="num">' + fa(esc(u.phone)) + '</span> ' +
-        '<button class="pn-btn pn-btn--bad pn-btn--sm" data-ag-user-del="' + u.id + '"' + (S.busy ? ' disabled' : '') + '>برداشتن دسترسی</button></span></div>';
+      return '<div class="pn-user">' +
+        '<div class="pn-user__who"><b>' + esc(u.name) + '</b><span class="num" dir="ltr">' + fa(esc(u.phone)) + '</span></div>' +
+        '<div class="pn-seg pn-user__role" role="group" aria-label="نقش ' + esc(u.name) + '">' +
+          '<button type="button" class="pn-seg__b' + (u.role === 'manager' ? ' is-on' : '') + '" data-ag-user-role="' + u.id + ':manager"' + (S.busy ? ' disabled' : '') + '>مدیر ' + where + '</button>' +
+          '<button type="button" class="pn-seg__b' + (u.role !== 'manager' ? ' is-on' : '') + '" data-ag-user-role="' + u.id + ':operator"' + (S.busy ? ' disabled' : '') + '>اپراتور</button>' +
+        '</div>' +
+        '<button class="pn-btn pn-btn--bad pn-btn--sm" data-ag-user-del="' + u.id + '"' + (S.busy ? ' disabled' : '') + '>برداشتن دسترسی</button>' +
+      '</div>';
     }).join('') : empty('هنوز کاربری ندارد')) +
+    '<div class="pn-hint" style="margin-top:8px"><b>مدیر ' + where + ':</b> همه‌ی کارهای همین ' + where + ' (خدمات، بستن روز، تنظیمات شیفت' + (center ? '، کیف پول مشتری‌ها' : '، پروفایل و کیف پول نمایندگی') + '). ' +
+      '<b>اپراتور:</b> فقط نوبت‌ها و مشتری‌ها؛ حذف نوبت، خدمات، بستن روز، تنظیمات و خروجی اکسل را ندارد. ' +
+      'نمایندگی‌های دیگر، گزارش‌ها و تنظیمات سایت فقط با مدیر کل است.</div>' +
     '<div class="pn-card__t" style="margin-top:16px">' + I.plus + ' افزودن کاربر</div>' +
     '<div class="pn-grid">' +
       '<label class="pn-field"><span class="pn-field__l">موبایل</span><input class="pn-in num" id="agu-phone" dir="ltr" inputmode="tel" placeholder="09…"></label>' +
       '<label class="pn-field"><span class="pn-field__l">نام</span><input class="pn-in" id="agu-name"></label>' +
       '<label class="pn-field"><span class="pn-field__l">نقش</span><select class="pn-in" id="agu-role">' +
-        '<option value="operator">اپراتور (فقط نوبت‌ها)</option><option value="manager">مدیر نمایندگی</option></select></label>' +
+        '<option value="operator">اپراتور (نوبت‌ها و مشتری‌ها)</option><option value="manager">مدیر ' + where + '</option></select></label>' +
     '</div>' +
-    '<div class="pn-hint">هر نمایندگی یک مدیر و حداکثر ' + fa((S.agencies && S.agencies.maxOps) || 2) + ' اپراتور دارد. هر شماره فقط در یک شعبه کاربر پنل می‌شود. ورود با همین شماره و کد پیامکی است.</div>' +
+    '<div class="pn-hint">' + (center ? '' : 'هر نمایندگی یک مدیر و حداکثر ' + fa((S.agencies && S.agencies.maxOps) || 2) + ' اپراتور دارد. ') + 'هر شماره فقط در یک شعبه کاربر پنل می‌شود. ورود با همین شماره و کد پیامکی است.</div>' +
     '<div class="pn-modal__ft">' +
       '<button class="pn-btn pn-btn--pri" data-ag-user-add' + (S.busy ? ' disabled' : '') + '>افزودن</button>' +
       '<button class="pn-btn pn-btn--soft" data-close>بستن</button>' +
@@ -2570,7 +2606,7 @@ function bookingModal() {
       payHtml += note('info', I.card, 'بیعانه نزد مجموعه ماند.');
     }
 
-    if (b.phone) {
+    if (b.phone && ctx().can.center) {
       payHtml += '<div style="margin-top:8px"><button class="pn-btn pn-btn--sm pn-btn--soft" data-wal-open="' + esc(b.phone) + '">' + I.wallet + ' کیف پول این مشتری</button></div>';
     }
   }
@@ -2892,7 +2928,7 @@ function jobs() {
     report:   ['panel/admin/report?from=' + encodeURIComponent(S.agFrom) + '&to=' + encodeURIComponent(S.agTo),
                function (r) { S.agReport = r; }],
     closures: ['panel/closures', function (r) { S.closures = r; }],
-    settings: ['panel/settings', function (r) { S.sched = r.settings; S.schedFull = r.fullUrl || ''; }],
+    settings: ['panel/settings', function (r) { S.sched = r.settings; S.schedFull = r.fullUrl || ''; S.schedGlobal = r.global !== false && !r.agency; }],
     refunds:  S.refWhich === 'review' ? ['panel/pay-review', function (r) { S.payReview = r; }]
       : (S.refWhich === 'report' ? ['panel/pay-report?days=' + S.repDays + '&sandbox=' + (S.repSandbox ? 1 : 0), function (r) { S.payReport = r; }]
       : (S.refWhich === 'wallet' ? ['panel/wallets?q=' + encodeURIComponent(S.walQ) + '&filter=' + S.walFilter + '&page=' + S.walPage, function (r) { S.wallets = r; }]
@@ -3084,7 +3120,7 @@ function setStatus(id, status, extra) {
 
     if (r.success === false) {
       // شیفت پر است: فقط با تأیید صریح، بیش از ظرفیت
-      if (r.code === 'cmb_restore_full' && window.confirm(r.message + ' با این حال بازگردانده شود؟')) {
+      if (r.code === 'cmb_restore_full' && ctx().can.overbook && window.confirm(r.message + ' با این حال بازگردانده شود؟')) {
         setStatus(id, status, { force: 1 });
         return;
       }
@@ -3383,9 +3419,9 @@ function saveService() {
     posterId: s.posterId || 0,
     active: s.active, sortOrder: s.sortOrder,
     ownCapacity: s.ownCapacity || null,
-    // بیعانه فقط وقتی پرداخت در کار است؛ نبودنِ کلید یعنی دست نزن
-    deposit: PAY.used ? (typeof s.deposit === 'undefined' ? null : s.deposit) : undefined,
-    cancelRefund: PAY.used ? (typeof s.cancelRefund === 'undefined' ? null : s.cancelRefund) : undefined
+    // بیعانه فقط وقتی پرداخت در کار است و نه در نمایندگی؛ نبودنِ کلید یعنی دست نزن
+    deposit: PAY.used && !ctx().agency ? (typeof s.deposit === 'undefined' ? null : s.deposit) : undefined,
+    cancelRefund: PAY.used && !ctx().agency ? (typeof s.cancelRefund === 'undefined' ? null : s.cancelRefund) : undefined
   }).then(function (r) {
     S.busy = false;
 
@@ -4214,6 +4250,13 @@ function bind() {
     if (up('[data-ag-user-add]')) {
       e.preventDefault();
       agUsers('add', { phone: en(val('#agu-phone')).trim(), name: val('#agu-name').trim(), role: val('#agu-role') });
+      return;
+    }
+
+    if ((el = up('[data-ag-user-role]'))) {
+      e.preventDefault();
+      var ur = el.getAttribute('data-ag-user-role').split(':');
+      if (!el.classList.contains('is-on')) { agUsers('role', { userId: Number(ur[0]), role: ur[1] }); }
       return;
     }
 
