@@ -3,7 +3,7 @@
  * Plugin Name: چک موتور — سیستم رزرو نوبت
  * Plugin URI:  https://checkmotor.ir
  * Description: سیستم رزرو نوبت آنلاین چک موتور (MVP) — ورود با کد تایید پیامکی ملی‌پیامک، تقویم ۷ روزه، شیفت صبح/بعدازظهر، پنل مدیریت نوبت‌ها.
- * Version:     1.41.0
+ * Version:     1.42.0
  * Author:      رضا امام‌حسنی
  * Text Domain: checkmotor-booking
  * Domain Path: /languages
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMB_VERSION', '1.41.0' );
+define( 'CMB_VERSION', '1.42.0' );
 define( 'CMB_FILE', __FILE__ );
 define( 'CMB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMB_URL', plugin_dir_url( __FILE__ ) );
@@ -125,6 +125,9 @@ function cmb_load_files() {
 		'includes/class-cmb-bookings.php',
 		'includes/class-cmb-rest.php',
 		'includes/class-cmb-health.php',
+		'includes/class-cmb-debug.php',
+		'includes/class-cmb-diagnose.php',
+		'includes/class-cmb-selftest.php',
 		'includes/class-cmb-panel-api.php',
 		'includes/class-cmb-panel-pwa.php',
 		'includes/class-cmb-panel-otp.php',
@@ -216,6 +219,8 @@ final class CMB_Plugin {
 			}
 		);
 
+		CMB_Debug::init();
+		CMB_Diagnose::init();
 		CMB_Rest::instance();
 		CMB_Panel_Api::instance();
 		CMB_Panel_Pwa::instance();
@@ -730,6 +735,14 @@ function cmb_enqueue_app() {
 			'wallet'    => CMB_Wallet::ready() ? CMB_Wallet::payload( $user->ID ) : null,
 			/* نتیجه‌ی شارژ کیف پول؛ مثل payResult با توکن، بی‌نیاز به کوکی. */
 			'topupResult' => $topup,
+			/* عیب‌یابی: ثبت خطای جاوااسکریپت، کد پیگیری در پیام خطا (حالت
+			   عیب‌یابی)، و ابزار عیب‌یابی اپ فقط برای مدیر. */
+			'ver'       => CMB_VERSION,
+			'dbg'       => array(
+				'log'   => CMB_Debug::ready() && CMB_Debug::on(),
+				'refs'  => CMB_Debug::verbose(),
+				'tools' => CMB_Debug::verbose() && CMB_Panel_Api::can(),
+			),
 			'notes'     => array(
 				'ecu'         => $boot['notes']['ecu'],
 				'outOfWindow' => $boot['notes']['outOfWindow'],
@@ -774,6 +787,11 @@ function cmb_enqueue_panel() {
 			   درخواست جدا نمی‌خواهد. */
 			'preload'  => CMB_Panel_Api::can() ? CMB_Panel_Api::preload_payload() : null,
 			'me'       => $user->ID ? $user->display_name : '',
+			'ver'      => CMB_VERSION,
+			'dbg'      => array(
+				'log'  => CMB_Debug::ready() && CMB_Debug::on(),
+				'refs' => CMB_Debug::verbose(),
+			),
 			'app'      => cmb_app_url(),
 			'login'    => cmb_login_url( cmb_app_url( 'panel' ) ),
 			// پیشخوان وردپرس فقط مال مدیر کل است؛ بقیه دکمه‌اش را نمی‌بینند

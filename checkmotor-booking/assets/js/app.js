@@ -206,6 +206,8 @@ function req(method, path, body, retried) {
     return Promise.resolve({ success: false, message: 'اتصال اینترنت برقرار نیست.' });
   }
 
+  var t0 = Date.now();
+
   return fetch(ROOT + path, {
     method: method,
     headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
@@ -218,13 +220,21 @@ function req(method, path, body, retried) {
         var stale = (r.status === 401 || r.status === 403) &&
           (!j.code || String(j.code).indexOf('nonce') !== -1 || String(j.code).indexOf('cookie') !== -1);
 
+        var ref = j && j.data && j.data.ref ? String(j.data.ref) : '';
+
+        netLog(method, path, r.status, t0, j.code || '', ref);
+
         // nonce کهنه: تازه‌اش کن و همان درخواست را دوباره بفرست
         if (stale && !retried) {
           return freshNonce().then(function () { return req(method, path, body, true); });
         }
 
         if (!r.ok) {
-          return { success: false, message: j.message || 'خطایی رخ داد. دوباره تلاش کنید.', code: j.code || '', data: j.data || {} };
+          /* کد پیگیری: مشتری همان را به پشتیبان می‌گوید و مدیر در «گزارش
+             خطا»ی پنل پیدایش می‌کند. خطای سرور همیشه، بقیه فقط در حالت عیب‌یابی. */
+          var msg = j.message || 'خطایی رخ داد. دوباره تلاش کنید.';
+          if (ref && (DBG.refs || r.status >= 500)) { msg += ' (کد پیگیری: ' + ref + ')'; }
+          return { success: false, message: msg, code: j.code || '', data: j.data || {}, ref: ref };
         }
 
         if (j && typeof j.success === 'undefined') { j.success = true; }
@@ -232,6 +242,7 @@ function req(method, path, body, retried) {
       });
     })
     .catch(function () {
+      netLog(method, path, 0, t0, 'network', '');
       return { success: false, message: 'ارتباط با سرور برقرار نشد.' };
     });
 }
@@ -285,6 +296,7 @@ var I = {
   chevR: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 18.5L16 12 9.5 5.5"/></svg>',
   chevL: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 18.5L8 12l6.5-6.5"/></svg>',
   info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+  bug: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="7.5" y="6.5" width="9" height="13" rx="4.5"/><path d="M12 10v9.5M9.5 4.5l1.3 2M14.5 4.5l-1.3 2M7.5 11H4M20 11h-3.5M7.5 15.5H4.5M19.5 15.5h-3M8 7.8 5.5 6M16 7.8l2.5-1.8"/></svg>',
   alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 3.9L2.6 18a1.6 1.6 0 0 0 1.4 2.4h16a1.6 1.6 0 0 0 1.4-2.4l-8-14.1a1.6 1.6 0 0 0-2.8 0z"/><path d="M12 9.5v4M12 17h.01"/></svg>',
   ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.2 12.3l2.6 2.6 5-5"/></svg>',
   phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16.9v2.6a1.8 1.8 0 0 1-2 1.8 17.6 17.6 0 0 1-7.7-2.7 17.3 17.3 0 0 1-5.3-5.3A17.6 17.6 0 0 1 3.3 5.5 1.8 1.8 0 0 1 5.1 3.5h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9l-1.1 1.1a14 14 0 0 0 5.3 5.3l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6a1.8 1.8 0 0 1 1.6 1.9z"/></svg>',
@@ -2837,9 +2849,186 @@ function bind() {
   });
 }
 
+/* ═══ عیب‌یابی ═══
+
+   خطای جاوااسکریپت همین اپ (روی گوشی مشتری) با کد پیگیری در «گزارش خطا»ی
+   پنل ثبت می‌شود، اگر مدیر ثبت خطا را روشن گذاشته باشد. در «حالت
+   عیب‌یابی»، یا با ?cmb_debug=1 برای مدیر، دکمه‌ی «عیب‌یابی» گوشه‌ی صفحه
+   وضعیت اپ، آخرین درخواست‌ها و خطاها را نشان می‌دهد و گزارش می‌فرستد. */
+
+var DBG = C.dbg || {};
+var NET = [];
+var JSERR = [];
+var dbgSent = 0;
+var dbgOpen = false;
+
+function netLog(method, path, status, t0, code, ref) {
+  NET.push({ t: new Date().toTimeString().slice(0, 8), m: method, p: path.split('?')[0], q: path.indexOf('?') > -1 ? path.slice(path.indexOf('?')) : '',
+             s: status, ms: Date.now() - t0, code: code, ref: ref });
+  if (NET.length > 30) { NET.shift(); }
+  if (dbgOpen) { paintDbg(); }
+}
+
+function dbgState() {
+  return {
+    page: S.page, step: S.step,
+    branch: S.branch ? (S.branch.id + ' ' + (S.branch.title || '')) : '',
+    service: S.service ? (S.service.id + ' ' + (S.service.title || '')) : '',
+    day: (S.day && S.day.date) || S.day || '', block: (S.block && (S.block.key || S.block)) || '',
+    logged: S.logged, phone: S.hasPhone, online: S.online,
+    view: window.innerWidth + '×' + window.innerHeight
+  };
+}
+
+function dbgTools() {
+  return !!(DBG.tools || (S.canManage && /[?&]cmb_debug=1/.test(location.search)));
+}
+
+function reportError(message, extra, kind) {
+  if (!DBG.log || (kind !== 'report' && dbgSent >= 5)) { return Promise.resolve(''); }
+
+  dbgSent++;
+
+  var body = { source: 'app', kind: kind || 'js', message: String(message).slice(0, 500), url: location.href, ver: C.ver || '', state: dbgState() };
+  Object.keys(extra || {}).forEach(function (k) { body[k] = extra[k]; });
+
+  try {
+    return fetch(ROOT + 'log', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true,
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json(); }).then(function (j) { return (j && j.ref) || ''; }).catch(function () { return ''; });
+  } catch (e) {
+    return Promise.resolve('');
+  }
+}
+
+function dbgInit() {
+  window.addEventListener('error', function (e) {
+    var file = e.filename || '';
+
+    // خطای اسکریپت دامنه‌ی دیگر و افزونه‌ی مرورگر ربطی به اپ ندارد
+    if (!e.message || /^Script error\.?$/.test(e.message) || /^(chrome|moz|safari)-extension:/.test(file)) { return; }
+
+    var where = file.split('/').pop() + ':' + e.lineno + ':' + e.colno;
+    JSERR.push({ t: new Date().toTimeString().slice(0, 8), msg: e.message, where: where });
+    reportError(e.message, { where: file + ':' + e.lineno + ':' + e.colno, stack: e.error && e.error.stack ? String(e.error.stack).slice(0, 1500) : '' });
+    paintDbg();
+  });
+
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason;
+    var msg = r && r.message ? r.message : String(r);
+
+    JSERR.push({ t: new Date().toTimeString().slice(0, 8), msg: msg, where: 'promise' });
+    reportError('Unhandled promise: ' + msg, { stack: r && r.stack ? String(r.stack).slice(0, 1500) : '' });
+    paintDbg();
+  });
+
+  if (dbgTools()) { paintDbg(); }
+}
+
+function dbgReport() {
+  return JSON.stringify({ ver: C.ver || '', url: location.href, ua: navigator.userAgent, state: dbgState(), requests: NET.slice(-15), errors: JSERR }, null, 2);
+}
+
+function paintDbg() {
+  if (!dbgTools()) { return; }
+
+  var el = document.getElementById('cmb-dbg');
+
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'cmb-dbg';
+    el.className = 'cmb-dbg';
+    el.setAttribute('dir', 'rtl');
+    document.body.appendChild(el);
+    el.addEventListener('click', dbgClick);
+  }
+
+  var bad = NET.filter(function (x) { return x.s === 0 || x.s >= 400; }).length + JSERR.length;
+
+  if (!dbgOpen) {
+    el.innerHTML = '<button class="cmb-dbg__fab" data-dbgx="open" aria-label="عیب‌یابی">' + I.bug +
+      (bad ? '<span class="cmb-dbg__n">' + fa(bad) + '</span>' : '') + '</button>';
+    return;
+  }
+
+  var st = dbgState();
+  var kv = Object.keys(st).map(function (k) {
+    return '<div class="cmb-dbg__kv"><span>' + esc(k) + '</span><b dir="ltr">' + esc(String(st[k])) + '</b></div>';
+  }).join('');
+
+  var net = NET.slice().reverse().map(function (x) {
+    var cls = x.s === 0 || x.s >= 500 ? 'bad' : (x.s >= 400 ? 'warn' : 'ok');
+    return '<div class="cmb-dbg__req is-' + cls + '" dir="ltr"><b>' + (x.s || '—') + '</b> ' + esc(x.m) + ' ' + esc(x.p) +
+      '<small>' + esc(x.t) + ' · ' + x.ms + 'ms' + (x.code ? ' · ' + esc(x.code) : '') + (x.ref ? ' · ref ' + esc(x.ref) : '') + '</small></div>';
+  }).join('') || '<p class="cmb-dbg__m">هنوز درخواستی نیست.</p>';
+
+  var errs = JSERR.slice().reverse().map(function (x) {
+    return '<div class="cmb-dbg__req is-bad" dir="ltr">' + esc(x.msg) + '<small>' + esc(x.t) + ' · ' + esc(x.where) + '</small></div>';
+  }).join('') || '<p class="cmb-dbg__m">خطای جاوااسکریپتی نیست.</p>';
+
+  el.innerHTML = '<div class="cmb-dbg__sheet" role="dialog" aria-label="عیب‌یابی اپ">' +
+    '<div class="cmb-dbg__h"><b>' + I.bug + ' عیب‌یابی اپ</b><span class="cmb-dbg__m">نسخه ' + esc(C.ver || '') + ' — فقط برای مدیر دیده می‌شود</span>' +
+      '<button data-dbgx="close" aria-label="بستن">✕</button></div>' +
+    '<div class="cmb-dbg__sec"><h4>وضعیت</h4>' + kv + '</div>' +
+    '<div class="cmb-dbg__sec"><h4>آخرین درخواست‌ها</h4>' + net + '</div>' +
+    '<div class="cmb-dbg__sec"><h4>خطاهای جاوااسکریپت</h4>' + errs + '</div>' +
+    '<div class="cmb-dbg__act">' +
+      '<button data-dbgx="send">ثبت در گزارش خطا</button>' +
+      '<button data-dbgx="copy">کپی گزارش</button>' +
+      '<button data-dbgx="forget">فراموش کردن مرکز انتخاب‌شده</button>' +
+      '<button data-dbgx="reload">بارگذاری دوباره</button>' +
+    '</div></div>';
+}
+
+function dbgClick(e) {
+  var b = e.target.closest ? e.target.closest('[data-dbgx]') : null;
+  if (!b) { return; }
+
+  var a = b.getAttribute('data-dbgx');
+  e.preventDefault();
+
+  if (a === 'open') { dbgOpen = true; paintDbg(); return; }
+  if (a === 'close') { dbgOpen = false; paintDbg(); return; }
+  if (a === 'reload') { location.reload(); return; }
+
+  if (a === 'forget') {
+    try { window.localStorage.removeItem(BR_KEY); } catch (x) { /* بی‌اهمیت */ }
+    toast('مرکز انتخاب‌شده فراموش شد.', 'ok');
+    return;
+  }
+
+  if (a === 'copy') {
+    var text = dbgReport();
+    var done = function () { toast('گزارش کپی شد.', 'ok'); };
+
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done, function () { toast('کپی ممکن نشد.', 'bad'); });
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (x) { toast('کپی ممکن نشد.', 'bad'); }
+      document.body.removeChild(ta);
+    }
+    return;
+  }
+
+  if (a === 'send') {
+    if (!DBG.log) { toast('ثبت خطا در تنظیمات خاموش است.', 'bad'); return; }
+
+    reportError('گزارش دستی از اپ', { stack: dbgReport().slice(0, 1500) }, 'report').then(function (ref) {
+      toast(ref ? 'در گزارش خطا ثبت شد — کد پیگیری: ' + ref : 'ثبت نشد.', ref ? 'ok' : 'bad');
+    });
+  }
+}
+
 /* ═══ راه‌اندازی ═══ */
 
 function boot() {
+  dbgInit();
+
   S.page = readRoute();
 
   if (S.page === 'book') { S.page = 'home'; }

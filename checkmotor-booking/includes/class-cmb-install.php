@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CMB_Install {
 
-	const DB_VERSION = '1.9.0';
+	const DB_VERSION = '1.10.0';
 
 	public static function activate() {
 		global $wpdb;
@@ -286,6 +286,7 @@ class CMB_Install {
 		$payments = cmb_table( 'payments' );
 		$wallet   = cmb_table( 'wallet' );
 		$ledger   = cmb_table( 'branch_ledger' );
+		$log      = cmb_table( 'log' );
 
 		$sql = array();
 
@@ -515,6 +516,30 @@ class CMB_Install {
 			PRIMARY KEY  (id),
 			KEY phone (phone),
 			KEY expires_at (expires_at)
+		) {$charset};";
+
+		/* 1.10.0: گزارش خطا (بخش «آزمون و عیب‌یابی»). کوچک و خودپاک‌شونده:
+		   ۱۴ روز و حداکثر ۳۰۰۰ ردیف (CMB_Debug::prune). */
+		$sql[] = "CREATE TABLE {$log} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			ref VARCHAR(12) DEFAULT '' NOT NULL,
+			level VARCHAR(8) DEFAULT 'error' NOT NULL,
+			source VARCHAR(20) DEFAULT '' NOT NULL,
+			code VARCHAR(60) DEFAULT '' NOT NULL,
+			message VARCHAR(500) DEFAULT '' NOT NULL,
+			route VARCHAR(190) DEFAULT '' NOT NULL,
+			status SMALLINT UNSIGNED DEFAULT 0 NOT NULL,
+			user_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			phone VARCHAR(20) DEFAULT '' NOT NULL,
+			branch_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			ip VARCHAR(45) DEFAULT '' NOT NULL,
+			ua VARCHAR(255) DEFAULT '' NOT NULL,
+			context TEXT NULL,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			KEY ref (ref),
+			KEY created_at (created_at),
+			KEY level_created (level,created_at)
 		) {$charset};";
 
 		foreach ( $sql as $statement ) {

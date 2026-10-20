@@ -139,7 +139,7 @@ html.cmb-html, body.cmb-body, #cmb-app {
 html.cmb-html { scroll-padding-bottom: calc(var(--bar-full, var(--bar-h)) + var(--nav-h) + var(--safe-b)); }
 
 /* هرچه قالب سایت بیرون از ریشه‌ی اپ گذاشته، پنهان شود */
-body.cmb-body > *:not(#cmb-app):not(#cmb-panel):not(script):not(style):not(noscript):not(link) {
+body.cmb-body > *:not(#cmb-app):not(#cmb-panel):not(#cmb-dbg):not(script):not(style):not(noscript):not(link) {
   display: none !important;
 }
 
@@ -1264,3 +1264,38 @@ select.cmb-in {
 .cmb-chosen__edit,.cmb-link { min-height:44px; }
 /* دسکتاپ: ستون اپ پهن‌تر می‌شود ولی تعداد ستون خدمات همان تنظیم مدیر است. */
 @media (min-width:960px) { :root { --max-w:640px; } }
+
+/* ═══ عیب‌یابی (فقط مدیر، در حالت عیب‌یابی یا ?cmb_debug=1) ═══ */
+.cmb-dbg { font-family: inherit; }
+.cmb-dbg__fab {
+  position: fixed; left: 12px; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); z-index: 97;
+  width: 46px; height: 46px; border-radius: 50%; border: 0; display: grid; place-items: center;
+  background: #1d2733; color: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.25); cursor: pointer;
+}
+.cmb-dbg__fab svg { width: 22px; height: 22px; }
+.cmb-dbg__n {
+  position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  background: #e5484d; color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center;
+}
+.cmb-dbg__sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 98; max-height: 78vh; overflow: auto;
+  background: #fff; color: #1d2733; border-radius: 18px 18px 0 0; box-shadow: 0 -10px 30px rgba(0,0,0,.25);
+  padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px)); font-size: 13px; line-height: 1.6;
+}
+.cmb-dbg__h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; position: relative; padding-left: 44px; min-height: 34px; }
+.cmb-dbg__h b { display: flex; align-items: center; gap: 6px; font-size: 15px; }
+.cmb-dbg__h b svg { width: 18px; height: 18px; }
+.cmb-dbg__h button { position: absolute; left: 0; top: 0; border: 0; background: #eef1f4; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; font-size: 15px; }
+.cmb-dbg__m { color: #6b7684; font-size: 12px; margin: 0; }
+.cmb-dbg__sec { border-top: 1px solid #e6e9ee; padding-top: 8px; margin-top: 8px; }
+.cmb-dbg__sec h4 { margin: 0 0 6px; font-size: 13px; }
+.cmb-dbg__kv { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
+.cmb-dbg__kv span { color: #6b7684; }
+.cmb-dbg__kv b { font-weight: 600; overflow-wrap: anywhere; text-align: left; }
+.cmb-dbg__req { padding: 6px 8px; border-radius: 8px; margin-bottom: 4px; background: #f4f6f8; text-align: left; overflow-wrap: anywhere; font-size: 12px; }
+.cmb-dbg__req small { display: block; color: #6b7684; }
+.cmb-dbg__req.is-warn { background: #fff6e5; }
+.cmb-dbg__req.is-bad { background: #fdecec; }
+.cmb-dbg__act { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.cmb-dbg__act button { border: 1px solid #d5dbe2; background: #fff; border-radius: 10px; padding: 9px 8px; font: inherit; cursor: pointer; }
+.cmb-dbg__act button:first-child { background: #1d2733; color: #fff; border-color: #1d2733; }

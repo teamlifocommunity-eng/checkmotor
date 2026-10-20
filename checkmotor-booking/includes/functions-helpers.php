@@ -425,6 +425,23 @@ function cmb_tx( $op ) {
 		return;
 	}
 
+	/* آزمون خودکار همه‌چیز را داخل یک تراکنش بیرونی اجرا و آخر سر برمی‌گرداند.
+	   START TRANSACTION دوم در MySQL تراکنش بیرونی را بی‌صدا commit می‌کند،
+	   پس داخل آن از savepoint استفاده می‌شود. */
+	if ( ! empty( $GLOBALS['cmb_tx_outer'] ) ) {
+		$map = array(
+			'START TRANSACTION' => 'SAVEPOINT cmb_inner',
+			'COMMIT'            => 'RELEASE SAVEPOINT cmb_inner',
+			'ROLLBACK'          => 'ROLLBACK TO SAVEPOINT cmb_inner',
+		);
+
+		if ( isset( $map[ $op ] ) ) {
+			$wpdb->query( $map[ $op ] ); // phpcs:ignore
+		}
+
+		return;
+	}
+
 	if ( in_array( $op, array( 'START TRANSACTION', 'COMMIT', 'ROLLBACK' ), true ) ) {
 		$wpdb->query( $op ); // phpcs:ignore
 	}
@@ -484,6 +501,13 @@ function cmb_js_strings() {
  * لاگ داخلی افزونه (فقط وقتی WP_DEBUG روشن است).
  */
 function cmb_log( $message, $context = array() ) {
+	/* شکست‌ها (پیامک، درگاه، ثبت دفتر…) در «گزارش خطا»ی پنل هم ثبت
+	   می‌شوند؛ تا پیش از این فقط با WP_DEBUG در فایل لاگ سرور می‌رفتند
+	   و کسی نمی‌دیدشان. */
+	if ( class_exists( 'CMB_Debug' ) ) {
+		CMB_Debug::event( $message, $context );
+	}
+
 	if ( ! defined( 'WP_DEBUG' ) || ! WP_DEBUG ) {
 		return;
 	}

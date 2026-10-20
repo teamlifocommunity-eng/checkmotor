@@ -639,7 +639,7 @@ class CMB_Bookings {
 				'cmb_pending_exists',
 				sprintf(
 					'یک نوبت در انتظار پرداخت دارید (%s، %s). پرداختش را تمام کنید یا از آن انصراف دهید تا بتوانید نوبت دیگری بگیرید.',
-					cmb_jalali_date( $row->booking_date, 'full' ),
+					cmb_fa_num( cmb_jalali_date( $row->booking_date, 'full' ) ),
 					cmb_block_label( $row->block_key )
 				),
 				array(
@@ -671,7 +671,7 @@ class CMB_Bookings {
 				$message = sprintf(
 					'شما برای «%s» در %s (%s) نوبت فعال دارید. از هر خدمت هم‌زمان فقط یک نوبت می‌شود داشت؛',
 					$service->title,
-					cmb_jalali_date( $row->booking_date, 'full' ),
+					cmb_fa_num( cmb_jalali_date( $row->booking_date, 'full' ) ),
 					cmb_block_label( $row->block_key )
 				);
 
@@ -689,13 +689,13 @@ class CMB_Bookings {
 			$message = 1 === $max_active
 				? sprintf(
 					'شما برای %s (%s) نوبت فعال دارید.',
-					cmb_jalali_date( $first->booking_date, 'full' ),
+					cmb_fa_num( cmb_jalali_date( $first->booking_date, 'full' ) ),
 					cmb_block_label( $first->block_key )
 				)
 				: sprintf(
 					'شما %s نوبت فعال دارید که سقف مجاز است. نزدیک‌ترینش %s (%s) است.',
 					cmb_fa_num( count( $active ) ),
-					cmb_jalali_date( $first->booking_date, 'full' ),
+					cmb_fa_num( cmb_jalali_date( $first->booking_date, 'full' ) ),
 					cmb_block_label( $first->block_key )
 				);
 
@@ -716,20 +716,27 @@ class CMB_Bookings {
 	 * پایان مهلتش نگه می‌دارد، پس بدون سقف می‌شد با چند حساب کل
 	 * شیفت‌ها را بی‌پرداخت قفل کرد.
 	 *
+	 * فقط نوبت‌هایی شمرده می‌شوند که پولشان نیامده (در انتظار یا منقضی).
+	 * پیش از این نوبت‌های پرداخت‌شده هم شمرده می‌شدند؛ اپراتورهای موبایل
+	 * ایران بسیاری از مشتری‌ها را پشت یک IP می‌برند، پس در ساعت شلوغ
+	 * مشتری‌ای که هیچ نوبت نیمه‌کاره‌ای نداشت به خاطر پرداخت درستِ
+	 * دیگران رد می‌شد.
+	 *
 	 * @return true|WP_Error
 	 */
 	protected static function deposit_rate_limit( $user_id ) {
 		global $wpdb;
 
-		$table = cmb_table( 'bookings' );
-		$since = cmb_now()->modify( '-1 hour' )->format( 'Y-m-d H:i:s' );
+		$table  = cmb_table( 'bookings' );
+		$since  = cmb_now()->modify( '-1 hour' )->format( 'Y-m-d H:i:s' );
+		$unpaid = "deposit_amount > 0 AND pay_status IN ('','unpaid')";
 
 		$by_user = (int) $wpdb->get_var(
-			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE user_id = %d AND deposit_amount > 0 AND created_at >= %s", (int) $user_id, $since ) // phpcs:ignore
+			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE user_id = %d AND {$unpaid} AND created_at >= %s", (int) $user_id, $since ) // phpcs:ignore
 		);
 
 		$by_ip = (int) $wpdb->get_var(
-			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE ip = %s AND deposit_amount > 0 AND created_at >= %s", cmb_get_ip(), $since ) // phpcs:ignore
+			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE ip = %s AND {$unpaid} AND created_at >= %s", cmb_get_ip(), $since ) // phpcs:ignore
 		);
 
 		if ( $by_user >= 5 || $by_ip >= 20 ) {

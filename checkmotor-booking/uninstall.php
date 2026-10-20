@@ -16,7 +16,7 @@ if ( ! defined( 'CMB_REMOVE_ALL_DATA' ) || ! CMB_REMOVE_ALL_DATA ) {
 
 global $wpdb;
 
-$cmb_tables = array( 'bookings', 'closures', 'services', 'branches', 'otp', 'payments', 'wallet' );
+$cmb_tables = array( 'bookings', 'closures', 'services', 'branches', 'otp', 'payments', 'wallet', 'branch_ledger', 'log' );
 
 foreach ( $cmb_tables as $cmb_table ) {
 	$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}cmb_{$cmb_table}" ); // phpcs:ignore
@@ -53,6 +53,7 @@ $cmb_options = array(
 	'cmb_pay_selftest',
 	'cmb_pay_setup',
 	'cmb_wallet_migrated',
+	'cmb_branches_migrated',
 );
 
 /* فایل حالت سریع در mu-plugins؛ فقط اگر واقعاً مال همین افزونه باشد. */
@@ -74,7 +75,7 @@ $wpdb->query( // phpcs:ignore
 );
 
 // متای کاربران.
-foreach ( array( 'cmb_phone', 'cmb_registered_via' ) as $cmb_meta ) {
+foreach ( array( 'cmb_phone', 'cmb_registered_via', 'cmb_branch_id', 'cmb_branch_role', 'cmb_panel_branch' ) as $cmb_meta ) {
 	$wpdb->delete( $wpdb->usermeta, array( 'meta_key' => $cmb_meta ) ); // phpcs:ignore
 }
 

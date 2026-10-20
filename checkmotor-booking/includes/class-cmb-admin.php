@@ -72,6 +72,9 @@ class CMB_Admin {
 			'cmb-operators',
 			array( 'CMB_Operators', 'render' )
 		);
+
+		// آزمون و عیب‌یابی در پنل رزرو است؛ اینجا فقط پیوندش
+		add_submenu_page( 'cmb-bookings', 'آزمون و عیب‌یابی', 'آزمون و عیب‌یابی', 'manage_options', esc_url( cmb_app_url( 'panel/debug' ) ) );
 	}
 
 	public function assets( $hook ) {

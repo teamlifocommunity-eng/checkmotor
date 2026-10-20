@@ -276,7 +276,7 @@ class CMB_Payments {
 
 	/** «سه‌شنبه ۱۵ مهر ۱۴۰۵، ساعت ۱۰:۰۰» */
 	public static function moment_fa( DateTime $dt ) {
-		return sprintf( '%s، ساعت %s', cmb_jalali_date( $dt->format( 'Y-m-d' ), 'full' ), cmb_fa_num( $dt->format( 'H:i' ) ) );
+		return cmb_fa_num( sprintf( '%s، ساعت %s', cmb_jalali_date( $dt->format( 'Y-m-d' ), 'full' ), $dt->format( 'H:i' ) ) );
 	}
 
 	/* ------------------------------------------------------------------

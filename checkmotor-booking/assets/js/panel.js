@@ -11,7 +11,7 @@ var NONCE = C.nonce || '';
 var NURL  = C.nonceUrl || '/wp-admin/admin-ajax.php?action=cmb_nonce';
 
 var VIEWS = ['summary', 'board', 'bookings', 'customers', 'services', 'closures', 'settings', 'refunds',
-             'bwallet', 'profile', 'agencies', 'report'];
+             'bwallet', 'profile', 'agencies', 'report', 'debug'];
 var PAY = C.pay || { on: false, used: false, canRefund: false, shopPct: 100, setup: null };
 
 /* برگشت‌ها به کیف پول مشتری می‌رود، نه کارت: بخش «بیعانه و کیف پول» */
@@ -57,6 +57,10 @@ var S = {
   // نمایندگی‌ها: کیف پول و پروفایل شعبه‌ی جاری، و بخش‌های مدیر سایت
   svcMeta: null, bwallet: null, bwPage: 1, bwAmount: '', profile: null,
   agencies: null, agReport: null, agFrom: '', agTo: '',
+  // آزمون و عیب‌یابی (فقط مدیر سایت)
+  dbg: { tab: 'checks', checks: null, sim: null, simBranch: 0, simService: 0, simPhone: '', simBusy: false,
+         tries: {}, tryBusy: '', st: null, stBusy: false, stHist: null,
+         log: null, logF: { level: '', source: '', q: '' }, logPage: 1, logOpen: 0, info: null },
   login: freshLogin(),
   menu: false,
   got: {}   // نشانی هر درخواستِ موفق ← زمانش؛ برای نمایش فوری هنگام جابه‌جایی
@@ -155,7 +159,11 @@ function req(method, path, body, retried) {
         }
 
         if (!r.ok) {
-          return { success: false, message: j.message || 'خطایی رخ داد.', code: j.code || '' };
+          // کد پیگیری خطا برای پیدا کردنش در «گزارش خطا»
+          var ref = j && j.data && j.data.ref ? String(j.data.ref) : '';
+          var msg = j.message || 'خطایی رخ داد.';
+          if (ref && ((C.dbg && C.dbg.refs) || r.status >= 500)) { msg += ' (کد پیگیری: ' + ref + ')'; }
+          return { success: false, message: msg, code: j.code || '', ref: ref };
         }
 
         if (j && typeof j.success === 'undefined') { j.success = true; }
@@ -213,6 +221,7 @@ var I = {
   pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10.5c0 6.5-8 12.5-8 12.5s-8-6-8-12.5a8 8 0 0 1 16 0z"/><circle cx="12" cy="10.5" r="2.8"/></svg>',
   ext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/></svg>',
   share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11"/><path d="M8 7.2l4-3.7 4 3.7"/><path d="M8.5 10.5h-2A1.5 1.5 0 0 0 5 12v7a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-7a1.5 1.5 0 0 0-1.5-1.5h-2"/></svg>',
+  bug: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="7.5" y="6.5" width="9" height="13" rx="4.5"/><path d="M12 10v9.5M9.5 4.5l1.3 2M14.5 4.5l-1.3 2M7.5 11H4M20 11h-3.5M7.5 15.5H4.5M19.5 15.5h-3M8 7.8 5.5 6M16 7.8l2.5-1.8"/></svg>',
   empty: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="2.6"/><path d="M3.5 9.5h17M8 2.8v3.4M16 2.8v3.4M9 14.5h6"/></svg>'
 };
 
@@ -261,6 +270,8 @@ function nav() {
     list.push({ k: 'agencies', t: 'نمایندگی‌ها', ic: I.engine });
     list.push({ k: 'report', t: 'گزارش نمایندگی‌ها', ic: I.gauge });
   }
+
+  if (c.isAdmin) { list.push({ k: 'debug', t: 'آزمون و عیب‌یابی', ic: I.bug }); }
 
   return list;
 }
@@ -2781,6 +2792,543 @@ function cancelPaidModal(b) {
 var rafId = 0;
 var shellKey = '';
 
+/* ═══ آزمون و عیب‌یابی (فقط مدیر سایت) ═══
+
+   پنج زبانه، هیچ‌کدام چیزی را روی سایت تغییر نمی‌دهند:
+   بررسی کامل · شبیه‌ساز رزرو · آزمون خودکار (داخل تراکنشی که برگردانده
+   می‌شود) · گزارش خطا · اطلاعات سیستم. */
+
+var DBG_TABS = [
+  ['checks', 'بررسی کامل'],
+  ['sim', 'شبیه‌ساز رزرو'],
+  ['selftest', 'آزمون خودکار'],
+  ['log', 'گزارش خطا'],
+  ['info', 'اطلاعات سیستم']
+];
+
+var LV = { ok: ['confirmed', 'سالم'], info: ['done', 'اطلاع'], warn: ['no_show', 'توجه'], bad: ['cancelled', 'مشکل'],
+           error: ['cancelled', 'خطا'], pass: ['confirmed', 'موفق'], fail: ['cancelled', 'ناموفق'], skip: ['done', 'ردشده'] };
+
+var SRC = { api: 'اپ مشتری (سرور)', app: 'اپ مشتری (مرورگر)', panel: 'پنل', php: 'PHP', server: 'رویداد سرور', selftest: 'آزمون خودکار' };
+
+function lvBadge(l) {
+  var m = LV[l] || ['done', l];
+  return badge(m[0], m[1]);
+}
+
+/** یک مورد بررسی: مشکل‌ها کامل، موارد سالم در یک خط. */
+function dbgItem(i) {
+  if (i.level === 'ok') {
+    return '<div class="pn-dbg-ok">' + I.check + '<span><b>' + esc(i.title) + '</b> — ' + esc(fa(i.detail)) + '</span></div>';
+  }
+
+  var cls = i.level === 'info' ? 'pn-note pn-note--info' : 'pn-hl pn-hl--' + esc(i.level);
+
+  return '<div class="' + cls + '"><div><b>' + esc(i.title) + '</b> ' + esc(fa(i.detail)) +
+    (i.fix ? '<div class="pn-hl__fix">راه‌حل: ' + esc(i.fix) + '</div>' : '') + '</div></div>';
+}
+
+function viewDebug() {
+  var D = S.dbg;
+  var html = head('آزمون و عیب‌یابی', 'برای پیدا کردن دلیل هر مشکل رزرو. هیچ‌کدام از این بخش‌ها چیزی را روی سایت تغییر نمی‌دهند.',
+    '<button class="pn-btn pn-btn--soft" data-dbg-reload>' + I.refresh + ' تازه‌سازی</button>');
+
+  html += '<div class="pn-tabs pn-reftabs pn-dbgtabs">' + DBG_TABS.map(function (t) {
+    var n = t[0] === 'log' && D.log && D.log.day ? D.log.day.error : 0;
+    return '<button class="pn-tabs__b' + (D.tab === t[0] ? ' is-on' : '') + '" data-dbg-tab="' + t[0] + '">' + t[1] +
+      (n ? ' <span class="pn-count pn-count--hot">' + fa(n) + '</span>' : '') + '</button>';
+  }).join('') + '</div>';
+
+  switch (D.tab) {
+    case 'sim':      return html + dbgSim();
+    case 'selftest': return html + dbgSelftest();
+    case 'log':      return html + dbgLog();
+    case 'info':     return html + dbgInfo();
+    default:         return html + dbgChecks();
+  }
+}
+
+/* ─── بررسی کامل ─── */
+
+function dbgChecks() {
+  var c = S.dbg.checks;
+
+  if (!c) { return skel(4); }
+
+  var all = [];
+  c.sections.forEach(function (s) { all = all.concat(s.items); });
+  c.branches.forEach(function (b) { if (b.status === 'active') { all = all.concat(b.items); } });
+
+  var bad = all.filter(function (i) { return i.level === 'bad'; }).length;
+  var warn = all.filter(function (i) { return i.level === 'warn'; }).length;
+
+  var html = bad
+    ? '<div class="pn-note pn-note--bad">' + I.alert + '<div><b>' + fa(bad) + ' مشکل</b> پیدا شد که جلوی رزرو یا کار درست سیستم را می‌گیرد' +
+      (warn ? ' و ' + fa(warn) + ' مورد نیاز به توجه دارد' : '') + '. هر مورد راه‌حلش را زیر خودش دارد.</div></div>'
+    : (warn
+      ? '<div class="pn-note pn-note--warn">' + I.info + '<div>مشکلی که جلوی رزرو را بگیرد نیست؛ ' + fa(warn) + ' مورد نیاز به توجه دارد.</div></div>'
+      : '<div class="pn-note pn-note--ok">' + I.ok + '<div><b>همه‌چیز مرتب است.</b> همه‌ی بررسی‌ها بدون ایراد گذشت.</div></div>');
+
+  html += '<p class="pn-hint" style="margin:0 0 14px">زمان بررسی: ' + esc(c.now) + '</p>';
+
+  html += '<h2 class="pn-dbg-h">مرکزها و نمایندگی‌ها</h2>';
+
+  c.branches.forEach(function (b) {
+    html += '<div class="pn-card pn-dbg-br">' +
+      '<div class="pn-dbg-br__h"><h3 class="pn-card__t">' + esc(b.title) + '</h3>' +
+        branchBadge(b.status, b.statusLabel) + ' ' + (b.status === 'active' ? lvBadge(b.level) : '') + '</div>';
+
+    html += b.items.map(dbgItem).join('');
+
+    if (b.services.length) {
+      html += '<div class="pn-dbg-svcs">' + b.services.map(function (s) {
+        return '<div class="pn-dbg-svc' + (s.open ? '' : ' is-empty') + '">' +
+          '<div class="pn-dbg-svc__t"><b>' + esc(s.title) + '</b>' + (s.active === 2 ? ' <span class="pn-badge pn-badge--quick">آزمایشی</span>' : '') +
+            (s.deposit ? ' <span class="pn-dbg-mut">بیعانه ' + money(s.deposit) + '</span>' : '') + '</div>' +
+          '<div class="pn-dbg-svc__d">' + (s.open
+            ? fa(s.open) + ' شیفت خالی در بازه — نخستین: ' + esc(s.first)
+            : '<span class="pn-dbg-bad">بدون نوبت خالی</span>' + (s.why ? ' — ' + esc(s.why) : '')) + '</div>' +
+          '<button class="pn-btn pn-btn--soft pn-btn--sm" data-dbg-goto="' + b.id + ':' + s.id + '">شبیه‌ساز</button>' +
+        '</div>';
+      }).join('') + '</div>';
+    } else if (b.status === 'active') {
+      html += '<p class="pn-hint">خدمت فعالی ندارد.</p>';
+    }
+
+    html += '</div>';
+  });
+
+  c.sections.forEach(function (s) {
+    html += '<h2 class="pn-dbg-h">' + esc(s.title) + ' ' + lvBadge(s.level) + '</h2><div class="pn-card">';
+    var sorted = s.items.slice().sort(function (a, b) {
+      var r = { bad: 0, warn: 1, info: 2, ok: 3 };
+      return (r[a.level] || 0) - (r[b.level] || 0);
+    });
+    html += sorted.map(dbgItem).join('') + '</div>';
+  });
+
+  return html;
+}
+
+/* ─── شبیه‌ساز رزرو ─── */
+
+function dbgSim() {
+  var D = S.dbg;
+  var R = D.sim;
+
+  // درخواست تمام شد (موفق یا ناموفق): دکمه دوباره فعال
+  if (!S.fetching) { D.simBusy = false; }
+
+  if (!R) { return skel(3); }
+
+  var br = (R.branches || []).filter(function (b) { return b.id === D.simBranch; })[0] || (R.branches || [])[0];
+  var svcs = br ? br.services : [];
+
+  var html = '<div class="pn-card"><div class="pn-grid">' +
+    '<label class="pn-field"><span class="pn-field__l">مرکز</span><select class="pn-in" id="dbg-br">' +
+      (R.branches || []).map(function (b) {
+        return '<option value="' + b.id + '"' + (br && b.id === br.id ? ' selected' : '') + '>' + esc(b.title) + (b.status !== 'active' ? ' (غیرفعال)' : '') + '</option>';
+      }).join('') + '</select></label>' +
+    '<label class="pn-field"><span class="pn-field__l">خدمت</span><select class="pn-in" id="dbg-svc">' +
+      svcs.map(function (s) {
+        return '<option value="' + s.id + '"' + (s.id === D.simService ? ' selected' : '') + '>' + esc(s.title) +
+          (s.active === 2 ? ' (آزمایشی)' : (s.active ? '' : ' (غیرفعال)')) + '</option>';
+      }).join('') + '</select></label>' +
+    '<label class="pn-field"><span class="pn-field__l">شماره‌ی مشتری (اختیاری)</span>' +
+      '<input class="pn-in" id="dbg-phone" inputmode="tel" dir="ltr" placeholder="09…" value="' + esc(D.simPhone) + '"></label>' +
+  '</div>' +
+  '<p class="pn-hint">تقویم همین خدمت را همان‌طور که مشتری می‌بیند نشان می‌دهد، با دلیل هر شیفت بسته. با شماره‌ی مشتری، نوبت‌های فعال و سقفش هم دیده می‌شود و «آزمون ثبت» با حساب خود او انجام می‌شود.</p>' +
+  '<div class="pn-actions"><button class="pn-btn pn-btn--dark" data-dbg-sim-run' + (D.simBusy ? ' disabled' : '') + '>' +
+    (D.simBusy ? '<span class="pn-spin"></span> ' : '') + 'نمایش</button></div></div>';
+
+  if (R.rules) {
+    html += '<p class="pn-hint" style="margin:-4px 0 12px">' + esc(R.rules.today) + ' — نوبت از ' + fa(R.rules.minDays) + ' روز بعد تا ' +
+      fa(R.rules.window) + ' روز، دست‌کم ' + fa(R.rules.minHours) + ' ساعت پیش از شروع شیفت؛ سقف نوبت فعال هر مشتری ' +
+      (R.rules.maxActive ? fa(R.rules.maxActive) : 'ندارد') + (R.rules.perService ? '، از هر خدمت یکی' : '') + '.</p>';
+  }
+
+  if (!R.days) {
+    return html + (R.error ? '<div class="pn-hl pn-hl--bad">' + esc(R.error) + '</div>' : '');
+  }
+
+  var b = R.branch;
+
+  if (b.status !== 'active') {
+    html += '<div class="pn-hl pn-hl--warn"><b>این مرکز فعال نیست.</b> مشتری آن را نمی‌بیند؛ تقویم زیر فقط برای بررسی است.</div>';
+  } else if (!b.bookable) {
+    html += '<div class="pn-hl pn-hl--bad"><b>این مرکز همین حالا نوبت نمی‌گیرد</b> (' +
+      esc({ balance: 'موجودی کیف پول نمایندگی کمتر از هزینه‌ی یک رزرو است', no_services: 'هیچ خدمت فعالی ندارد' }[b.reason] || b.reason) +
+      '). مشتری با برچسب «فعلاً نوبت نمی‌گیرد» می‌بیندش، حتی اگر شیفت خالی باشد.</div>';
+  }
+
+  if (R.mismatch) {
+    html += '<div class="pn-hl pn-hl--bad"><b>' + fa(R.mismatch) + ' شیفت ناهماهنگ:</b> تقویم مشتری و بررسی هنگام ثبت درباره‌ی این شیفت‌ها نتیجه‌ی متفاوتی دارند (با علامت قرمز). این یک باگ است؛ همین صفحه را برای پشتیبان بفرستید.</div>';
+  }
+
+  var sv = R.service;
+  var wd = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه'];
+  var days = [6, 0, 1, 2, 3, 4, 5].filter(function (d) { return sv.weekdays.indexOf(d) !== -1; })
+    .map(function (d) { return wd[d]; });
+
+  html += '<p class="pn-hint" style="margin:0 0 10px"><b>' + esc(sv.title) + '</b> — روزهای ارائه: ' + esc(days.join('، ') || 'هیچ روزی') +
+    (sv.deposit ? '؛ بیعانه ' + money(sv.deposit) + ' تومان' : '؛ بدون بیعانه') +
+    (sv.own ? '؛ سهمیه‌ی جدا' : '؛ ظرفیت مشترک شیفت') + '</p>';
+
+  html += '<div class="pn-dbg-days">' + R.days.map(function (d) {
+    var out = '<div class="pn-dbg-day"><div class="pn-dbg-day__t">' + esc(d.label) + '</div>';
+
+    if (!d.blocks.length) {
+      return out + '<div class="pn-dbg-slot is-off"><span>' + esc(d.reason || 'بسته') + '</span></div></div>';
+    }
+
+    return out + d.blocks.map(function (k) {
+      var key = d.date + '|' + k.key;
+      var t = D.tries[key];
+      var st = k.available ? 'is-open' : 'is-off';
+
+      return '<div class="pn-dbg-slot ' + st + (k.agree ? '' : ' is-bad') + '">' +
+        '<div class="pn-dbg-slot__h"><b>' + esc(k.label) + ' ' + esc(k.start) + '</b>' +
+          '<span>' + (k.available ? fa(k.remaining) + ' از ' + fa(k.capacity) + ' خالی' : esc(k.reason || 'بسته') + ' — ' + fa(k.booked) + '/' + fa(k.capacity)) + '</span></div>' +
+        (k.check !== 'ok' ? '<div class="pn-dbg-mut">هنگام ثبت: ' + esc(k.checkMsg) + ' <code dir="ltr">' + esc(k.check) + '</code></div>' : '') +
+        (!k.agree ? '<div class="pn-dbg-bad">ناهماهنگ: تقویم «' + (k.available ? 'آزاد' : 'بسته') + '» ولی ثبت «' + (k.check === 'ok' ? 'مجاز' : 'رد') + '»</div>' : '') +
+        '<button class="pn-btn pn-btn--soft pn-btn--sm" data-dbg-try="' + esc(key) + '"' + (D.tryBusy === key ? ' disabled' : '') + '>' +
+          (D.tryBusy === key ? '<span class="pn-spin pn-spin--dark"></span> ' : '') + 'آزمون ثبت</button>' +
+        (t ? dbgTryResult(t) : '') +
+      '</div>';
+    }).join('') + '</div>';
+  }).join('') + '</div>';
+
+  if (R.customer) { html += dbgCustomer(R.customer); }
+
+  return html;
+}
+
+function dbgTryResult(t) {
+  if (t.error) { return '<div class="pn-dbg-try is-bad">' + esc(t.error) + '</div>'; }
+
+  var sms = t.sms && t.sms.length ? ' — ' + fa(t.sms.length) + ' پیامک ساخته می‌شد' : '';
+
+  if (t.ok) {
+    var b = t.booking || {};
+    return '<div class="pn-dbg-try is-ok">' + I.check + ' <b>ثبت می‌شد</b> با ' + esc(t.as) + ' — وضعیت «' + esc(b.status) + '»' +
+      (b.deposit ? '، بیعانه ' + money(b.deposit) + (b.gateway ? ' (درگاه باز می‌شد)' : '') : '') +
+      (b.fee ? '، هزینه‌ی نمایندگی ' + money(b.fee) : '') + sms + '. چیزی ذخیره نشد.</div>';
+  }
+
+  return '<div class="pn-dbg-try is-bad"><b>ثبت نمی‌شد</b> با ' + esc(t.as || '') + ': ' + esc(t.message || '') +
+    (t.code ? ' <code dir="ltr">' + esc(t.code) + '</code>' : '') + '</div>';
+}
+
+function dbgCustomer(c) {
+  var html = '<h2 class="pn-dbg-h">مشتری ' + esc(fa(c.phone)) + '</h2><div class="pn-card">';
+
+  if (!c.exists) {
+    return html + '<p class="pn-hint" style="margin:0">' + esc(c.limit) + '</p></div>';
+  }
+
+  html += '<div class="pn-kv"><span class="pn-kv__k">نام</span><span class="pn-kv__v">' + esc(c.name) + '</span></div>' +
+    (c.wallet !== null ? '<div class="pn-kv"><span class="pn-kv__k">کیف پول</span><span class="pn-kv__v">' + money(c.wallet) + ' تومان</span></div>' : '') +
+    '<div class="pn-kv"><span class="pn-kv__k">نوبت فعال</span><span class="pn-kv__v">' + fa(c.active.length) + '</span></div>';
+
+  c.active.forEach(function (a) {
+    html += '<div class="pn-dbg-ok">' + I.cal + '<span>' + esc(a.date) + ' — ' + esc(a.block) + ' — ' + esc(a.service) +
+      ' (' + esc(a.branch) + ') — ' + esc(a.status) + ' <code dir="ltr">' + esc(a.code) + '</code></span></div>';
+  });
+
+  html += '<div class="' + (c.limitOk ? 'pn-hl pn-hl--ok' : 'pn-hl pn-hl--warn') + '" style="margin-top:10px">' + esc(c.limit) + '</div>';
+
+  return html + '</div>';
+}
+
+/* ─── آزمون خودکار ─── */
+
+function dbgSelftest() {
+  var D = S.dbg;
+  var R = D.st;
+
+  var html = '<div class="pn-card"><h3 class="pn-card__t">' + I.check + ' آزمون خودکار کل مسیر رزرو</h3>' +
+    '<p class="pn-hint" style="margin:0 0 10px">مسیر واقعی مشتری روی همین سایت و با همین تنظیمات اجرا می‌شود: فهرست مراکز، تقویم هر خدمت، ثبت نوبت، پرداخت بیعانه، ' +
+    'بلوکه‌ی هزینه‌ی نمایندگی، پیامک‌ها، لغو، ورود با کد، و رد شدن درست حالت‌های نادرست (روز بسته، ظرفیت پر، بیرون از بازه، نمایندگی بی‌موجودی…).</p>' +
+    '<div class="pn-note pn-note--info">' + I.info + '<div>همه‌چیز داخل یک تراکنش دیتابیس انجام و آخر کار <b>برگردانده</b> می‌شود: هیچ نوبت، کاربر، پرداخت یا تراکنش کیف پولی باقی نمی‌ماند، ' +
+    'هیچ پیامکی واقعاً ارسال نمی‌شود و به درگاه پولی نمی‌رود. مشتری‌های واقعی در این چند ثانیه چیزی حس نمی‌کنند.</div></div>' +
+    '<div class="pn-actions"><button class="pn-btn pn-btn--pri" data-dbg-st-run' + (D.stBusy ? ' disabled' : '') + '>' +
+      (D.stBusy ? '<span class="pn-spin"></span> در حال اجرا…' : 'اجرای آزمون خودکار') + '</button></div></div>';
+
+  if (R && R.error) {
+    html += '<div class="pn-hl pn-hl--bad">' + esc(R.error) + '</div>';
+  } else if (R) {
+    html += '<div class="pn-stats">' +
+      '<div class="pn-stat pn-stat--ok"><div class="pn-stat__k">موفق</div><div class="pn-stat__v">' + fa(R.passed) + '</div></div>' +
+      '<div class="pn-stat' + (R.failed ? ' pn-stat--bad' : '') + '"><div class="pn-stat__k">ناموفق</div><div class="pn-stat__v">' + fa(R.failed) + '</div></div>' +
+      '<div class="pn-stat"><div class="pn-stat__k">هشدار</div><div class="pn-stat__v">' + fa(R.warned) + '</div></div>' +
+      '<div class="pn-stat"><div class="pn-stat__k">زمان</div><div class="pn-stat__v">' + fa((R.ms / 1000).toFixed(1)) + ' ث</div></div>' +
+    '</div>';
+
+    if (R.leak) {
+      html += '<div class="pn-hl pn-hl--bad"><b>توجه:</b> تعداد ردیف‌های دیتابیس بعد از آزمون با پیش از آن یکی نیست. ممکن است بخشی از داده‌ی آزمایشی مانده باشد (کاربر «مشتری آزمون خودکار»). با پشتیبان تماس بگیرید.</div>';
+    }
+
+    var groups = [];
+    var by = {};
+
+    R.items.forEach(function (i) {
+      if (!by[i.group]) { by[i.group] = []; groups.push(i.group); }
+      by[i.group].push(i);
+    });
+
+    groups.forEach(function (g) {
+      html += '<div class="pn-card pn-dbg-st"><h3 class="pn-card__t">' + esc(g) + '</h3>' + by[g].map(function (i) {
+        return '<div class="pn-dbg-st__i is-' + esc(i.state) + '">' + lvBadge(i.state) +
+          '<div><b>' + esc(i.title) + '</b>' + (i.detail ? '<div class="pn-dbg-mut">' + esc(fa(i.detail)) + '</div>' : '') + '</div></div>';
+      }).join('') + '</div>';
+    });
+
+    if (R.sms && R.sms.length) {
+      var pat = {};
+      R.sms.forEach(function (x) { var k = x.pattern || 'متن ساده'; pat[k] = (pat[k] || 0) + 1; });
+      html += '<p class="pn-hint">' + fa(R.sms.length) + ' پیامک در این آزمون ساخته شد و ارسال نشد — ' +
+        Object.keys(pat).map(function (k) { return 'پترن ' + esc(fa(k)) + ' × ' + fa(pat[k]); }).join('، ') + '</p>';
+    }
+
+    html += '<p class="pn-hint">اجرا: ' + esc(R.at) + '</p>';
+  }
+
+  var hist = D.stHist && D.stHist.items ? D.stHist.items : [];
+
+  if (hist.length) {
+    html += '<h2 class="pn-dbg-h">اجراهای قبلی</h2><div class="pn-card">' + hist.slice(0, 10).map(function (h) {
+      return '<div class="pn-dbg-ok">' + (h.level === 'info' ? I.check : I.alert) + '<span>' + esc(fa(h.atFa)) + ' — ' + esc(fa(h.message)) + '</span></div>';
+    }).join('') + '</div>';
+  }
+
+  return html;
+}
+
+/* ─── گزارش خطا ─── */
+
+function dbgLog() {
+  var D = S.dbg;
+  var L = D.log;
+
+  if (!L) { return skel(4); }
+
+  var st = L.settings || { log: true, verbose: false };
+  var f = D.logF;
+
+  var html = '<div class="pn-card"><div class="pn-dbg-sw">' +
+    '<label class="pn-check"><input type="checkbox" id="dbg-on"' + (st.log ? ' checked' : '') + '> <b>ثبت خطاها</b></label>' +
+    '<p class="pn-hint">هر خطایی که مشتری یا کاربر پنل می‌بیند، پیامکی که نرفت، درگاهی که جواب نداد و خطای جاوااسکریپت گوشی مشتری با یک «کد پیگیری» ثبت می‌شود. کد ورود، رمز و شماره‌ی کامل ذخیره نمی‌شود؛ گزارش ۱۴ روز می‌ماند.</p>' +
+    '<label class="pn-check"><input type="checkbox" id="dbg-verbose"' + (st.verbose ? ' checked' : '') + '> <b>حالت عیب‌یابی</b></label>' +
+    '<p class="pn-hint">کد پیگیری هر خطا به خود مشتری هم نشان داده می‌شود (تا بگوید و شما اینجا پیدایش کنید)، رویدادهای عادی هم ثبت می‌شوند و در اپ مشتری برای مدیر دکمه‌ی «عیب‌یابی» با جزئیات هر درخواست ظاهر می‌شود. بعد از رفع مشکل خاموشش کنید.</p>' +
+  '</div></div>';
+
+  if (!L.ready) {
+    return html + '<div class="pn-hl pn-hl--warn">جدول گزارش هنوز ساخته نشده؛ یک بار وارد پیشخوان وردپرس شوید.</div>';
+  }
+
+  html += '<div class="pn-stats">' +
+    '<div class="pn-stat' + (L.day.error ? ' pn-stat--bad' : '') + '"><div class="pn-stat__k">خطا (۲۴ ساعت)</div><div class="pn-stat__v">' + fa(L.day.error) + '</div></div>' +
+    '<div class="pn-stat"><div class="pn-stat__k">توجه (۲۴ ساعت)</div><div class="pn-stat__v">' + fa(L.day.warn) + '</div></div>' +
+    '<div class="pn-stat"><div class="pn-stat__k">اطلاع (۲۴ ساعت)</div><div class="pn-stat__v">' + fa(L.day.info) + '</div></div>' +
+  '</div>';
+
+  html += '<div class="pn-card"><div class="pn-filters">' +
+    '<label class="pn-field"><span class="pn-field__l">سطح</span><select class="pn-in" id="dbg-lv">' +
+      [['', 'همه'], ['error', 'خطا'], ['warn', 'توجه'], ['info', 'اطلاع']].map(function (o) {
+        return '<option value="' + o[0] + '"' + (f.level === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+      }).join('') + '</select></label>' +
+    '<label class="pn-field"><span class="pn-field__l">منبع</span><select class="pn-in" id="dbg-src">' +
+      [['', 'همه']].concat(Object.keys(SRC).map(function (k) { return [k, SRC[k]]; })).map(function (o) {
+        return '<option value="' + o[0] + '"' + (f.source === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+      }).join('') + '</select></label>' +
+    '<label class="pn-field"><span class="pn-field__l">جستجو (کد پیگیری، شماره، متن)</span><input class="pn-in" id="dbg-q" value="' + esc(f.q) + '"></label>' +
+    '<div class="pn-actions"><button class="pn-btn pn-btn--dark" data-dbg-log-go>جستجو</button>' +
+      '<button class="pn-btn pn-btn--bad" data-dbg-clear>پاک کردن همه</button></div>' +
+  '</div></div>';
+
+  if (!L.items.length) {
+    return html + '<div class="pn-empty"><div class="pn-empty__ic">' + I.ok + '</div><div class="pn-empty__t">موردی ثبت نشده</div>' +
+      '<div class="pn-empty__s">' + (f.level || f.source || f.q ? 'با این فیلتر چیزی پیدا نشد.' : 'هنوز خطایی ثبت نشده است.') + '</div></div>';
+  }
+
+  html += '<div class="pn-dbg-log' + (S.fetching ? ' is-fetching' : '') + '">' + L.items.map(function (r) {
+    var open = D.logOpen === r.id;
+
+    return '<div class="pn-dbg-row' + (open ? ' is-open' : '') + '">' +
+      '<button class="pn-dbg-row__h" data-dbg-row="' + r.id + '">' +
+        lvBadge(r.level) +
+        '<span class="pn-dbg-row__m"><b>' + esc(r.message || r.code) + '</b>' +
+          '<span class="pn-dbg-mut">' + esc(fa(r.atFa)) + ' · ' + esc(SRC[r.source] || r.source) +
+          (r.branch ? ' · ' + esc(r.branch) : '') + (r.phone ? ' · ' + esc(fa(r.phone)) : '') + '</span></span>' +
+        '<code class="pn-dbg-ref" dir="ltr">' + esc(r.ref) + '</code>' +
+      '</button>' +
+      (open ? dbgRowDetail(r) : '') +
+    '</div>';
+  }).join('') + '</div>';
+
+  if (L.pages > 1) {
+    html += '<div class="pn-actions" style="justify-content:center;margin-top:12px">' +
+      '<button class="pn-btn pn-btn--soft" data-dbg-page="' + (L.page - 1) + '"' + (L.page <= 1 ? ' disabled' : '') + '>قبلی</button>' +
+      '<span class="pn-hint" style="margin:0 8px">صفحه‌ی ' + fa(L.page) + ' از ' + fa(L.pages) + '</span>' +
+      '<button class="pn-btn pn-btn--soft" data-dbg-page="' + (L.page + 1) + '"' + (L.page >= L.pages ? ' disabled' : '') + '>بعدی</button></div>';
+  }
+
+  return html;
+}
+
+function dbgRowDetail(r) {
+  return '<div class="pn-dbg-row__d">' +
+    '<div class="pn-kv"><span class="pn-kv__k">کد خطا</span><span class="pn-kv__v" dir="ltr">' + esc(r.code) + (r.status ? ' (' + r.status + ')' : '') + '</span></div>' +
+    (r.route ? '<div class="pn-kv"><span class="pn-kv__k">مسیر</span><span class="pn-kv__v" dir="ltr">' + esc(r.route) + '</span></div>' : '') +
+    '<div class="pn-kv"><span class="pn-kv__k">زمان</span><span class="pn-kv__v" dir="ltr">' + esc(r.at) + '</span></div>' +
+    (r.user ? '<div class="pn-kv"><span class="pn-kv__k">کاربر</span><span class="pn-kv__v">#' + r.user + (r.phone ? ' — ' + esc(fa(r.phone)) : '') + '</span></div>' : '') +
+    (r.ip ? '<div class="pn-kv"><span class="pn-kv__k">IP</span><span class="pn-kv__v" dir="ltr">' + esc(r.ip) + '</span></div>' : '') +
+    (r.ua ? '<div class="pn-kv"><span class="pn-kv__k">مرورگر</span><span class="pn-kv__v pn-dbg-ua" dir="ltr">' + esc(r.ua) + '</span></div>' : '') +
+    (r.context ? '<pre class="pn-dbg-pre" dir="ltr">' + esc(JSON.stringify(r.context, null, 2)) + '</pre>' : '') +
+    '<div class="pn-actions"><button class="pn-btn pn-btn--soft pn-btn--sm" data-dbg-copy-row="' + r.id + '">کپی برای پشتیبان</button></div>' +
+  '</div>';
+}
+
+/* ─── اطلاعات سیستم ─── */
+
+function dbgInfo() {
+  var R = S.dbg.info;
+
+  if (!R) { return skel(3); }
+
+  return '<div class="pn-card">' + R.rows.map(function (r) {
+    return '<div class="pn-kv"><span class="pn-kv__k">' + esc(r.label) + '</span><span class="pn-kv__v pn-dbg-info">' + esc(r.value) + '</span></div>';
+  }).join('') +
+  '<div class="pn-actions" style="margin-top:12px"><button class="pn-btn pn-btn--dark" data-dbg-copy-info>کپی برای پشتیبان</button></div>' +
+  '<p class="pn-hint">رمز، توکن و مرچنت کد کامل در این متن نیست؛ با خیال راحت برای پشتیبان بفرستید.</p></div>';
+}
+
+/* ─── کنش‌ها ─── */
+
+function dbgJob() {
+  var D = S.dbg;
+
+  switch (D.tab) {
+    case 'sim':
+      return ['panel/debug/simulate?branch_id=' + (D.simBranch || 0) + '&service_id=' + (D.simService || 0) +
+        '&phone=' + encodeURIComponent(D.simPhone), function (r) { D.sim = r; D.simBusy = false; dbgSimDefaults(); }];
+    case 'selftest':
+      return ['panel/debug/log?source=selftest&page=1', function (r) { D.stHist = r; }];
+    case 'log':
+      return ['panel/debug/log?level=' + D.logF.level + '&source=' + D.logF.source + '&q=' + encodeURIComponent(D.logF.q) +
+        '&page=' + D.logPage, function (r) { D.log = r; }];
+    case 'info':
+      return ['panel/debug/info', function (r) { D.info = r; }];
+    default:
+      return ['panel/debug/checks', function (r) { D.checks = r; }];
+  }
+}
+
+/** شبیه‌ساز بدون انتخاب: نخستین مرکز فعال و نخستین خدمت فعالش، و نمایش. */
+function dbgSimDefaults() {
+  var D = S.dbg;
+  var R = D.sim;
+
+  if (!R || !R.branches || !R.branches.length || D.simBranch) { return; }
+
+  var b = R.branches.filter(function (x) { return x.status === 'active'; })[0] || R.branches[0];
+  var s = b.services.filter(function (x) { return x.active; })[0] || b.services[0];
+
+  D.simBranch = b.id;
+  D.simService = s ? s.id : 0;
+
+  if (D.simService) { load('debug', true); }
+}
+
+function dbgData() {
+  var D = S.dbg;
+  return { checks: D.checks, sim: D.sim, selftest: D.stHist || {}, log: D.log, info: D.info }[D.tab];
+}
+
+function dbgTry(key) {
+  var D = S.dbg;
+  var p = key.split('|');
+
+  if (D.tryBusy) { return; }
+
+  D.tryBusy = key;
+  paint();
+
+  post('panel/debug/try', { service_id: D.simService, date: p[0], block: p[1], phone: D.simPhone }).then(function (r) {
+    D.tryBusy = '';
+    D.tries[key] = r.success === false ? { error: r.message } : r;
+    paint();
+  });
+}
+
+function dbgSelftestRun() {
+  var D = S.dbg;
+
+  if (D.stBusy) { return; }
+
+  D.stBusy = true;
+  D.st = null;
+  paint();
+
+  post('panel/debug/selftest', {}).then(function (r) {
+    D.stBusy = false;
+    D.st = r.success === false ? { error: r.message } : r;
+    D.stHist = null;
+    load('debug', true);
+  });
+}
+
+function dbgSaveSettings() {
+  var on = $('#dbg-on');
+  var vb = $('#dbg-verbose');
+
+  post('panel/debug/settings', { debug_log: on && on.checked ? 1 : 0, debug_mode: vb && vb.checked ? 1 : 0 }).then(function (r) {
+    if (r.success === false) { toast(r.message || 'ذخیره نشد.', 'bad'); return; }
+    if (S.dbg.log) { S.dbg.log.settings = r.settings; }
+    toast('ذخیره شد.', 'ok');
+    paint();
+  });
+}
+
+function copyText(text) {
+  var done = function () { toast('کپی شد.', 'ok'); };
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done, function () { copyFallback(text); done(); });
+    return;
+  }
+
+  copyFallback(text);
+  done();
+}
+
+function copyFallback(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) { /* بی‌اهمیت */ }
+  document.body.removeChild(ta);
+}
+
+function dbgRowText(r) {
+  return [
+    'کد پیگیری: ' + r.ref,
+    'زمان: ' + r.at,
+    'سطح: ' + r.level + ' — منبع: ' + r.source,
+    'کد: ' + r.code + (r.status ? ' (' + r.status + ')' : ''),
+    'پیام: ' + r.message,
+    r.route ? 'مسیر: ' + r.route : '',
+    r.branch ? 'شعبه: ' + r.branch : '',
+    r.phone ? 'شماره: ' + r.phone : '',
+    r.ua ? 'مرورگر: ' + r.ua : '',
+    r.context ? 'جزئیات: ' + JSON.stringify(r.context) : ''
+  ].filter(Boolean).join('\n');
+}
+
 function paint() {
   if (rafId) { return; }
 
@@ -2851,6 +3399,7 @@ function render() {
     case 'profile':  body = viewProfile(); break;
     case 'agencies': body = viewAgencies(); break;
     case 'report':   body = viewReport(); break;
+    case 'debug':    body = viewDebug(); break;
     default:         body = viewSummary();
   }
 
@@ -2956,6 +3505,7 @@ function jobs() {
     report:   ['panel/admin/report?from=' + encodeURIComponent(S.agFrom) + '&to=' + encodeURIComponent(S.agTo),
                function (r) { S.agReport = r; }],
     closures: ['panel/closures', function (r) { S.closures = r; }],
+    debug:    dbgJob(),
     settings: ['panel/settings', function (r) { S.sched = r.settings; S.schedFull = r.fullUrl || ''; S.schedGlobal = r.global !== false && !r.agency; }],
     refunds:  S.refWhich === 'review' ? ['panel/pay-review', function (r) { S.payReview = r; }]
       : (S.refWhich === 'report' ? ['panel/pay-report?days=' + S.repDays + '&sandbox=' + (S.repSandbox ? 1 : 0), function (r) { S.payReport = r; }]
@@ -2967,7 +3517,7 @@ function jobs() {
 function hasData(view) {
   var m = { summary: S.summary, board: S.board, bookings: S.list, customers: S.customers,
             services: S.services, closures: S.closures, settings: S.sched,
-            bwallet: S.bwallet, profile: S.profile, agencies: S.agencies, report: S.agReport,
+            bwallet: S.bwallet, profile: S.profile, agencies: S.agencies, report: S.agReport, debug: dbgData(),
             refunds: S.refWhich === 'review' ? S.payReview : (S.refWhich === 'report' ? S.payReport : (S.refWhich === 'wallet' ? S.wallets : S.refunds)) };
   return !!m[view];
 }
@@ -3056,6 +3606,7 @@ function looksValid(view, r) {
     case 'profile':  return !!r.id;
     case 'agencies': return Array.isArray(r.items);
     case 'report':   return Array.isArray(r.items);
+    case 'debug':    return true;
     default:         return true;
   }
 }
@@ -4079,6 +4630,88 @@ function bind() {
       return;
     }
 
+    /* ── آزمون و عیب‌یابی ── */
+
+    if ((el = up('[data-dbg-tab]'))) {
+      e.preventDefault();
+      S.dbg.tab = el.getAttribute('data-dbg-tab');
+      show('debug');
+      return;
+    }
+
+    if (up('[data-dbg-reload]')) { e.preventDefault(); load('debug', true); return; }
+
+    if ((el = up('[data-dbg-goto]'))) {
+      e.preventDefault();
+      var gp = el.getAttribute('data-dbg-goto').split(':');
+      S.dbg.tab = 'sim';
+      S.dbg.simBranch = Number(gp[0]);
+      S.dbg.simService = Number(gp[1]);
+      S.dbg.tries = {};
+      S.dbg.simBusy = true;
+      window.scrollTo(0, 0);
+      load('debug', true);
+      return;
+    }
+
+    if (up('[data-dbg-sim-run]')) {
+      e.preventDefault();
+      S.dbg.simBranch = Number(val('#dbg-br')) || S.dbg.simBranch;
+      S.dbg.simService = Number(val('#dbg-svc')) || S.dbg.simService;
+      S.dbg.simPhone = en(val('#dbg-phone')).replace(/\D/g, '');
+      S.dbg.tries = {};
+      S.dbg.simBusy = true;
+      load('debug', true);
+      return;
+    }
+
+    if ((el = up('[data-dbg-try]'))) { e.preventDefault(); dbgTry(el.getAttribute('data-dbg-try')); return; }
+    if (up('[data-dbg-st-run]')) { e.preventDefault(); dbgSelftestRun(); return; }
+
+    if ((el = up('[data-dbg-row]'))) {
+      e.preventDefault();
+      var rid = Number(el.getAttribute('data-dbg-row'));
+      S.dbg.logOpen = S.dbg.logOpen === rid ? 0 : rid;
+      paint();
+      return;
+    }
+
+    if ((el = up('[data-dbg-copy-row]'))) {
+      e.preventDefault();
+      var cid = Number(el.getAttribute('data-dbg-copy-row'));
+      var row = (S.dbg.log && S.dbg.log.items || []).filter(function (x) { return x.id === cid; })[0];
+      if (row) { copyText(dbgRowText(row)); }
+      return;
+    }
+
+    if (up('[data-dbg-copy-info]')) { e.preventDefault(); if (S.dbg.info) { copyText(S.dbg.info.text); } return; }
+
+    if (up('[data-dbg-log-go]')) {
+      e.preventDefault();
+      S.dbg.logF.q = val('#dbg-q').trim();
+      S.dbg.logPage = 1;
+      load('debug', true);
+      return;
+    }
+
+    if ((el = up('[data-dbg-page]'))) {
+      e.preventDefault();
+      S.dbg.logPage = Math.max(1, Number(el.getAttribute('data-dbg-page')));
+      load('debug', true);
+      return;
+    }
+
+    if (up('[data-dbg-clear]')) {
+      e.preventDefault();
+      if (!window.confirm('همه‌ی گزارش خطا پاک شود؟ این کار برگشت ندارد.')) { return; }
+      post('panel/debug/log/clear', {}).then(function (r) {
+        toast(r.message || 'پاک شد.', r.success === false ? 'bad' : 'ok');
+        S.dbg.log = null;
+        load('debug', true);
+      });
+      return;
+    }
+
     /* ── بیعانه و کیف پول ── */
 
     if ((el = up('[data-ref-which]'))) {
@@ -4421,6 +5054,36 @@ function bind() {
       load('bookings');
     }
 
+    /* آزمون و عیب‌یابی: انتخاب مرکز/خدمت شبیه‌ساز، فیلتر و تنظیم گزارش خطا */
+    if (e.target && e.target.id === 'dbg-br') {
+      var nb = Number(e.target.value);
+      var bl = (S.dbg.sim && S.dbg.sim.branches || []).filter(function (x) { return x.id === nb; })[0];
+      var ns = bl ? (bl.services.filter(function (x) { return x.active; })[0] || bl.services[0]) : null;
+      S.dbg.simBranch = nb;
+      S.dbg.simService = ns ? ns.id : 0;
+      S.dbg.simPhone = en(val('#dbg-phone')).replace(/\D/g, '');
+      S.dbg.tries = {};
+      S.dbg.simBusy = true;
+      load('debug', true);
+    }
+
+    if (e.target && e.target.id === 'dbg-svc') {
+      S.dbg.simService = Number(e.target.value);
+      S.dbg.simPhone = en(val('#dbg-phone')).replace(/\D/g, '');
+      S.dbg.tries = {};
+      S.dbg.simBusy = true;
+      load('debug', true);
+    }
+
+    if (e.target && (e.target.id === 'dbg-lv' || e.target.id === 'dbg-src')) {
+      S.dbg.logF.level = val('#dbg-lv');
+      S.dbg.logF.source = val('#dbg-src');
+      S.dbg.logPage = 1;
+      load('debug', true);
+    }
+
+    if (e.target && (e.target.id === 'dbg-on' || e.target.id === 'dbg-verbose')) { dbgSaveSettings(); }
+
     if (e.target && e.target.id === 'rep-sandbox') {
       S.repSandbox = !!e.target.checked;
       S.payReport = null;
@@ -4438,6 +5101,21 @@ function bind() {
     }
 
     if (e.key === 'Enter' && $('#lg-pass')) { e.preventDefault(); doLogin(); return; }
+
+    if (e.key === 'Enter' && e.target && e.target.id === 'dbg-q') {
+      e.preventDefault();
+      S.dbg.logF.q = e.target.value.trim();
+      S.dbg.logPage = 1;
+      load('debug', true);
+      return;
+    }
+
+    if (e.key === 'Enter' && e.target && e.target.id === 'dbg-phone') {
+      e.preventDefault();
+      var rb = $('[data-dbg-sim-run]');
+      if (rb) { rb.click(); }
+      return;
+    }
     if (e.key === 'Enter' && $('#lg-phone')) { e.preventDefault(); otpSend(); return; }
     if (e.key === 'Enter' && $('#lg-code')) { e.preventDefault(); otpVerify(); return; }
 
@@ -4582,7 +5260,35 @@ if (PWA) {
 
 /* ═══ راه‌اندازی ═══ */
 
+/* خطای جاوااسکریپت پنل در «گزارش خطا» (حداکثر پنج مورد در هر بار باز شدن). */
+function watchErrors() {
+  var sent = 0;
+  var send = function (msg, extra) {
+    if (!(C.dbg && C.dbg.log) || sent >= 5) { return; }
+    sent++;
+    try {
+      fetch(ROOT + 'log', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', keepalive: true,
+        body: JSON.stringify({ source: 'panel', kind: 'js', message: String(msg).slice(0, 500), url: location.href, ver: C.ver || '',
+          where: extra.where || '', stack: extra.stack || '', state: { view: S.view } })
+      }).catch(function () {});
+    } catch (e) { /* بی‌اهمیت */ }
+  };
+
+  window.addEventListener('error', function (e) {
+    var file = e.filename || '';
+    if (!e.message || /^Script error\.?$/.test(e.message) || /^(chrome|moz|safari)-extension:/.test(file)) { return; }
+    send(e.message, { where: file + ':' + e.lineno + ':' + e.colno, stack: e.error && e.error.stack ? String(e.error.stack).slice(0, 1500) : '' });
+  });
+
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason;
+    send('Unhandled promise: ' + (r && r.message ? r.message : String(r)), { stack: r && r.stack ? String(r.stack).slice(0, 1500) : '' });
+  });
+}
+
 function boot() {
+  watchErrors();
   S.view = readRoute();
 
   /* بازگشت از درگاه شارژ کیف پول نمایندگی: نتیجه در همان تب کیف پول؛

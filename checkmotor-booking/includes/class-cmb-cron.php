@@ -188,6 +188,11 @@ class CMB_Cron {
 		if ( class_exists( 'CMB_Payments' ) ) {
 			CMB_Payments::reconcile( true );
 		}
+
+		// گزارش خطا: ۱۴ روز و حداکثر ۳۰۰۰ ردیف
+		if ( class_exists( 'CMB_Debug' ) ) {
+			CMB_Debug::prune();
+		}
 	}
 
 	/**
