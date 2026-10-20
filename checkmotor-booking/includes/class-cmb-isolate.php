@@ -80,8 +80,9 @@ class CMB_Isolate {
 
 		global $wp_styles, $wp_scripts;
 
-		$keep_css = array( 'cmb-app', 'cmb-panel' );
-		$keep_js  = array( 'cmb-app', 'cmb-panel', 'cmb-jalali', 'jquery', 'jquery-core', 'jquery-migrate' );
+		// cmb-location: استایل نقشه و دکمه‌ی موقعیت؛ بدون آن این بخش‌ها بی‌ظاهر می‌ماندند
+		$keep_css = array( 'cmb-app', 'cmb-panel', 'cmb-location' );
+		$keep_js  = array( 'cmb-app', 'cmb-panel', 'cmb-jalali', 'cmb-location', 'cmb-a11y', 'jquery', 'jquery-core', 'jquery-migrate' );
 
 		if ( $wp_styles instanceof WP_Styles ) {
 			foreach ( (array) $wp_styles->queue as $handle ) {

@@ -3,7 +3,7 @@
  * Plugin Name: چک موتور — سیستم رزرو نوبت
  * Plugin URI:  https://checkmotor.ir
  * Description: سیستم رزرو نوبت آنلاین چک موتور (MVP) — ورود با کد تایید پیامکی ملی‌پیامک، تقویم ۷ روزه، شیفت صبح/بعدازظهر، پنل مدیریت نوبت‌ها.
- * Version:     1.39.1
+ * Version:     1.39.2
  * Author:      رضا امام‌حسنی
  * Text Domain: checkmotor-booking
  * Domain Path: /languages
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMB_VERSION', '1.39.1' );
+define( 'CMB_VERSION', '1.39.2' );
 define( 'CMB_FILE', __FILE__ );
 define( 'CMB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMB_URL', plugin_dir_url( __FILE__ ) );
@@ -617,9 +617,9 @@ function cmb_boot_payload() {
 }
 
 /**
- * بارگذاری دارایی‌های اپ مشتری.
+ * دارایی‌های مشترک موقعیت (نقشه‌ی نشان و دسترس‌پذیری). SDK نشان فقط با
+ * درخواست کاربر از سرور نشان بار می‌شود.
  */
-/** Shared location controls; the remote Neshan SDK loads only after a click. */
 function cmb_enqueue_location() {
 	wp_enqueue_style( 'cmb-location', CMB_URL . 'assets/css/location.css', array(), CMB_VERSION );
 	wp_enqueue_script( 'cmb-location', CMB_URL . 'assets/js/location.js', array(), CMB_VERSION, false );
@@ -627,6 +627,9 @@ function cmb_enqueue_location() {
 	wp_localize_script( 'cmb-location', 'CMB_MAP', array( 'key' => (string) CMB_Settings::get( 'neshan_web_key', '' ) ) );
 }
 
+/**
+ * بارگذاری دارایی‌های اپ مشتری.
+ */
 function cmb_enqueue_app() {
 	cmb_enqueue_location();
 	wp_enqueue_style( 'cmb-app', CMB_URL . 'assets/css/app.css', array(), CMB_VERSION );
@@ -848,7 +851,7 @@ function cmb_send_nonce() {
 add_filter(
 	'script_loader_tag',
 	function ( $tag, $handle ) {
-		if ( ! in_array( $handle, array( 'cmb-app', 'cmb-panel', 'cmb-jalali' ), true ) ) {
+		if ( ! in_array( $handle, array( 'cmb-app', 'cmb-panel', 'cmb-jalali', 'cmb-location', 'cmb-a11y' ), true ) ) {
 			return $tag;
 		}
 

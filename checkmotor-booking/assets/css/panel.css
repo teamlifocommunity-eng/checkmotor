@@ -343,6 +343,29 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
 
 .pn-grid { display: grid; gap: var(--s4); grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
 .pn-grid .pn-field { margin-bottom: 0; }
+/* جفت فیلدی که همیشه کنار هم می‌ماند (مثل عرض و طول جغرافیایی) */
+.pn-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3); }
+/* فیلدِ بعد از شبکه‌ی فیلدها به آن نچسبد */
+.pn-grid:not([style*="margin-bottom"]) + :is(.pn-field, .pn-grid) { margin-top: var(--s4); }
+
+/* ردیف دکمه‌های هم‌اندازه (یکی باشد تمام‌عرض) */
+.pn-btnrow { display: flex; gap: var(--s2); margin-top: var(--s3); }
+.pn-btnrow > .pn-btn { flex: 1 1 0; min-width: 0; white-space: nowrap; }
+
+/* قاب عکس مرکز و پوستر خدمت */
+.pn-poster { display: flex; gap: var(--s3); align-items: flex-start; }
+.pn-poster__img, .pn-poster__ph {
+  width: 220px; max-width: 100%; aspect-ratio: 16 / 9; flex: 0 0 auto;
+  border-radius: var(--r-sm); border: 1px solid var(--g5);
+}
+.pn-poster__img { object-fit: cover; display: block; background: var(--g6); }
+.pn-poster__ph {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  background: var(--g6); border-style: dashed; border-color: var(--g4);
+  color: var(--ink-3); font-size: var(--t-cp); font-weight: 600;
+}
+.pn-poster__ph svg { font-size: 22px; color: var(--g2); }
+.pn-poster__act { flex-direction: column; align-self: center; }
 
 .pn-check { display: flex; align-items: center; gap: 8px; font-size: var(--t-sb); cursor: pointer; }
 .pn-check input { width: 17px; height: 17px; accent-color: var(--flame); cursor: pointer; }
@@ -355,6 +378,11 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
   transition: all .14s;
 }
 .pn-chip.is-on { background: var(--flame); border-color: var(--flame); color: #fff; }
+/* دکمه‌های مبلغ: هم‌عرض در یک ردیف */
+.pn-chips--eq { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); max-width: 520px; }
+.pn-chips--eq .pn-chip { min-height: 44px; padding: 6px 4px; border-radius: var(--r-sm); white-space: nowrap; }
+.pn-chips--eq .pn-chip b { font-weight: 800; }
+.pn-chips--eq .pn-chip small { font-size: var(--t-cp); opacity: .8; }
 
 /* ═══ انتخابگر تاریخ شمسی ═══
    jalali.js این نشانه‌گذاری را می‌سازد و بدون استایلِ زیر، پاپ‌آپ
@@ -729,10 +757,30 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
   .pn-table td > div { text-align: left; }
 
   /* ── پوستر خدمت ── */
-  .pn-poster { flex-direction: column; }
+  .pn-poster { flex-direction: column; align-items: stretch; }
   .pn-poster__img, .pn-poster__ph { width: 100%; max-height: 240px; }
   .pn-poster__act { flex-direction: row; width: 100%; }
   .pn-poster__act > * { flex: 1; }
+
+  /* دسترسی سریع: دکمه‌های هر ردیف هم‌عرض؛ برچسب بلند خط نمی‌شکند و
+     ردیف خودش را می‌گیرد (دکمه‌ی پنهان «نصب» هم جایی نمی‌گیرد). */
+  .pn-head__act.pn-quickacts > * { flex: 1 1 160px; min-width: max-content; white-space: nowrap; }
+
+  /* ریز تراکنش‌های کیف پول نمایندگی: هر ردیف دو خط فشرده به‌جای کارت پنج‌خطی */
+  .pn-table--ledger tr {
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+    grid-template-areas: "desc desc amt" "date st bal";
+    gap: 6px var(--s3); padding: 10px var(--s3); margin-bottom: var(--s2);
+  }
+  .pn-table--ledger td { display: block; padding: 0; border: 0; text-align: right; min-width: 0; }
+  .pn-table--ledger td::before { content: none; }
+  .pn-table--ledger td > div { text-align: right; }
+  .pn-table--ledger td:nth-child(1) { grid-area: date; font-size: var(--t-cp); color: var(--ink-3); white-space: nowrap; }
+  .pn-table--ledger td:nth-child(2) { grid-area: desc; }
+  .pn-table--ledger td:nth-child(3) { grid-area: amt; white-space: nowrap; }
+  .pn-table--ledger td:nth-child(4) { grid-area: st; }
+  .pn-table--ledger td:nth-child(5) { grid-area: bal; font-size: var(--t-cp); color: var(--ink-3); white-space: nowrap; }
+  .pn-table--ledger td:nth-child(5)::before { content: "مانده "; display: inline; font-weight: 600; }
 
   /* ── مودال ── */
   .pn-scrim { align-items: flex-end; padding: 0; }
@@ -759,6 +807,8 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
 /* موبایل باریک */
 @media (max-width: 400px) {
   .pn-stats { grid-template-columns: 1fr; }
+  /* شمارنده‌های خلاصه کوتاه‌اند؛ دو ستونه می‌مانند */
+  .pn-stats--count { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pn-main__in { padding: var(--s3); }
   .pn-card { padding: var(--s3); }
 }
@@ -1069,15 +1119,12 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
   .pn-agc__w { grid-template-columns: repeat(3, 1fr); width: 100%; }
 }
 
-/* 1.39.1: readable controls, keyboard focus and reduced motion. */
+/* 1.39.1: readable controls, keyboard focus and reduced motion. رنگ دکمه‌ها همان نارنجی برند می‌ماند. */
 #cmb-panel :is(button,a,input,select,textarea):focus-visible { outline:3px solid #35566F; outline-offset:3px; }
 #cmb-panel :is(button,a) { touch-action:manipulation; }
 #cmb-panel :is(input,select,textarea) { scroll-margin-block:100px; }
-#cmb-panel :is(.cmb-btn--pri,.cmb-hero__cta,.pn-btn--pri) { background:#B94312; color:#fff; }
-#cmb-panel :is(.cmb-btn--pri,.cmb-hero__cta,.pn-btn--pri):hover { background:#9D360D; }
 #cmb-panel :is(.cmb-btn,.pn-btn,.pn-modal__x,.cmb-top__back,.pn-side__b,.pn-topbar__burger) { min-height:44px; }
 #cmb-panel :is(.cmb-top__back,.pn-modal__x) { min-width:44px; }
-#cmb-panel :is(.cmb-nav__b.is-on) { color:#B94312; }
 #cmb-panel :is(.cmb-in,.pn-in)::placeholder { color:#64717D; opacity:1; }
 @media (max-width:768px) { #cmb-panel :is(input,select,textarea) { font-size:16px; } }
 @media (prefers-reduced-motion:reduce) { #cmb-panel *,#cmb-panel *::before,#cmb-panel *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; } }
@@ -1085,8 +1132,15 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
 .pn-in { min-width:0; }
 .pn-agc__hd > div { min-width:0 !important; overflow-wrap:anywhere; }
 .pn-modal .cmb-location__canvas { height:240px; }
+/* دکمه‌ی نقشه در پنل همان شکل دکمه‌های نرم پنل را دارد */
+#cmb-panel .cmb-location { margin-block: var(--s4) 0; }
+#cmb-panel .cmb-location__toggle {
+  min-height: 44px; border-radius: var(--r-sm); border: 1px solid var(--g4);
+  background: var(--card); color: var(--steel-800); font-size: var(--t-sb);
+}
+#cmb-panel .cmb-location__toggle:hover { background: var(--g6); }
+#cmb-panel .cmb-location__toggle svg { width: 16px; height: 16px; }
 .pn-modal { overscroll-behavior:contain; }
 .pn-branch__sel { min-height:44px; }
-.pn-side__b.is-on { background:#B94312; color:#fff; }
 .pn-poster__act { display:flex; flex-wrap:wrap; gap:8px; }
 .pn-topbar__burger,.pn-topbar__app,.pn-side__x { min-width:44px; min-height:44px; }

@@ -317,6 +317,16 @@ function note(kind, icon, text) {
   return '<div class="cmb-note cmb-note--' + kind + '">' + icon + '<div>' + esc(text) + '</div></div>';
 }
 
+/* تماس و مسیریابی مرکز: دو دکمه‌ی هم‌اندازه کنار هم (یکی باشد تمام‌عرض). */
+function branchActs(phone, map, label, compact) {
+  if (!phone && !map) { return ''; }
+  var cls = 'cmb-btn cmb-btn--soft cmb-btn--sm';
+  return '<div class="cmb-bracts' + (compact ? ' cmb-bracts--in' : ' cmb-mt3') + '">' +
+    (phone ? '<a class="' + cls + '" href="tel:' + esc(phone) + '">' + I.phone + '<span>' + esc(label) + '</span></a>' : '') +
+    (map ? '<a class="' + cls + '" href="' + esc(map) + '" target="_blank" rel="noopener">' + I.pin + '<span>مسیریابی با نشان</span></a>' : '') +
+    '</div>';
+}
+
 function empty(icon, title, sub) {
   return '<div class="cmb-empty"><div class="cmb-empty__ic">' + icon + '</div>' +
     '<div class="cmb-empty__t">' + esc(title) + '</div>' +
@@ -372,7 +382,7 @@ function viewHome() {
   S.bookings.filter(function (x) { return x.status === 'pending' && x.holdLeft > 0; }).slice(0, 1).forEach(function (x) {
     html += '<div class="cmb-card cmb-paynote">' +
       '<div class="cmb-svc__t">' + I.clock + ' پرداخت نوبتتان تمام نشده</div>' +
-      '<p class="cmb-hint">' + esc(x.service) + ' — ' + esc(x.dateFa) + '، ' + esc(x.blockLabel) + '. جا تا ' +
+      '<p class="cmb-hint">' + esc(x.service) + ' — ' + fa(esc(x.dateFa)) + '، ' + esc(x.blockLabel) + '. جا تا ' +
         fa(Math.ceil(x.holdLeft / 60)) + ' دقیقه‌ی دیگر برایتان نگه داشته می‌شود.</p>' +
       '<div class="cmb-bk__acts cmb-mt3">' +
         '<button class="cmb-btn cmb-btn--sm cmb-btn--pri" data-pay-retry="' + x.id + '"' + (S.payBusy ? ' disabled' : '') + '>ادامه‌ی پرداخت</button>' +
@@ -401,17 +411,16 @@ function viewHome() {
       html += '</div>';
     }
 
-    if (b.phone) {
-      html += '<a class="cmb-btn cmb-btn--soft cmb-mt4" href="tel:' + esc(b.phone) + '">' +
-        I.phone + ' تماس با شعبه ' + fa(b.phone) + '</a>';
+    if (b.address || b.phone) {
+      html += '<div class="cmb-note cmb-note--info cmb-mt4">' + I.pin + '<div>' +
+        (b.address ? esc(b.address) : '') +
+        (b.phone ? '<div class="cmb-note__sub">تلفن: <bdi dir="ltr">' + fa(esc(b.phone)) + '</bdi></div>' : '') +
+        '</div></div>';
     }
 
     if (window.CMBLocation) { html += window.CMBLocation.html({lat:b.lat,lng:b.lng,title:b.title}); }
 
-    if (b.address) {
-      html += '<div class="cmb-note cmb-note--info">' + I.pin + '<div>' + esc(b.address) +
-        (b.map ? ' <a href="' + esc(b.map) + '" target="_blank" rel="noopener">مسیریابی با نشان</a>' : '') + '</div></div>';
-    }
+    html += branchActs(b.phone, b.map, 'تماس با شعبه');
   }
 
   html += '</div>';
@@ -721,7 +730,7 @@ function stepSlot() {
 
   var days = S.cal.days || [];
 
-  html += '<div class="cmb-sec" style="margin-top:0"><div class="cmb-sec__t">تاریخ مراجعه</div></div>';
+  html += '<div class="cmb-sec"' + (S.service ? '' : ' style="margin-top:0"') + '><div class="cmb-sec__t">تاریخ مراجعه</div></div>';
   html += '<div class="cmb-days">';
 
   days.forEach(function (d) {
@@ -747,7 +756,7 @@ function stepSlot() {
     html += note('warn', I.alert, chosen.reason || 'این روز ظرفیت خالی ندارد.');
   } else {
     html += '<div class="cmb-sec"><div class="cmb-sec__t">شیفت</div>' +
-      '<div class="cmb-sec__a">' + esc(chosen.jalaliFull) + '</div></div>';
+      '<div class="cmb-sec__a">' + fa(esc(chosen.jalaliFull)) + '</div></div>';
 
     (chosen.blocks || []).forEach(function (bl) {
       var on = S.block === bl.key;
@@ -873,7 +882,7 @@ function stepDetails() {
 
   html += '<div class="cmb-card cmb-card--flat">' +
     kv('خدمت', S.service ? S.service.title : '') +
-    kv('تاریخ', S.day ? S.day.jalaliFull : '') +
+    kv('تاریخ', S.day ? fa(S.day.jalaliFull) : '') +
     kv('ساعت', (bl.label || '') + ' — ' + fa(bl.start || '')) +
     (S.service && S.service.priceLabel ? kv('هزینه', S.service.priceLabel) : '') +
     '</div>';
@@ -962,7 +971,7 @@ function stepPay() {
 
   html += '<div class="cmb-card cmb-card--flat">' +
     kv('خدمت', S.service ? S.service.title : '') +
-    kv('تاریخ', S.day ? S.day.jalaliFull : '') +
+    kv('تاریخ', S.day ? fa(S.day.jalaliFull) : '') +
     kv('ساعت', (bl.label || '') + ' — ' + fa(bl.start || '')) +
     '</div>';
 
@@ -1172,7 +1181,7 @@ function viewReceipt() {
         kv('خدمت', r.service) +
         (r.branch ? kv('مرکز', r.branch + (r.branchCity ? ' — ' + r.branchCity : '')) : '') +
         (r.branchAddress ? kv('نشانی', r.branchAddress) : '') +
-        kv('تاریخ', r.dateFa) +
+        kv('تاریخ', fa(r.dateFa)) +
         kv('ساعت', r.blockLabel + ' — ' + fa(r.blockStart)) +
         kv('خودرو', r.car) +
         kv('نام', r.name) +
@@ -1186,12 +1195,7 @@ function viewReceipt() {
       '</div>' +
     '</div>';
 
-  if ((r.branchMap || r.branchPhone)) {
-    html += '<div class="cmb-branch__acts cmb-mt3">' +
-      (r.branchPhone ? '<a href="tel:' + esc(r.branchPhone) + '">' + I.phone + ' تماس با مرکز</a>' : '') +
-      (r.branchMap ? '<a href="' + esc(r.branchMap) + '" target="_blank" rel="noopener">' + I.pin + ' مسیریابی با نشان</a>' : '') +
-      '</div>';
-  }
+  html += branchActs(r.branchPhone, r.branchMap, 'تماس با مرکز');
 
   if (r.pay && r.pay.status === 'paid' && r.cancelHint) { html += note('info', I.info, fa(r.cancelHint)); }
   if (r.note) { html += note('warn', I.alert, r.note); }
@@ -1240,7 +1244,7 @@ function viewPay() {
   if (b) {
     out += '<div class="cmb-card cmb-card--flat">' +
       kv('خدمت', b.service) +
-      kv('تاریخ', b.dateFa) +
+      kv('تاریخ', fa(b.dateFa)) +
       kv('ساعت', b.blockLabel + ' — ' + fa(b.blockStart)) +
       (b.pay ? kv('بیعانه', b.pay.depositFa) : '') +
       kv('کد پیگیری', b.code) +
@@ -1393,15 +1397,12 @@ function viewMine() {
         (b.isPast && b.status === 'confirmed' ? 'زمان گذشته' : esc(b.statusLabel)) + '</span>' +
       '</div>' +
       '<div class="cmb-bk__body">' +
-        '<div class="cmb-bk__row">' + I.cal + '<b>' + esc(b.dateFa) + '</b></div>' +
+        '<div class="cmb-bk__row">' + I.cal + '<b>' + fa(esc(b.dateFa)) + '</b></div>' +
         '<div class="cmb-bk__row">' + I.clock + esc(b.blockLabel) + ' — ساعت ' + fa(esc(b.blockStart)) + '</div>' +
         '<div class="cmb-bk__row">' + I.car + esc(b.car) + '</div>' +
-        (b.branch
-          ? '<div class="cmb-bk__row">' + I.pin + esc(b.branch) +
-              (b.branchPhone ? ' — <a href="tel:' + esc(b.branchPhone) + '">' + fa(esc(b.branchPhone)) + '</a>' : '') +
-              (b.branchMap ? ' — <a href="' + esc(b.branchMap) + '" target="_blank" rel="noopener">مسیریابی با نشان</a>' : '') + '</div>'
-          : '') +
+        (b.branch ? '<div class="cmb-bk__row">' + I.pin + '<span>' + esc(b.branch) + '</span></div>' : '') +
         payLine(b) +
+        (b.branch ? branchActs(b.branchPhone, b.branchMap, 'تماس با مرکز', true) : '') +
       '</div>' +
       pendingBox(b) +
       cancelBox(b) +
@@ -1604,7 +1605,7 @@ function viewWallet() {
     html += '<div class="cmb-card cmb-mt4">' +
       '<div class="cmb-svc__t cmb-flex">' + I.plus + ' شارژ کیف پول</div>' +
       '<div class="cmb-chips cmb-mt3">' + (t.presets || []).map(function (v) {
-        return '<button type="button" class="cmb-chip' + (amt === v ? ' is-on' : '') + '" data-topup-preset="' + v + '">' + money(v) + ' تومان</button>';
+        return '<button type="button" class="cmb-chip' + (amt === v ? ' is-on' : '') + '" data-topup-preset="' + v + '"><b>' + money(v) + '</b><small>تومان</small></button>';
       }).join('') + '</div>' +
       '<label class="cmb-field cmb-mt3"><span class="cmb-field__l">یا مبلغ دلخواه (تومان)</span>' +
       '<input class="cmb-in cmb-num" id="cmb-topup" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="' + esc(String(t.min)) + '" value="' + (amt ? esc(String(amt)) : '') + '"></label>' +

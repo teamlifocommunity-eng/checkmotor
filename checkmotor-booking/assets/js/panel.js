@@ -210,6 +210,8 @@ var I = {
   chevL: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 18.5L8 12l6.5-6.5"/></svg>',
   chevR: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 18.5L16 12 9.5 5.5"/></svg>',
   phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.6"/><path d="M11 18.5h2"/></svg>',
+  pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10.5c0 6.5-8 12.5-8 12.5s-8-6-8-12.5a8 8 0 0 1 16 0z"/><circle cx="12" cy="10.5" r="2.8"/></svg>',
+  ext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/></svg>',
   share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11"/><path d="M8 7.2l4-3.7 4 3.7"/><path d="M8.5 10.5h-2A1.5 1.5 0 0 0 5 12v7a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-7a1.5 1.5 0 0 0-1.5-1.5h-2"/></svg>',
   empty: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="2.6"/><path d="M3.5 9.5h17M8 2.8v3.4M16 2.8v3.4M9 14.5h6"/></svg>'
 };
@@ -394,7 +396,7 @@ function viewSummary() {
 
   html += agencyBanner();
 
-  html += '<div class="pn-stats">' +
+  html += '<div class="pn-stats pn-stats--count">' +
     stat('امروز', c.today, I.cal, 'hot') +
     stat('فردا', c.tomorrow, I.cal, '') +
     stat('نوبت‌های پیش‌رو', c.upcoming, I.list, 'ok') +
@@ -421,7 +423,7 @@ function viewSummary() {
   }
 
   html += '<div class="pn-card"><div class="pn-card__t">' + I.info + ' دسترسی سریع</div>' +
-    '<div class="pn-head__act">' +
+    '<div class="pn-head__act pn-quickacts">' +
       '<button class="pn-btn pn-btn--pri" data-view="board">' + I.grid + ' تخته‌ی روزها</button>' +
       '<button class="pn-btn pn-btn--soft" data-view="bookings">' + I.list + ' فهرست نوبت‌ها</button>' +
       '<button class="pn-btn pn-btn--soft" data-view="closures">' + I.lock + ' بستن یک روز</button>' +
@@ -1859,9 +1861,9 @@ function viewBWallet() {
     var amt = S.bwAmount || '';
 
     html += '<div class="pn-card"><div class="pn-card__t">' + I.card + ' شارژ آنلاین</div>' +
-      '<div class="pn-chips" style="margin-bottom:12px">' +
+      '<div class="pn-chips pn-chips--eq" style="margin-bottom:12px">' +
         (W.presets || []).map(function (p) {
-          return '<button type="button" class="pn-chip' + (String(p) === String(amt) ? ' is-on' : '') + '" data-bw-amt="' + p + '">' + fa(money(p)) + ' تومان</button>';
+          return '<button type="button" class="pn-chip' + (String(p) === String(amt) ? ' is-on' : '') + '" data-bw-amt="' + p + '"><b>' + fa(money(p)) + '</b> <small>تومان</small></button>';
         }).join('') +
       '</div>' +
       '<div class="pn-filters">' +
@@ -1883,7 +1885,7 @@ function viewBWallet() {
   if (!h.items.length) {
     html += empty('هنوز تراکنشی ثبت نشده است');
   } else {
-    html += '<div class="pn-tablewrap"><table class="pn-table"><thead><tr>' +
+    html += '<div class="pn-tablewrap"><table class="pn-table pn-table--ledger"><thead><tr>' +
       '<th>تاریخ</th><th>شرح</th><th>مبلغ</th><th>وضعیت</th><th>مانده‌ی آزاد</th></tr></thead><tbody>';
 
     h.items.forEach(function (x) {
@@ -2015,12 +2017,12 @@ function viewProfile() {
       '<label class="pn-field"><span class="pn-field__l">طول جغرافیایی (lng)</span>' +
         '<input class="pn-in num" id="bp-lng" dir="ltr" inputmode="decimal" placeholder="48.3500" value="' + esc(P.lng === null ? '' : P.lng) + '"' + (ro ? ' disabled' : '') + '></label>' +
     '</div>' +
-    (ro ? '' : '<div class="pn-head__act" style="margin-top:4px">' +
-      '<button class="pn-btn pn-btn--soft pn-btn--sm" data-bp-geo>' + I.info + ' مکان فعلی من (وقتی در خود مرکز هستید)</button>' +
-      (P.map ? '<a class="pn-btn pn-btn--soft pn-btn--sm" href="' + esc(P.map) + '" target="_blank" rel="noopener">دیدن روی نقشه</a>' : '') +
-    '</div>') +
     (window.CMBLocation ? window.CMBLocation.html({editable:!ro,lat:P.lat,lng:P.lng,latInput:'bp-lat',lngInput:'bp-lng',title:P.title}) : '') +
-    '<div class="pn-hint">مشتری با دکمهٔ «مسیریابی با نشان» همین نقطه را می‌بیند.</div>' +
+    ((!ro || P.map) ? '<div class="pn-btnrow">' +
+      (ro ? '' : '<button class="pn-btn pn-btn--soft" data-bp-geo>' + I.pin + ' مکان فعلی من</button>') +
+      (P.map ? '<a class="pn-btn pn-btn--soft" href="' + esc(P.map) + '" target="_blank" rel="noopener">' + I.ext + ' دیدن روی نقشه</a>' : '') +
+    '</div>' : '') +
+    '<div class="pn-hint">' + (ro ? '' : '«مکان فعلی من» را وقتی در خود مرکز هستید بزنید. ') + 'مشتری با دکمهٔ «مسیریابی با نشان» همین نقطه را می‌بیند.</div>' +
   '</div>';
 
   html += '<div class="pn-card"><div class="pn-card__t">' + I.grid + ' عکس مرکز</div>' +
@@ -2221,8 +2223,10 @@ function agencyModal() {
   return '<div class="pn-modal__hd"><div class="pn-modal__t">' + (isNew ? 'نمایندگی تازه' : 'ویرایش ' + esc(f.title)) + '</div>' +
       '<button class="pn-modal__x" data-close>' + I.x + '</button></div>' +
     fld('ag-title', 'نام نمایندگی', f.title, '', 'مثلاً «نمایندگی اندیمشک»') +
-    '<div class="pn-grid">' +
-      fld('ag-slug', 'نامک لینک (لاتین)', f.slug, ' dir="ltr" placeholder="andimeshk"', 'در لینک مستقیم: ?branch=andimeshk') +
+    '<div class="pn-grid pn-grid--2">' +
+      (f.isCenter
+        ? fld('ag-slug', 'نامک لینک (لاتین)', f.slug, ' dir="ltr" readonly', 'نامک مرکز اصلی ثابت است.')
+        : fld('ag-slug', 'نامک لینک (لاتین)', f.slug, ' dir="ltr" placeholder="andimeshk"', 'در لینک مستقیم: <bdi dir="ltr" style="white-space:nowrap">?branch=andimeshk</bdi>')) +
       fld('ag-sort', 'ترتیب', f.sortOrder || 0, ' type="number" dir="ltr"') +
       fld('ag-prov', 'استان', f.province) +
       fld('ag-city', 'شهر', f.city) +
@@ -2231,10 +2235,13 @@ function agencyModal() {
     '<div class="pn-grid">' +
       fld('ag-phone', 'تلفن تماس مشتری', f.phone, ' dir="ltr" inputmode="tel"') +
       fld('ag-contact', 'نام مسئول', f.contactName) +
-      (isNew ? fld('ag-mphone', 'موبایل مدیر نمایندگی', f.managerPhone, ' dir="ltr" inputmode="tel" placeholder="09…"', 'با همین شماره و کد پیامکی وارد پنل می‌شود.') : '') +
-      fld('ag-sms', 'موبایل‌های دریافت پیامک (اختیاری)', f.managerPhones, ' dir="ltr" placeholder="0912…، 0913…"', 'پیامک نوبت جدید و هشدار موجودی؛ مدیر نمایندگی خودکار می‌گیرد.') +
-      fld('ag-lat', 'عرض جغرافیایی', f.lat === null ? '' : f.lat, ' dir="ltr" inputmode="decimal"') +
-      fld('ag-lng', 'طول جغرافیایی', f.lng === null ? '' : f.lng, ' dir="ltr" inputmode="decimal"') +
+    '</div>' +
+    (isNew ? '<div class="pn-grid">' + fld('ag-mphone', 'موبایل مدیر نمایندگی', f.managerPhone, ' dir="ltr" inputmode="tel" placeholder="09…"', 'با همین شماره و کد پیامکی وارد پنل می‌شود.') : '') +
+    fld('ag-sms', 'موبایل‌های دریافت پیامک (اختیاری)', f.managerPhones, ' dir="ltr" placeholder="0912…، 0913…"', 'پیامک نوبت جدید و هشدار موجودی؛ مدیر نمایندگی خودکار می‌گیرد.') +
+    (isNew ? '</div>' : '') +
+    '<div class="pn-grid pn-grid--2">' +
+      fld('ag-lat', 'عرض جغرافیایی', f.lat === null ? '' : f.lat, ' dir="ltr" inputmode="decimal" placeholder="32.4561"') +
+      fld('ag-lng', 'طول جغرافیایی', f.lng === null ? '' : f.lng, ' dir="ltr" inputmode="decimal" placeholder="48.3500"') +
     '</div>' +
     (window.CMBLocation ? window.CMBLocation.html({editable:true,lat:f.lat,lng:f.lng,latInput:'ag-lat',lngInput:'ag-lng'}) : '') +
     (isNew ? note('info', I.info, 'نمایندگی به‌صورت <b>پیش‌نویس</b> ساخته می‌شود و تا فعالش نکنید به مشتری‌ها نشان داده نمی‌شود. خدمات کاتالوگ مرکز غیرفعال برایش کپی می‌شوند.') : '') +
@@ -2263,6 +2270,9 @@ function saveAgency() {
   };
 
   if ($('#ag-mphone')) { body.managerPhone = en(val('#ag-mphone')).trim(); }
+
+  // نامک مرکز اصلی عوض نمی‌شود؛ اصلاً فرستاده نمی‌شود
+  if (f.isCenter) { delete body.slug; }
 
   // مقادیر فرم اگر سرور خطا داد از دست نروند
   Object.keys(body).forEach(function (k) { f[k] = body[k]; });

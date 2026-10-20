@@ -550,7 +550,18 @@ class CMB_Install {
 		$branches = cmb_table( 'branches' );
 		$services = cmb_table( 'services' );
 
-		$branch_id = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$branches} WHERE slug = %s", 'bushehr' ) ); // phpcs:ignore
+		/* مرکزی که قبلاً انتخاب شده مقدم است؛ نامک فقط برای نصب اول. پیش از
+		   این اگر نامک مرکز عوض می‌شد، فعال‌سازی بعدی یک «شعبه بوشهر» خالی
+		   می‌ساخت و آن را مرکز می‌کرد. */
+		$branch_id = (int) get_option( 'cmb_default_branch_id', 0 );
+
+		if ( $branch_id && ! $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$branches} WHERE id = %d", $branch_id ) ) ) { // phpcs:ignore
+			$branch_id = 0;
+		}
+
+		if ( ! $branch_id ) {
+			$branch_id = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$branches} WHERE slug = %s", 'bushehr' ) ); // phpcs:ignore
+		}
 
 		if ( ! $branch_id ) {
 			$wpdb->insert(

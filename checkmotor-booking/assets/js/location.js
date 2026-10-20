@@ -16,7 +16,8 @@ function coords(lat, lng) {
 }
 function html(o) {
   o = o || {};
-  if (!o.editable && !coords(o.lat, o.lng)) { return ''; }
+  // نمایش برای مشتری فقط با کلید نشان؛ بدون آن، لینک «مسیریابی با نشان» کافی است
+  if (!o.editable && (!coords(o.lat, o.lng) || !config.key)) { return ''; }
   var id = 'cmb-location-' + (++nextId);
   return '<section class="cmb-location" data-cmb-location data-lat="' + esc(o.lat) + '" data-lng="' + esc(o.lng) + '"' +
     ' data-lat-input="' + esc(o.latInput || '') + '" data-lng-input="' + esc(o.lngInput || '') + '" data-editable="' + (o.editable ? '1' : '0') + '"' +

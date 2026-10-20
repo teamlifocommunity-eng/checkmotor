@@ -727,6 +727,16 @@ class CMB_Branches {
 		// نوع مرکز عوض نمی‌شود و نمایندگی هم مرکز نمی‌شود (کیف پول و کسرش می‌ماند)
 		unset( $clean['type'] );
 
+		/* نامک مرکز ثابت است: نصب و ارتقا مرکز را با همین نامک پیدا می‌کنند و
+		   با نامک دیگر، یک مرکز خالی تازه می‌ساختند و نوبت‌ها جدا می‌افتادند. */
+		if ( isset( $clean['slug'] ) && self::is_center( $b ) ) {
+			if ( $clean['slug'] !== (string) $b->slug ) {
+				return new WP_Error( 'cmb_center_slug', 'نامک مرکز اصلی قابل تغییر نیست.', array( 'status' => 409 ) );
+			}
+
+			unset( $clean['slug'] );
+		}
+
 		if ( isset( $clean['slug'] ) && self::slug_taken( $clean['slug'], (int) $b->id ) ) {
 			return new WP_Error( 'cmb_branch_slug_taken', sprintf( 'نامک «%s» قبلاً برای شعبه‌ی دیگری استفاده شده است.', $clean['slug'] ), array( 'status' => 409 ) );
 		}

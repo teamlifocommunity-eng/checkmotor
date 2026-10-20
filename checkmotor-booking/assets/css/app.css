@@ -664,6 +664,14 @@ select.cmb-in {
 .cmb-note--warn { background: var(--warn-bg); color: #8a5a08; }
 .cmb-note--bad  { background: var(--bad-bg); color: #a02a1f; }
 .cmb-note--ok   { background: var(--ok-bg); color: #0a6d3e; }
+.cmb-note__sub { margin-top: 2px; font-weight: 600; }
+
+/* تماس و مسیریابی مرکز */
+.cmb-bracts { display: flex; gap: var(--s2); }
+.cmb-bracts > .cmb-btn { flex: 1 1 0; min-width: 0; white-space: nowrap; text-decoration: none; }
+.cmb-bracts > .cmb-btn svg { flex: 0 0 auto; font-size: 16px; }
+.cmb-bracts > .cmb-btn span { overflow: hidden; text-overflow: ellipsis; }
+.cmb-bracts--in { margin-top: 3px; }
 
 /* ═══ حالت خالی ═══ */
 
@@ -1129,13 +1137,18 @@ select.cmb-in {
 }
 .cmb-wallet__held svg { flex: 0 0 auto; font-size: 16px; }
 
-/* دکمه‌های آماده‌ی شارژ */
-.cmb-chips { display: flex; flex-wrap: wrap; gap: var(--s2); }
+/* دکمه‌های آماده‌ی شارژ: همه در یک ردیف و هم‌اندازه؛ مبلغ و واحد در
+   دو خط تا برچسب کوتاه و بلند ارتفاع یکسان داشته باشند. */
+.cmb-chips { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--s2); }
 .cmb-chip {
-  flex: 1 1 0; min-width: 90px; min-height: var(--tap); padding: 6px 10px;
+  min-width: 0; min-height: 56px; padding: 6px 4px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
   border-radius: var(--r-sm); border: 1.5px solid var(--g4); background: var(--card);
-  font-size: var(--t-sb); font-weight: 700; color: var(--ink);
+  font-size: var(--t-sb); font-weight: 700; color: var(--ink); white-space: nowrap;
 }
+.cmb-chip b { font-weight: 800; }
+.cmb-chip small { font-size: var(--t-cp); font-weight: 600; color: var(--ink-3); }
+.cmb-chip.is-on small { color: inherit; }
 .cmb-chip.is-on { border-color: var(--flame); background: var(--flame-50); color: var(--flame-600); }
 
 /* تاریخچه */
@@ -1216,15 +1229,12 @@ select.cmb-in {
 .cmb-branch__acts svg { font-size: 14px; }
 .cmb-branch__go { align-self: center; color: var(--g2); font-size: 18px; }
 
-/* 1.39.1: readable controls, keyboard focus and reduced motion. */
+/* 1.39.1: readable controls, keyboard focus and reduced motion. رنگ دکمه‌ها همان نارنجی برند می‌ماند. */
 #cmb-app :is(button,a,input,select,textarea):focus-visible { outline:3px solid #35566F; outline-offset:3px; }
 #cmb-app :is(button,a) { touch-action:manipulation; }
 #cmb-app :is(input,select,textarea) { scroll-margin-block:100px; }
-#cmb-app :is(.cmb-btn--pri,.cmb-hero__cta,.pn-btn--pri) { background:#B94312; color:#fff; }
-#cmb-app :is(.cmb-btn--pri,.cmb-hero__cta,.pn-btn--pri):hover { background:#9D360D; }
 #cmb-app :is(.cmb-btn,.pn-btn,.pn-modal__x,.cmb-top__back,.pn-side__b,.pn-topbar__burger) { min-height:44px; }
 #cmb-app :is(.cmb-top__back,.pn-modal__x) { min-width:44px; }
-#cmb-app :is(.cmb-nav__b.is-on) { color:#B94312; }
 #cmb-app :is(.cmb-in,.pn-in)::placeholder { color:#64717D; opacity:1; }
 @media (max-width:768px) { #cmb-app :is(input,select,textarea) { font-size:16px; } }
 @media (prefers-reduced-motion:reduce) { #cmb-app *,#cmb-app *::before,#cmb-app *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; } }
@@ -1251,6 +1261,6 @@ select.cmb-in {
 .cmb-branch .cmb-location { margin-block:4px 0; }
 .cmb-branch .cmb-location__toggle { font-size:12px; padding:8px; }
 .cmb-branch .cmb-location__canvas { height:220px; }
-.cmb-branch__tag--hq { color:#9D360D; }
 .cmb-chosen__edit,.cmb-link { min-height:44px; }
-@media (min-width:960px) { :root { --max-w:640px; } .cmb-page > .cmb-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+/* دسکتاپ: ستون اپ پهن‌تر می‌شود ولی تعداد ستون خدمات همان تنظیم مدیر است. */
+@media (min-width:960px) { :root { --max-w:640px; } }
