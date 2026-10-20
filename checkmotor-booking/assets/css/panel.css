@@ -45,7 +45,7 @@
   --g4: #D8DEE4; --g5: #E7EBEF; --g6: #F3F5F7;
 
   --bg: #F4F6F8; --card: #FFFFFF;
-  --ink: #0F1720; --ink-2: #5B6772; --ink-3: #8B96A1;
+  --ink: #0F1720; --ink-2: #5B6772; --ink-3: #64717D;
 
   --ok: #0E8A4F; --ok-bg: #E6F6ED;
   --warn: #C87F0A; --warn-bg: #FDF3E2;
@@ -1068,3 +1068,25 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
   .pn-stats--wallet { grid-template-columns: 1fr; }
   .pn-agc__w { grid-template-columns: repeat(3, 1fr); width: 100%; }
 }
+
+/* 1.39.1: readable controls, keyboard focus and reduced motion. */
+#cmb-panel :is(button,a,input,select,textarea):focus-visible { outline:3px solid #35566F; outline-offset:3px; }
+#cmb-panel :is(button,a) { touch-action:manipulation; }
+#cmb-panel :is(input,select,textarea) { scroll-margin-block:100px; }
+#cmb-panel :is(.cmb-btn--pri,.cmb-hero__cta,.pn-btn--pri) { background:#B94312; color:#fff; }
+#cmb-panel :is(.cmb-btn--pri,.cmb-hero__cta,.pn-btn--pri):hover { background:#9D360D; }
+#cmb-panel :is(.cmb-btn,.pn-btn,.pn-modal__x,.cmb-top__back,.pn-side__b,.pn-topbar__burger) { min-height:44px; }
+#cmb-panel :is(.cmb-top__back,.pn-modal__x) { min-width:44px; }
+#cmb-panel :is(.cmb-nav__b.is-on) { color:#B94312; }
+#cmb-panel :is(.cmb-in,.pn-in)::placeholder { color:#64717D; opacity:1; }
+@media (max-width:768px) { #cmb-panel :is(input,select,textarea) { font-size:16px; } }
+@media (prefers-reduced-motion:reduce) { #cmb-panel *,#cmb-panel *::before,#cmb-panel *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; } }
+
+.pn-in { min-width:0; }
+.pn-agc__hd > div { min-width:0 !important; overflow-wrap:anywhere; }
+.pn-modal .cmb-location__canvas { height:240px; }
+.pn-modal { overscroll-behavior:contain; }
+.pn-branch__sel { min-height:44px; }
+.pn-side__b.is-on { background:#B94312; color:#fff; }
+.pn-poster__act { display:flex; flex-wrap:wrap; gap:8px; }
+.pn-topbar__burger,.pn-topbar__app,.pn-side__x { min-width:44px; min-height:44px; }

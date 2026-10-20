@@ -919,6 +919,14 @@ class CMB_Admin {
 				</p>
 				<table class="form-table">
 					<?php
+					?>
+					<tr>
+						<th><label for="cmb-neshan-key">کلید وب نقشهٔ نشان</label></th>
+						<td><input id="cmb-neshan-key" name="neshan_web_key" type="text" dir="ltr" class="regular-text" autocomplete="off" value="<?php echo esc_attr( $s['neshan_web_key'] ); ?>" />
+						<p class="description">کلید مخصوص Web SDK را از پنل نشان بگیرید و به دامنهٔ سایت محدود کنید. کلید سرویس سمت سرور را اینجا وارد نکنید. نقشه پس از درخواست کاربر بارگذاری می‌شود؛ بدون کلید، ورود دستی مختصات و لینک نشان در دسترس است.</p>
+						<a href="https://platform.neshan.org/docs/sdk/web/leaflet/neshan-leaflet-sdk/" target="_blank" rel="noopener">راهنمای دریافت کلید نشان</a></td>
+					</tr>
+					<?php
 					$agency_money = array(
 						'agency_fee'            => array( 'هزینه‌ی هر رزرو موفق', 'از کیف پول نمایندگی، هنگام ثبت نوبت بلوکه و بعد از انجام قطعی کسر می‌شود.' ),
 						'agency_welcome_credit' => array( 'اعتبار اولیه', 'فقط یک بار، در اولین فعال‌سازی هر نمایندگی.' ),
@@ -1468,6 +1476,10 @@ class CMB_Admin {
 
 		foreach ( $bool_keys as $key ) {
 			$values[ $key ] = isset( $_POST[ $key ] ) ? 1 : 0;
+		}
+
+		if ( isset( $_POST['neshan_web_key'] ) ) {
+			$values['neshan_web_key'] = substr( sanitize_text_field( wp_unslash( $_POST['neshan_web_key'] ) ), 0, 255 );
 		}
 
 		/* نمایندگی‌ها: فقط اگر فیلدش در فرم بود. فرمی که این بخش را ندارد

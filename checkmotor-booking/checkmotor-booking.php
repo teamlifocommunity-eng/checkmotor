@@ -3,7 +3,7 @@
  * Plugin Name: چک موتور — سیستم رزرو نوبت
  * Plugin URI:  https://checkmotor.ir
  * Description: سیستم رزرو نوبت آنلاین چک موتور (MVP) — ورود با کد تایید پیامکی ملی‌پیامک، تقویم ۷ روزه، شیفت صبح/بعدازظهر، پنل مدیریت نوبت‌ها.
- * Version:     1.39.0
+ * Version:     1.39.1
  * Author:      رضا امام‌حسنی
  * Text Domain: checkmotor-booking
  * Domain Path: /languages
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMB_VERSION', '1.39.0' );
+define( 'CMB_VERSION', '1.39.1' );
 define( 'CMB_FILE', __FILE__ );
 define( 'CMB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMB_URL', plugin_dir_url( __FILE__ ) );
@@ -619,12 +619,21 @@ function cmb_boot_payload() {
 /**
  * بارگذاری دارایی‌های اپ مشتری.
  */
+/** Shared location controls; the remote Neshan SDK loads only after a click. */
+function cmb_enqueue_location() {
+	wp_enqueue_style( 'cmb-location', CMB_URL . 'assets/css/location.css', array(), CMB_VERSION );
+	wp_enqueue_script( 'cmb-location', CMB_URL . 'assets/js/location.js', array(), CMB_VERSION, false );
+	wp_enqueue_script( 'cmb-a11y', CMB_URL . 'assets/js/a11y.js', array(), CMB_VERSION, false );
+	wp_localize_script( 'cmb-location', 'CMB_MAP', array( 'key' => (string) CMB_Settings::get( 'neshan_web_key', '' ) ) );
+}
+
 function cmb_enqueue_app() {
+	cmb_enqueue_location();
 	wp_enqueue_style( 'cmb-app', CMB_URL . 'assets/css/app.css', array(), CMB_VERSION );
 
 	/* بانک استان/شهر فقط وقتی حالت انتخاب از فهرست روشن است بار می‌شود.
 	   app.js به آن وابسته می‌شود تا پیش از اجرای اپ آماده باشد. */
-	$app_deps = array();
+	$app_deps = array( 'cmb-location', 'cmb-a11y' );
 
 	if ( (int) CMB_Settings::get( 'location_mode', 0 ) ) {
 		wp_enqueue_script( 'cmb-places', CMB_URL . 'assets/js/iran-places.js', array(), CMB_VERSION, false );
@@ -731,9 +740,10 @@ function cmb_enqueue_app() {
  * بارگذاری دارایی‌های داشبورد مدیریت.
  */
 function cmb_enqueue_panel() {
+	cmb_enqueue_location();
 	wp_enqueue_style( 'cmb-panel', CMB_URL . 'assets/css/panel.css', array(), CMB_VERSION );
 	wp_enqueue_script( 'cmb-jalali', CMB_URL . 'assets/js/jalali.js', array(), CMB_VERSION, false );
-	wp_enqueue_script( 'cmb-panel', CMB_URL . 'assets/js/panel.js', array( 'cmb-jalali' ), CMB_VERSION, false );
+	wp_enqueue_script( 'cmb-panel', CMB_URL . 'assets/js/panel.js', array( 'cmb-jalali', 'cmb-location', 'cmb-a11y' ), CMB_VERSION, false );
 
 	$font = cmb_font_css();
 

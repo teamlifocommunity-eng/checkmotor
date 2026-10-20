@@ -131,7 +131,7 @@ class CMB_Services {
 		$key       = 'cmb_services_' . $branch_id;
 		$cached    = get_transient( $key );
 
-		if ( is_array( $cached ) ) {
+		if ( is_array( $cached ) && ( empty( $cached['branch'] ) || ! CMB_Branches::ready() || array_key_exists( 'lat', $cached['branch'] ) ) ) {
 			return $cached;
 		}
 

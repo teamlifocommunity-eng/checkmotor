@@ -81,6 +81,7 @@ class CMB_Settings {
 			'location_mode'         => 0,       // 0 = شهر به‌صورت تایپ آزاد؛ 1 = انتخاب استان و شهر از فهرست
 
 			// --- نمایندگی‌ها (تومان؛ سراسری) ---
+			'neshan_web_key'        => '',      // Browser map key, restricted to the website domain in Neshan.
 			'agency_fee'            => 200000,  // مبلغ هر رزرو موفق در نمایندگی
 			'agency_welcome_credit' => 1000000, // اعتبار رایگان اولین فعال‌سازی
 			'agency_low_balance'    => 400000,  // آستانه‌ی هشدار موجودی آزاد

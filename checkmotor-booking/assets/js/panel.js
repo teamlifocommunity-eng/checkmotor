@@ -2019,7 +2019,8 @@ function viewProfile() {
       '<button class="pn-btn pn-btn--soft pn-btn--sm" data-bp-geo>' + I.info + ' مکان فعلی من (وقتی در خود مرکز هستید)</button>' +
       (P.map ? '<a class="pn-btn pn-btn--soft pn-btn--sm" href="' + esc(P.map) + '" target="_blank" rel="noopener">دیدن روی نقشه</a>' : '') +
     '</div>') +
-    '<div class="pn-hint">مشتری با دکمه‌ی «مسیریابی» همین نقطه را روی نقشه می‌بیند.</div>' +
+    (window.CMBLocation ? window.CMBLocation.html({editable:!ro,lat:P.lat,lng:P.lng,latInput:'bp-lat',lngInput:'bp-lng',title:P.title}) : '') +
+    '<div class="pn-hint">مشتری با دکمهٔ «مسیریابی با نشان» همین نقطه را می‌بیند.</div>' +
   '</div>';
 
   html += '<div class="pn-card"><div class="pn-card__t">' + I.grid + ' عکس مرکز</div>' +
@@ -2054,12 +2055,13 @@ function viewProfile() {
 function saveProfile(extra) {
   if (S.busy) { return; }
 
-  var body = extra || {
+  var body = {
     address: val('#bp-address').trim(),
     phone: en(val('#bp-phone')).trim(),
     lat: en(val('#bp-lat')).trim(),
     lng: en(val('#bp-lng')).trim()
   };
+  Object.keys(extra || {}).forEach(function (key) { body[key] = extra[key]; });
 
   S.busy = true;
   paint();
@@ -2092,6 +2094,7 @@ function profileGeo() {
 
     if (la) { la.value = pos.coords.latitude.toFixed(6); }
     if (ln) { ln.value = pos.coords.longitude.toFixed(6); }
+    [la, ln].forEach(function (el) { if (el) { el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); } });
 
     toast('موقعیت گذاشته شد؛ «ذخیره‌ی پروفایل» را بزنید.', 'ok');
   }, function () {
@@ -2182,7 +2185,8 @@ function viewAgencies() {
       '</div>' +
       '<div class="pn-svcacts" style="margin-top:12px">' +
         '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-enter="' + b.id + '">' + I.out + ' ورود به پنل این شعبه</button>' +
-        (agency ? '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-edit="' + b.id + '">' + I.edit + ' ویرایش</button>' +
+        '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-edit="' + b.id + '">' + I.edit + (agency ? ' ویرایش' : ' اطلاعات و موقعیت مرکز') + '</button>' +
+        (agency ?
           '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-users="' + b.id + '">' + I.users + ' کاربران</button>' +
           '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-adjust="' + b.id + '">' + I.wallet + ' تغییر موجودی</button>' +
           (b.status === 'active'
@@ -2229,9 +2233,10 @@ function agencyModal() {
       fld('ag-contact', 'نام مسئول', f.contactName) +
       (isNew ? fld('ag-mphone', 'موبایل مدیر نمایندگی', f.managerPhone, ' dir="ltr" inputmode="tel" placeholder="09…"', 'با همین شماره و کد پیامکی وارد پنل می‌شود.') : '') +
       fld('ag-sms', 'موبایل‌های دریافت پیامک (اختیاری)', f.managerPhones, ' dir="ltr" placeholder="0912…، 0913…"', 'پیامک نوبت جدید و هشدار موجودی؛ مدیر نمایندگی خودکار می‌گیرد.') +
-      fld('ag-lat', 'lat', f.lat === null ? '' : f.lat, ' dir="ltr" inputmode="decimal"') +
-      fld('ag-lng', 'lng', f.lng === null ? '' : f.lng, ' dir="ltr" inputmode="decimal"') +
+      fld('ag-lat', 'عرض جغرافیایی', f.lat === null ? '' : f.lat, ' dir="ltr" inputmode="decimal"') +
+      fld('ag-lng', 'طول جغرافیایی', f.lng === null ? '' : f.lng, ' dir="ltr" inputmode="decimal"') +
     '</div>' +
+    (window.CMBLocation ? window.CMBLocation.html({editable:true,lat:f.lat,lng:f.lng,latInput:'ag-lat',lngInput:'ag-lng'}) : '') +
     (isNew ? note('info', I.info, 'نمایندگی به‌صورت <b>پیش‌نویس</b> ساخته می‌شود و تا فعالش نکنید به مشتری‌ها نشان داده نمی‌شود. خدمات کاتالوگ مرکز غیرفعال برایش کپی می‌شوند.') : '') +
     '<div class="pn-modal__ft">' +
       '<button class="pn-btn pn-btn--pri" data-ag-save' + (S.busy ? ' disabled' : '') + '>' +
@@ -2833,7 +2838,7 @@ function paintModal() {
   var host = document.getElementById('pn-modal');
   if (!host) { return; }
 
-  if (!S.modal && !S.svcEdit) { host.innerHTML = ''; return; }
+  if (!S.modal && !S.svcEdit) { host.innerHTML = ''; if (window.CMBLocation) { window.CMBLocation.sync(); } if (window.CMBA11y) { window.CMBA11y.sync(document.getElementById('cmb-panel')); } return; }
 
   var m = S.modal || {};
   var inner = S.svcEdit ? svcModal()
@@ -2845,6 +2850,8 @@ function paintModal() {
     : (m.receipt ? receiptModal() : bookingModal()))))));
   host.innerHTML = '<div class="pn-scrim" data-scrim><div class="pn-modal">' + inner + '</div></div>';
 
+  if (window.CMBLocation) { window.CMBLocation.sync(); }
+  if (window.CMBA11y) { window.CMBA11y.sync(document.getElementById('cmb-panel')); }
   if (S.svcEdit) { amountWarn(); }
 }
 
@@ -3684,6 +3691,14 @@ function shiftBoard(days) {
 /* ═══ رویدادها ═══ */
 
 function bind() {
+  document.addEventListener('input', function (e) {
+    var id = e.target.id, p = {'bp-address':'address','bp-phone':'phone','bp-lat':'lat','bp-lng':'lng'};
+    if (S.profile && p[id]) { S.profile[p[id]] = e.target.value; }
+    if (S.modal && S.modal.agency && /^ag-/.test(id)) {
+      var f = {'ag-title':'title','ag-slug':'slug','ag-sort':'sortOrder','ag-prov':'province','ag-city':'city','ag-address':'address','ag-phone':'phone','ag-contact':'contactName','ag-mphone':'managerPhone','ag-sms':'managerPhones','ag-lat':'lat','ag-lng':'lng'};
+      if (f[id]) { S.modal.agency[f[id]] = e.target.value; }
+    }
+  });
   // انتخابگر تاریخ شمسی: مقدار میلادی را در input مخفی می‌گذارد
   J.bind(function (id, g) {
     if (id === 'cl-date') { S.closeForm.date = g; }

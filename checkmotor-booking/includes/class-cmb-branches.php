@@ -307,12 +307,29 @@ class CMB_Branches {
 		);
 	}
 
-	public static function map_url( $b ) {
-		if ( isset( $b->lat, $b->lng ) && '' !== (string) $b->lat && '' !== (string) $b->lng && ( 0.0 !== (float) $b->lat || 0.0 !== (float) $b->lng ) ) {
-			return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode( (float) $b->lat . ',' . (float) $b->lng );
+	/** A complete, finite coordinate pair; empty coordinates never mean (0,0). */
+	public static function coordinates( $b ) {
+		if ( ! is_object( $b ) || ! isset( $b->lat, $b->lng ) || '' === trim( (string) $b->lat ) || '' === trim( (string) $b->lng ) || ! is_numeric( $b->lat ) || ! is_numeric( $b->lng ) ) {
+			return null;
 		}
+		$lat = (float) $b->lat;
+		$lng = (float) $b->lng;
+		return is_finite( $lat ) && is_finite( $lng ) && abs( $lat ) <= 90 && abs( $lng ) <= 180 && ( 0.0 !== $lat || 0.0 !== $lng ) ? array( $lat, $lng ) : null;
+	}
 
-		return '';
+	public static function map_url( $b ) {
+		$point = self::coordinates( $b );
+		return $point ? 'https://nshn.ir/?lat=' . rawurlencode( (string) $point[0] ) . '&lng=' . rawurlencode( (string) $point[1] ) : '';
+	}
+
+	protected static function validate_location( array $clean, $old = null ) {
+		if ( ! array_key_exists( 'lat', $clean ) && ! array_key_exists( 'lng', $clean ) ) { return true; }
+		$lat = array_key_exists( 'lat', $clean ) ? $clean['lat'] : ( isset( $old->lat ) ? $old->lat : '' );
+		$lng = array_key_exists( 'lng', $clean ) ? $clean['lng'] : ( isset( $old->lng ) ? $old->lng : '' );
+		if ( ( '' === (string) $lat ) !== ( '' === (string) $lng ) ) {
+			return new WP_Error( 'cmb_branch_geo_pair', 'هر دو مختصات موقعیت را وارد کنید، یا هر دو را خالی بگذارید.', array( 'status' => 400 ) );
+		}
+		return true;
 	}
 
 	/**
@@ -325,6 +342,7 @@ class CMB_Branches {
 			return null;
 		}
 
+		$point    = self::coordinates( $b );
 		$reason   = '';
 		$bookable = self::bookable( $b, $reason );
 		$photo    = self::photo( isset( $b->photo_id ) ? $b->photo_id : 0 );
@@ -340,6 +358,8 @@ class CMB_Branches {
 			'phone'    => (string) $b->phone,
 			'photo'    => $photo['url'],
 			'map'      => self::map_url( $b ),
+			'lat'      => $point ? $point[0] : null,
+			'lng'      => $point ? $point[1] : null,
 			'verified' => self::is_agency( $b ),
 			'bookable' => $bookable,
 			// دلیل مالی یا هر دلیل دیگر به مشتری گفته نمی‌شود (D18)
@@ -544,7 +564,7 @@ class CMB_Branches {
 					$raw = str_replace( array( '٫', ',' ), '.', trim( cmb_en_num( (string) $v ) ) );
 					$max = 'lat' === $key ? 90 : 180;
 
-					if ( ! is_numeric( $raw ) || abs( (float) $raw ) > $max ) {
+					if ( ! is_numeric( $raw ) || ! is_finite( (float) $raw ) || abs( (float) $raw ) > $max ) {
 						return new WP_Error( 'cmb_branch_geo', 'مختصات نقشه معتبر نیست؛ عدد اعشاری مثل ۳۲٫۴۵۶۱ وارد کنید.', array( 'status' => 400 ) );
 					}
 
@@ -622,6 +642,9 @@ class CMB_Branches {
 			return $clean;
 		}
 
+		$location = self::validate_location( $clean );
+		if ( is_wp_error( $location ) ) { return $location; }
+
 		if ( self::slug_taken( $clean['slug'] ) ) {
 			return new WP_Error( 'cmb_branch_slug_taken', sprintf( 'نامک «%s» قبلاً برای شعبه‌ی دیگری استفاده شده است. نامک دیگری انتخاب کنید.', $clean['slug'] ), array( 'status' => 409 ) );
 		}
@@ -697,6 +720,9 @@ class CMB_Branches {
 		if ( is_wp_error( $clean ) ) {
 			return $clean;
 		}
+
+		$location = self::validate_location( $clean, $b );
+		if ( is_wp_error( $location ) ) { return $location; }
 
 		// نوع مرکز عوض نمی‌شود و نمایندگی هم مرکز نمی‌شود (کیف پول و کسرش می‌ماند)
 		unset( $clean['type'] );

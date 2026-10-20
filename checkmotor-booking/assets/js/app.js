@@ -25,7 +25,7 @@ var S = {
   services: ((C.boot && C.boot.services) || []).concat(C.testServices || []),
   branch: (C.boot && C.boot.branch) || C.branch || null,
   notes: C.notes || (C.boot && C.boot.notes) || {},
-  loading: false, busy: false, servicesTried: false,
+  loading: false, busy: false, servicesTried: false, servicesError: '',
 
   /* ویزارد رزرو */
   step: 1,                 // 1 خدمت · 2 زمان · 3 ورود · 4 مشخصات · 5 قوانین و پرداخت (فقط با بیعانه)
@@ -70,6 +70,7 @@ var BR = C.branches || { picker: false, groups: [], center: 0, preselect: null }
 var BR_KEY = 'cmb_branch';
 
 var timerId = null;
+var branchRequest = 0;
 
 /* ─── ابزار ─── */
 
@@ -304,7 +305,7 @@ var I = {
 
 function topBar(title, sub, back) {
   return '<div class="cmb-top">' +
-    (back ? '<button class="cmb-top__back" data-back>' + I.chevR + '</button>' : '') +
+    (back ? '<button class="cmb-top__back" aria-label="بازگشت" data-back>' + I.chevR + '</button>' : '') +
     '<div class="cmb-top__grow">' +
       '<div class="cmb-top__t">' + esc(title) + '</div>' +
       (sub ? '<div class="cmb-top__s">' + esc(sub) + '</div>' : '') +
@@ -357,7 +358,7 @@ function viewHome() {
       '<div class="cmb-hero__sub">' + esc(b.title || 'رزرو نوبت آنلاین') + '</div></div>' +
     '</div>' +
     branchChip(b) +
-    '<button class="cmb-hero__cta" data-start>' + I.cal + ' شروع رزرو نوبت</button>' +
+    '<button class="cmb-hero__cta" data-start' + (S.loading || !S.services.length ? ' disabled' : '') + '>' + I.cal + ' شروع رزرو نوبت</button>' +
     // مهمان باید بداند بدون رزرو جدید هم می‌تواند نوبت‌های قبلی‌اش را ببیند
     (S.logged
       ? ''
@@ -390,7 +391,9 @@ function viewHome() {
   } else {
     html += '<div class="cmb-sec"><div class="cmb-sec__t">خدمات ما</div></div>';
 
-    if (!S.services.length) {
+    if (S.servicesError) {
+      html += note('warn', I.alert, S.servicesError) + '<button class="cmb-btn cmb-btn--soft" data-services-retry>تلاش دوباره برای دریافت خدمات</button>';
+    } else if (!S.services.length) {
       html += empty(I.empty, 'خدمتی فعال نیست', '');
     } else {
       html += '<div class="cmb-grid cmb-grid--' + S.cols + '">';
@@ -403,9 +406,11 @@ function viewHome() {
         I.phone + ' تماس با شعبه ' + fa(b.phone) + '</a>';
     }
 
+    if (window.CMBLocation) { html += window.CMBLocation.html({lat:b.lat,lng:b.lng,title:b.title}); }
+
     if (b.address) {
       html += '<div class="cmb-note cmb-note--info">' + I.pin + '<div>' + esc(b.address) +
-        (BR.picker && b.map ? ' <a href="' + esc(b.map) + '" target="_blank" rel="noopener">مسیریابی</a>' : '') + '</div></div>';
+        (b.map ? ' <a href="' + esc(b.map) + '" target="_blank" rel="noopener">مسیریابی با نشان</a>' : '') + '</div></div>';
     }
   }
 
@@ -437,47 +442,37 @@ function branchChip(b) {
 
 function branchCard(b) {
   var off = !b.bookable;
+  return '<article class="cmb-branch' + (off ? ' is-off' : '') + '">' +
+    '<div class="cmb-branch__ph">' + (b.photo ? '<img src="' + esc(b.photo) + '" alt="نمای ' + esc(b.title) + '" width="64" height="64" loading="lazy">' : I.engine) + '</div>' +
+    '<div class="cmb-branch__body"><h3 class="cmb-branch__t">' + esc(b.title) + '</h3>' +
+      '<span class="cmb-branch__tag' + (b.type === 'agency' ? '' : ' cmb-branch__tag--hq') + '">' + (b.type === 'agency' ? 'نمایندگی رسمی' : 'مرکز اصلی') + '</span>' +
+      '<p class="cmb-branch__s">' + esc([b.city, b.address].filter(Boolean).join(' — ')) + '</p>' +
+      (off ? '<p class="cmb-branch__off">' + esc(b.unavailable || 'فعلاً نوبت نمی‌گیرد') + '</p>' :
+        '<button type="button" class="cmb-branch__select" data-branch="' + b.id + '" aria-label="انتخاب ' + esc(b.title) + '">انتخاب این مرکز ' + I.chevL + '</button>') +
+      '<div class="cmb-branch__acts">' +
+        (b.phone ? '<a href="tel:' + esc(b.phone) + '" aria-label="تماس با ' + esc(b.title) + '">' + I.phone + '<bdi dir="ltr">' + fa(esc(b.phone)) + '</bdi></a>' : '') +
+        (b.map ? '<a href="' + esc(b.map) + '" target="_blank" rel="noopener">' + I.pin + ' مسیریابی با نشان</a>' : '') + '</div>' +
+      (window.CMBLocation ? window.CMBLocation.html({lat:b.lat,lng:b.lng,title:b.title}) : '') +
+    '</div></article>';
+}
 
-  return '<div class="cmb-branch' + (off ? ' is-off' : '') + '" data-branch="' + b.id + '" role="button" tabindex="0"' + (off ? ' aria-disabled="true"' : '') + '>' +
-    '<div class="cmb-branch__ph">' + (b.photo ? '<img src="' + esc(b.photo) + '" alt="" loading="lazy">' : I.engine) + '</div>' +
-    '<div class="cmb-branch__body">' +
-      '<div class="cmb-branch__t">' + esc(b.title) +
-        (b.type === 'agency' ? ' <span class="cmb-branch__tag">نمایندگی رسمی</span>' : ' <span class="cmb-branch__tag cmb-branch__tag--hq">مرکز اصلی</span>') +
-      '</div>' +
-      '<div class="cmb-branch__s">' + esc([b.city, b.address].filter(Boolean).join(' — ')) + '</div>' +
-      (off ? '<div class="cmb-branch__off">' + esc(b.unavailable || 'فعلاً نوبت نمی‌گیرد') + '</div>' : '') +
-      ((b.phone || b.map) ? '<div class="cmb-branch__acts">' +
-        (b.phone ? '<a href="tel:' + esc(b.phone) + '">' + I.phone + ' ' + fa(esc(b.phone)) + '</a>' : '') +
-        (b.map ? '<a href="' + esc(b.map) + '" target="_blank" rel="noopener">' + I.pin + ' مسیریابی</a>' : '') +
-      '</div>' : '') +
-    '</div>' +
-    (off ? '' : '<div class="cmb-branch__go">' + I.chevL + '</div>') +
-    '</div>';
+function branchSearch(v) {
+  return String(v || '').replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/[\u064B-\u065F\u0670]/g, '').replace(/[\s\u200c]+/g, ' ').trim().toLowerCase();
 }
 
 function viewPicker() {
-  var q = S.branchQ.trim();
-  var html = topBar('انتخاب مرکز', 'مرکز چک موتورِ نزدیک خودتان را انتخاب کنید', S.branchChosen) +
-    '<div class="cmb-page cmb-mt3">' +
-    '<label class="cmb-field" style="margin-top:0"><input class="cmb-in" id="cmb-br-q" type="search" placeholder="جستجوی شهر یا استان" value="' + esc(q) + '"></label>';
-
-  var any = false;
-
+  var q = branchSearch(S.branchQ), count = 0;
+  var html = topBar('انتخاب مرکز', 'مرکز و نمایندگی‌های چک موتور؛ محل مراجعه را انتخاب کنید', S.branchChosen) +
+    '<div class="cmb-page cmb-mt3"><div class="cmb-pickerintro">' + I.pin + '<div><b>کدام مرکز به شما نزدیک‌تر است؟</b><p>ابتدا مرکز را انتخاب کنید؛ سپس خدمات و زمان‌های همان مرکز را می‌بینید.</p></div></div>' +
+    '<label class="cmb-field cmb-branchsearch"><span class="cmb-field__l">جستجوی مرکز، شهر یا استان</span><input class="cmb-in" id="cmb-br-q" type="search" autocomplete="off" placeholder="مثلاً بوشهر یا اندیمشک" value="' + esc(S.branchQ) + '"></label>';
   (BR.groups || []).forEach(function (g) {
-    var list = (g.branches || []).filter(function (b) {
-      return !q || [b.title, b.city, b.province, g.province].join(' ').indexOf(q) !== -1;
-    });
-
-    if (!list.length) { return; }
-
-    any = true;
-    html += '<div class="cmb-sec"><div class="cmb-sec__t">' + esc(g.province) + '</div></div>';
+    var list = (g.branches || []).filter(function (b) { return !q || branchSearch([b.title, b.city, b.province, g.province].join(' ')).indexOf(q) !== -1; });
+    if (!list.length) { return; } count += list.length;
+    html += '<div class="cmb-sec"><h2 class="cmb-sec__t">' + esc(g.province) + '</h2><span class="cmb-hint">' + fa(list.length) + ' مرکز</span></div>';
     list.forEach(function (b) { html += branchCard(b); });
   });
-
-  if (!any) { html += empty(I.pin, 'مرکزی پیدا نشد', q ? 'نام شهر یا استان را جور دیگری بنویسید.' : ''); }
-
-  html += '</div>';
+  if (!count) { html += empty(I.pin, 'مرکزی پیدا نشد', 'نام مرکز، شهر یا استان را جور دیگری بنویسید.') + '<button class="cmb-btn cmb-btn--soft" data-branch-clear>پاک کردن جستجو</button>'; }
+  html += '<p class="cmb-sr-only" role="status">' + fa(count) + ' مرکز پیدا شد</p></div>';
   return html;
 }
 
@@ -503,6 +498,7 @@ function chooseBranch(id, quiet) {
     return;
   }
 
+  var requestId = ++branchRequest;
   rememberBranch(b.id);
 
   S.branchPick = false;
@@ -510,6 +506,8 @@ function chooseBranch(id, quiet) {
   S.service = null;
   S.cal = null; S.day = null; S.block = null;
   S.quote = null; S.quoteFor = '';
+  S.servicesError = '';
+  S.calCache = {};
 
   // همان مرکزی که خدماتش را داریم
   if (S.branch && Number(S.branch.id) === b.id && S.services.length) {
@@ -521,9 +519,11 @@ function chooseBranch(id, quiet) {
   S.branch = b;
   S.services = [];
   S.loading = true;
+  S.servicesTried = true;
   paint();
 
   get('services?branch_id=' + b.id).then(function (r) {
+    if (requestId !== branchRequest) { return; }
     S.loading = false;
 
     if (r.success !== false) {
@@ -532,6 +532,8 @@ function chooseBranch(id, quiet) {
       S.branch = Object.assign({}, b, r.branch || {});
       S.notes = r.notes || S.notes;
     } else {
+      S.servicesTried = false;
+      S.servicesError = r.message || 'دریافت خدمات ناموفق بود. اتصال اینترنت را بررسی کنید.';
       toast(r.message || 'دریافت خدمات ناموفق بود.', 'bad');
     }
 
@@ -1163,13 +1165,13 @@ function viewReceipt() {
       '<div class="cmb-receipt__hd">' +
         '<div class="cmb-receipt__ic">' + I.check + '</div>' +
         '<div class="cmb-receipt__t">نوبت شما ثبت شد</div>' +
-        '<div class="cmb-receipt__s">پیامک تاییدیه ارسال شد</div>' +
+        '<div class="cmb-receipt__s">جزئیات نوبت و کد پیگیری را نگه دارید.</div>' +
         '<div class="cmb-receipt__code">' + esc(r.code) + '</div>' +
       '</div>' +
       '<div class="cmb-receipt__body">' +
         kv('خدمت', r.service) +
-        ((BR.picker || r.branchAgency) && r.branch ? kv('مرکز', r.branch + (r.branchCity ? ' — ' + r.branchCity : '')) : '') +
-        ((BR.picker || r.branchAgency) && r.branchAddress ? kv('نشانی', r.branchAddress) : '') +
+        (r.branch ? kv('مرکز', r.branch + (r.branchCity ? ' — ' + r.branchCity : '')) : '') +
+        (r.branchAddress ? kv('نشانی', r.branchAddress) : '') +
         kv('تاریخ', r.dateFa) +
         kv('ساعت', r.blockLabel + ' — ' + fa(r.blockStart)) +
         kv('خودرو', r.car) +
@@ -1184,10 +1186,10 @@ function viewReceipt() {
       '</div>' +
     '</div>';
 
-  if ((BR.picker || r.branchAgency) && (r.branchMap || r.branchPhone)) {
+  if ((r.branchMap || r.branchPhone)) {
     html += '<div class="cmb-branch__acts cmb-mt3">' +
       (r.branchPhone ? '<a href="tel:' + esc(r.branchPhone) + '">' + I.phone + ' تماس با مرکز</a>' : '') +
-      (r.branchMap ? '<a href="' + esc(r.branchMap) + '" target="_blank" rel="noopener">' + I.pin + ' مسیریابی</a>' : '') +
+      (r.branchMap ? '<a href="' + esc(r.branchMap) + '" target="_blank" rel="noopener">' + I.pin + ' مسیریابی با نشان</a>' : '') +
       '</div>';
   }
 
@@ -1394,10 +1396,10 @@ function viewMine() {
         '<div class="cmb-bk__row">' + I.cal + '<b>' + esc(b.dateFa) + '</b></div>' +
         '<div class="cmb-bk__row">' + I.clock + esc(b.blockLabel) + ' — ساعت ' + fa(esc(b.blockStart)) + '</div>' +
         '<div class="cmb-bk__row">' + I.car + esc(b.car) + '</div>' +
-        ((BR.picker || b.branchAgency) && b.branch
+        (b.branch
           ? '<div class="cmb-bk__row">' + I.pin + esc(b.branch) +
               (b.branchPhone ? ' — <a href="tel:' + esc(b.branchPhone) + '">' + fa(esc(b.branchPhone)) + '</a>' : '') +
-              (b.branchMap ? ' — <a href="' + esc(b.branchMap) + '" target="_blank" rel="noopener">مسیریابی</a>' : '') + '</div>'
+              (b.branchMap ? ' — <a href="' + esc(b.branchMap) + '" target="_blank" rel="noopener">مسیریابی با نشان</a>' : '') + '</div>'
           : '') +
         payLine(b) +
       '</div>' +
@@ -1799,6 +1801,8 @@ function render() {
   }
 
   syncBar();
+  if (window.CMBLocation) { window.CMBLocation.sync(); }
+  if (window.CMBA11y) { window.CMBA11y.sync(root); }
 
   /* اگر فیلدی کد تایید نیست، همان جایی که بود برمی‌گردد. کادرهای
      کد تایید قاعده‌ی خودشان را دارند (پرش خودکار به خانه‌ی بعد). */
@@ -1879,12 +1883,18 @@ function load(page) {
       S.loading = true;
       paint();
 
+      var requestId = branchRequest;
       get('services' + (BR.picker && S.branch && S.branch.id ? '?branch_id=' + S.branch.id : '')).then(function (r) {
+        if (requestId !== branchRequest) { return; }
         S.loading = false;
         if (r.success !== false) {
+          S.servicesError = '';
           S.services = r.services || [];
           S.branch = r.branch || S.branch;
           S.notes = r.notes || S.notes;
+        } else {
+          S.servicesTried = false;
+          S.servicesError = r.message || 'دریافت خدمات ناموفق بود. اتصال اینترنت را بررسی کنید.';
         }
         paint();
       });
@@ -1942,6 +1952,7 @@ function load(page) {
  */
 function loadCalendar(quiet) {
   var id = S.service.id;
+  var branchId = S.branch && S.branch.id;
 
   /* اگر قبلاً گرفته‌ایم، بدون هیچ انتظاری نشان بده. ولی نه برای همیشه:
      ظرفیت‌ها عوض می‌شوند و با گذشت زمان شیفت نزدیک «کمتر از ۲۴ ساعت»
@@ -1964,7 +1975,7 @@ function loadCalendar(quiet) {
   get('availability?service_id=' + id).then(function (r) {
     if (r.success !== false) { r._at = Date.now(); S.calCache[id] = r; }
 
-    if (quiet) { return; }
+    if (quiet || !S.service || S.service.id !== id || (S.branch && S.branch.id) !== branchId) { return; }
     (function (r) {
       if (r.success === false && r.code === 'cmb_branch_unavailable') {
         branchUnavailable(r.message);
@@ -2093,6 +2104,10 @@ function submitBooking() {
       : 'فیلدهای ستاره‌دار را کامل کنید.', 'bad');
     S.nameIsPhone = false;
     paint();
+    (window.requestAnimationFrame || function (fn) { setTimeout(fn, 16); })(function () {
+      var invalid = document.querySelector('#cmb-app .is-bad');
+      if (invalid) { invalid.focus(); }
+    });
     return;
   }
 
@@ -2504,11 +2519,6 @@ function bind() {
     }
   });
 
-  document.addEventListener('keydown', function (e) {
-    var el = e.target && e.target.closest ? e.target.closest('[data-branch]') : null;
-    if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); chooseBranch(Number(el.getAttribute('data-branch'))); }
-  });
-
   document.addEventListener('click', function (e) {
     var t = e.target;
 
@@ -2525,6 +2535,8 @@ function bind() {
 
     if (up('[data-start]')) { e.preventDefault(); startBooking(); return; }
 
+    if (up('[data-services-retry]')) { e.preventDefault(); S.servicesTried = false; S.servicesError = ''; load('home'); return; }
+    if (up('[data-branch-clear]')) { e.preventDefault(); S.branchQ = ''; paint(); return; }
     if (up('[data-branch-change]')) { e.preventDefault(); S.branchPick = true; S.branchQ = ''; go('home'); return; }
 
     // تماس و مسیریابی داخل کارت مرکز کار خودشان را می‌کنند
