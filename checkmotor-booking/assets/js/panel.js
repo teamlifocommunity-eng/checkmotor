@@ -3426,6 +3426,13 @@ function render() {
 
   shellKey = key;
 
+  /* منو با هر تعویض بخش از نو کشیده می‌شود؛ جای پیمایشش نگه داشته
+     می‌شود تا با زدن گزینه‌های پایین منو به بالا نپرد. */
+  var oldNav = $('.pn-side__nav');
+  var oldSide = $('.pn-side');
+  var navY = oldNav ? oldNav.scrollTop : 0;
+  var sideY = oldSide ? oldSide.scrollTop : 0;
+
   root.innerHTML =
     '<div class="pn' + (S.menu ? ' is-menu' : '') + '">' +
       // پرده‌ی پشت منوی کشویی — فقط روی موبایل دیده می‌شود
@@ -3443,8 +3450,40 @@ function render() {
     '</div>' +
     '<div id="pn-toasts" class="pn-toasts"></div><div id="pn-modal"></div>';
 
+  var navEl = $('.pn-side__nav');
+  var sideEl = $('.pn-side');
+  if (navEl) { navEl.scrollTop = navY; }
+  if (sideEl) { sideEl.scrollTop = sideY; }
+  navIntoView();
+  navFade();
+
   paintToasts();
   paintModal();
+}
+
+/** گزینه‌ی فعال منو اگر بیرون از دید است، به وسط منو بیاید. */
+function navIntoView() {
+  var nav = $('.pn-side__nav');
+  var on = $('.pn-side__b.is-on');
+
+  if (!nav || !on || nav.scrollHeight <= nav.clientHeight) { return; }
+
+  var n = nav.getBoundingClientRect();
+  var o = on.getBoundingClientRect();
+
+  if (o.top < n.top || o.bottom > n.bottom) {
+    nav.scrollTop += (o.top - n.top) - (nav.clientHeight - o.height) / 2;
+  }
+}
+
+/** سایه‌ی محو بالا/پایین منو، فقط وقتی آن طرف گزینه‌ی پنهانی هست. */
+function navFade() {
+  var nav = $('.pn-side__nav');
+  if (!nav) { return; }
+
+  var more = nav.scrollHeight - nav.clientHeight > 2;
+  nav.classList.toggle('has-more-t', more && nav.scrollTop > 2);
+  nav.classList.toggle('has-more-b', more && nav.scrollTop + nav.clientHeight < nav.scrollHeight - 2);
 }
 
 function paintToasts() {
@@ -4316,6 +4355,12 @@ function shiftBoard(days) {
 /* ═══ رویدادها ═══ */
 
 function bind() {
+  // پیمایش منو (رویداد scroll حباب نمی‌زند؛ در مرحله‌ی capture گرفته می‌شود)
+  document.addEventListener('scroll', function (e) {
+    if (e.target && e.target.classList && e.target.classList.contains('pn-side__nav')) { navFade(); }
+  }, true);
+  window.addEventListener('resize', navFade);
+
   document.addEventListener('input', function (e) {
     var id = e.target.id, p = {'bp-address':'address','bp-phone':'phone','bp-lat':'lat','bp-lng':'lng'};
     if (S.profile && p[id]) { S.profile[p[id]] = e.target.value; }

@@ -146,6 +146,40 @@ body.cmb-body > *:not(#cmb-panel):not(script):not(style):not(noscript):not(link)
 .pn-side__b--out { color: #ff9d8c; }
 .pn-side__b--out:hover { background: rgba(255,94,72,.12); color: #ffb9ad; }
 
+/* ── نوار پیمایش منو ──
+   به‌جای نوار سفید و پهن پیش‌فرض ویندوز، یک نوار باریک و گرد هم‌رنگ پنل که
+   در لبه‌ی منو (در فاصله‌ی حاشیه‌ی کناری) می‌نشیند و به گزینه‌ها نمی‌چسبد.
+   کم‌رنگ است، با رفتن نشانگر روی منو پررنگ‌تر و هنگام کشیدن نارنجی می‌شود. */
+.pn-side__nav { padding-inline-end: 6px; margin-inline-end: -8px; overscroll-behavior: contain; }
+.pn-side__nav::-webkit-scrollbar { width: 6px; }
+.pn-side__nav::-webkit-scrollbar-track { background: transparent; margin: 4px 0; }
+.pn-side__nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 999px; }
+.pn-side__nav:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,.3); }
+.pn-side__nav::-webkit-scrollbar-thumb:active { background: var(--flame); }
+.pn-side__nav::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+
+/* فایرفاکس ::-webkit-scrollbar ندارد. کروم ۱۲۱ به بعد اگر scrollbar-color
+   ببیند همان ::-webkit-scrollbar (گرد، بی‌فلش) را نادیده می‌گیرد؛ پس ویژگی
+   استاندارد فقط برای مرورگری که آن را ندارد. */
+@supports not selector(::-webkit-scrollbar) {
+  .pn-side__nav { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.14) transparent; }
+  .pn-side__nav:hover { scrollbar-color: rgba(255,255,255,.3) transparent; }
+}
+
+/* لبه‌ی محو: فقط وقتی آن طرف گزینه‌ی پنهانی هست (navFade در panel.js) */
+.pn-side__nav.has-more-b {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
+}
+.pn-side__nav.has-more-t {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 28px);
+          mask-image: linear-gradient(to bottom, transparent, #000 28px);
+}
+.pn-side__nav.has-more-t.has-more-b {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 28px, #000 calc(100% - 34px), transparent);
+          mask-image: linear-gradient(to bottom, transparent, #000 28px, #000 calc(100% - 34px), transparent);
+}
+
 .pn-side__foot { padding-top: var(--s4); border-top: 1px solid rgba(255,255,255,.1); }
 .pn-side__me { font-size: var(--t-ft); color: rgba(255,255,255,.5); padding: 0 var(--s3) var(--s2); }
 
@@ -659,6 +693,13 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
     box-shadow: none;
     overflow-y: auto; overscroll-behavior: contain;
   }
+  .pn-side::-webkit-scrollbar { width: 5px; }
+  .pn-side::-webkit-scrollbar-track { background: transparent; }
+  .pn-side::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 999px; }
+  .pn-side::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  @supports not selector(::-webkit-scrollbar) {
+    .pn-side { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
+  }
   .pn.is-menu .pn-side {
     transform: none; visibility: visible; transition-delay: 0s;
     box-shadow: -14px 0 40px rgba(11,18,25,.28);
@@ -666,7 +707,7 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
 
   .pn-side__brand { display: flex; padding-inline-end: 44px; }
   .pn-side__foot { display: block; }
-  .pn-side__nav { flex-direction: column; gap: 3px; overflow: visible; }
+  .pn-side__nav { flex-direction: column; gap: 3px; overflow: visible; margin-inline-end: 0; padding-inline-end: 0; -webkit-mask-image: none; mask-image: none; }
   .pn-side__b {
     flex-direction: row; text-align: right;
     font-size: var(--t-bd); font-weight: 600;
@@ -1147,6 +1188,15 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
 #cmb-panel :is(.cmb-btn,.pn-btn,.pn-modal__x,.cmb-top__back,.pn-side__b,.pn-topbar__burger) { min-height:44px; }
 #cmb-panel :is(.cmb-top__back,.pn-modal__x) { min-width:44px; }
 #cmb-panel :is(.cmb-in,.pn-in)::placeholder { color:#64717D; opacity:1; }
+/* نمایشگر کوتاه (لپ‌تاپ): منو جمع‌وجورتر تا کمتر به پیمایش برسد. فقط با
+   ماوس؛ روی لمس همان هدف ۴۴ پیکسلی می‌ماند. */
+@media (min-width: 981px) and (max-height: 900px) and (pointer: fine) {
+  .pn-side__brand { padding-bottom: var(--s4); }
+  .pn-side__nav { gap: 2px; }
+  #cmb-panel .pn-side__b { min-height: 38px; padding-top: 8px; padding-bottom: 8px; }
+  .pn-side__foot { padding-top: var(--s3); }
+}
+
 /* ═══ آزمون و عیب‌یابی ═══ */
 .pn-dbgtabs { max-width: 100%; }
 .pn-dbgtabs .pn-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--flame); color: #fff; font-size: 11px; margin-inline-start: 4px; }
