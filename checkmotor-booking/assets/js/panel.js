@@ -2306,22 +2306,115 @@ function agencyPolicyFields(f) {
     '</div><p class="pn-hint">مجوزها فقط برای مدیر همین نمایندگی‌اند. اپراتورها اجازه تغییر خدمات ندارند.</p></div>';
 }
 
+/* ─── حذف نمایندگی ───
+   پیش از تأیید، سرور می‌گوید حذف دقیقاً چه می‌کند: نوبت‌های آینده (که با
+   تیک مدیر لغو می‌شوند)، مانده‌ی کیف پول (که تسویه می‌شود) و کاربرانی که
+   دسترسی‌شان بسته می‌شود. حذف در یک مرحله انجام می‌شود. */
+
 function agDeleteModal() {
-  var m = S.modal, b = m.agDelete;
-  return '<div class="pn-modal__hd"><h2 class="pn-modal__t">حذف نمایندگی</h2><button class="pn-modal__x" data-close aria-label="بستن">' + I.x + '</button></div>' +
-    note('warn', I.alert, '«' + esc(b.title) + '» از فهرست نمایندگی‌ها و انتخاب مشتری حذف می‌شود و دسترسی پنل کاربران آن بسته می‌شود. حساب مشتری این کاربران، سوابق نوبت‌ها و مالی محفوظ می‌ماند.') +
-    '<p class="pn-hint">پیش از حذف، نوبت‌های فعال و موجودی کیف پول باید تعیین تکلیف شده باشند.</p>' +
-    '<label class="pn-field"><span class="pn-field__l">برای تأیید، نام «' + esc(b.title) + '» را بنویسید</span><input class="pn-in" id="ag-delete-title" autocomplete="off" value="' + esc(m.confirmTitle || '') + '"></label>' +
-    '<div class="pn-modal__ft"><button class="pn-btn pn-btn--bad" data-ag-delete-confirm' + (S.busy || m.confirmTitle !== b.title ? ' disabled' : '') + '>' + (S.busy ? 'در حال حذف…' : 'حذف نمایندگی') + '</button><button class="pn-btn pn-btn--soft" data-close>انصراف</button></div>';
+  var m = S.modal, b = m.agDelete, p = m.preview;
+  var html = '<div class="pn-modal__hd"><h2 class="pn-modal__t">حذف نمایندگی</h2><button class="pn-modal__x" data-close aria-label="بستن">' + I.x + '</button></div>';
+
+  if (!p) {
+    return html + '<div class="pn-hint" style="margin:8px 0 16px"><span class="pn-spin pn-spin--dark"></span> در حال بررسی نوبت‌ها و کیف پول…</div>' + skel(2);
+  }
+
+  if (p.error) {
+    return html + note('bad', I.alert, esc(p.error)) +
+      '<div class="pn-modal__ft"><button class="pn-btn pn-btn--soft" data-close>بستن</button></div>';
+  }
+
+  var w = p.wallet || {};
+  var fut = p.future || [];
+  var rows = [];
+
+  html += note('warn', I.alert, '«' + esc(b.title) + '» از فهرست نمایندگی‌ها و انتخاب مرکز مشتری حذف می‌شود. سوابق نوبت‌ها و مالی‌اش محفوظ می‌ماند.');
+
+  // نوبت‌های آینده
+  if (fut.length) {
+    rows.push('<div class="pn-del__i is-warn"><b>' + fa(fut.length) + ' نوبت آینده</b> دارد:' +
+      '<ul class="pn-del__list">' + fut.slice(0, 6).map(function (f) {
+        return '<li>' + esc(f.date) + ' — ' + esc(f.block) + ' — ' + esc(f.service) + ' — ' + esc(f.name) +
+          (f.paid ? ' <span class="pn-dbg-mut">(بیعانه ' + money(f.paid) + ')</span>' : '') + '</li>';
+      }).join('') + (fut.length > 6 ? '<li>… و ' + fa(fut.length - 6) + ' نوبت دیگر</li>' : '') + '</ul>' +
+      '<label class="pn-check pn-del__ok"><input type="checkbox" id="ag-del-cancel"' + (m.cancelFuture ? ' checked' : '') + '> ' +
+        'این ' + fa(fut.length) + ' نوبت لغو شود و به مشتری‌ها پیامک لغو برود' + (fut.some(function (f) { return f.paid; }) ? ' (بیعانه‌ی پرداخت‌شده به کیف پول مشتری برمی‌گردد)' : '') + '</label></div>');
+  } else {
+    rows.push(delRow(I.check, 'نوبت آینده‌ای ندارد.'));
+  }
+
+  // کیف پول
+  if (Number(w.total) || Number(w.held)) {
+    rows.push(delRow(I.wallet, 'موجودی کیف پول <b>' + money(w.total) + ' تومان</b>' +
+      (Number(w.held) ? ' (آزاد ' + money(w.free) + '، بلوکه ' + money(w.held) + ')' : '') +
+      ' صفر می‌شود و با عنوان «تسویه‌ی حذف» در دفتر کیف پول ثبت می‌شود.' +
+      (Number(p.topups) ? '<div class="pn-dbg-mut">این نمایندگی تا امروز ' + money(p.topups) + ' تومان شارژ آنلاین پرداخت کرده؛ اگر باید بخشی از موجودی به نمایندگی برگردد، بیرون از سیستم پرداخت کنید.</div>' : '')));
+  } else {
+    rows.push(delRow(I.check, 'کیف پول مانده‌ای ندارد.'));
+  }
+
+  if (Number(p.pending)) {
+    rows.push(delRow(I.info, fa(p.pending) + ' شارژ نیمه‌کاره دارد؛ هنگام حذف نتیجه‌اش از درگاه پرسیده می‌شود.' +
+      (Number(p.wait) > 0 ? ' اگر مدیر نمایندگی هنوز در صفحه‌ی بانک باشد، درگاه تا حدود ' + fa(p.wait) + ' دقیقه‌ی دیگر نتیجه را قطعی می‌کند و حذف تا آن موقع انجام نمی‌شود.' : '')));
+  }
+
+  var users = p.users || [];
+  rows.push(delRow(I.users, users.length
+    ? 'دسترسی پنل ' + fa(users.length) + ' کاربر (' + esc(fa(users.map(function (u) { return u.name; }).join('، '))) + ') بسته می‌شود؛ حساب مشتری‌شان می‌ماند.'
+    : 'کاربر پنلی ندارد.'));
+
+  html += '<div class="pn-del">' + rows.join('') + '</div>';
+
+  html += '<label class="pn-field"><span class="pn-field__l">برای تأیید، نام «' + esc(b.title) + '» را بنویسید</span>' +
+    '<input class="pn-in" id="ag-delete-title" autocomplete="off" value="' + esc(m.confirmTitle || '') + '"></label>' +
+    '<div class="pn-modal__ft"><button class="pn-btn pn-btn--bad" data-ag-delete-confirm' + (agDeleteReady() ? '' : ' disabled') + '>' +
+      (S.busy ? '<span class="pn-spin"></span> در حال حذف…' : 'حذف نمایندگی') + '</button>' +
+    '<button class="pn-btn pn-btn--soft" data-close>انصراف</button></div>';
+
+  return html;
+}
+
+/** یک ردیف خلاصه با آیکون کنار متن. */
+function delRow(icon, html) {
+  return '<div class="pn-del__i pn-del__i--ic">' + icon + '<div>' + html + '</div></div>';
+}
+
+/** دکمه‌ی حذف فقط وقتی فعال است که نام درست باشد و لغو نوبت‌های آینده (اگر هست) تأیید شده باشد. */
+function agDeleteReady() {
+  var m = S.modal;
+
+  if (!m || !m.agDelete || !m.preview || m.preview.error || S.busy) { return false; }
+  if (m.confirmTitle !== m.agDelete.title) { return false; }
+
+  return !(m.preview.future || []).length || !!m.cancelFuture;
+}
+
+function agDeleteOpen(agency) {
+  S.modal = { agDelete: agency, confirmTitle: '', preview: null, cancelFuture: false };
+  paintModal();
+
+  get('panel/admin/branch/delete-check?id=' + agency.id).then(function (r) {
+    if (!S.modal || !S.modal.agDelete || S.modal.agDelete.id !== agency.id) { return; }
+    S.modal.preview = r.success === false ? { error: r.message || 'بررسی ناموفق بود.' } : r;
+    paintModal();
+  });
 }
 
 function deleteAgency() {
-  if (S.busy || !S.modal || !S.modal.agDelete) { return; }
+  if (!agDeleteReady()) { return; }
   var m = S.modal;
   S.busy = true; paintModal();
-  post('panel/admin/branch/delete', { id: m.agDelete.id, confirmTitle: m.confirmTitle }).then(function (r) {
+  post('panel/admin/branch/delete', { id: m.agDelete.id, confirmTitle: m.confirmTitle, cancelFuture: m.cancelFuture ? 1 : 0 }).then(function (r) {
     S.busy = false;
-    if (r.success === false) { toast(r.message, 'bad'); paintModal(); return; }
+
+    if (r.success === false) {
+      toast(r.message, 'bad');
+
+      // وضعیت عوض شده (نوبت تازه، شارژ نیمه‌کاره): پیش‌نمایش دوباره
+      if (S.modal && S.modal.agDelete) { agDeleteOpen(m.agDelete); S.modal.confirmTitle = m.confirmTitle; }
+      return;
+    }
+
     S.modal = null; S.agencies = null;
     toast(r.message, 'ok');
     if (Number(ctx().branchId) === Number(m.agDelete.id)) { switchBranch(0, 'agencies'); }
@@ -4453,7 +4546,7 @@ function bind() {
     if (e.target && e.target.id === 'ag-delete-title' && S.modal && S.modal.agDelete) {
       S.modal.confirmTitle = e.target.value;
       var delButton = $('[data-ag-delete-confirm]');
-      if (delButton) { delButton.disabled = S.busy || S.modal.confirmTitle !== S.modal.agDelete.title; }
+      if (delButton) { delButton.disabled = !agDeleteReady(); }
     }
 
     var id = e.target.id, p = {'bp-address':'address','bp-phone':'phone','bp-lat':'lat','bp-lng':'lng'};
@@ -5045,7 +5138,7 @@ function bind() {
     if ((el = up('[data-ag-delete]'))) {
       e.preventDefault();
       var deleting = findAgency(Number(el.getAttribute('data-ag-delete')));
-      if (deleting && deleting.type === 'agency') { S.modal = { agDelete: deleting, confirmTitle: '' }; paintModal(); }
+      if (deleting && deleting.type === 'agency') { agDeleteOpen(deleting); }
       return;
     }
     if (up('[data-ag-delete-confirm]')) { e.preventDefault(); deleteAgency(); return; }
@@ -5186,6 +5279,12 @@ function bind() {
         editingAgency.photo = j.poster || '';
         paintModal();
       });
+    }
+
+    if (e.target && e.target.id === 'ag-del-cancel' && S.modal && S.modal.agDelete) {
+      S.modal.cancelFuture = !!e.target.checked;
+      var db = $('[data-ag-delete-confirm]');
+      if (db) { db.disabled = !agDeleteReady(); }
     }
 
     // مدیر سایت: نمایش پنل یک شعبه‌ی دیگر

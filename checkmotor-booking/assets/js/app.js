@@ -467,7 +467,7 @@ function branchCard(b) {
   return '<article class="cmb-branch' + (off ? ' is-off' : '') + (selected ? ' is-selected' : '') + '">' +
     '<div class="cmb-branch__cover">' +
       (b.photo ? '<img src="' + esc(b.photo) + '" alt="' + esc((b.photoAuto ? 'نشان اختصاصی ' : 'تصویر ') + b.title) + '" width="640" height="320" loading="lazy">' : I.engine) +
-      '<span class="cmb-branch__kind">' + (b.type === 'agency' ? 'نمایندگی چک موتور' : 'مرکز اصلی چک موتور') + '</span>' +
+      '<span class="cmb-branch__kind">' + (b.type === 'agency' ? 'تأییدشده توسط چک موتور' : 'مرکز اصلی چک موتور') + '</span>' +
     '</div>' +
     '<div class="cmb-branch__body">' +
       '<div class="cmb-branch__heading"><h3 class="cmb-branch__t">' + esc(b.title) + '</h3>' +

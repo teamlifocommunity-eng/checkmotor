@@ -883,54 +883,242 @@ class CMB_Branches {
 		} finally { CMB_Branch_Wallet::unlock( (int) $branch_id, $lock ); }
 	}
 
-	/** Delete the agency account, retaining booking and ledger references for the audit trail. */
-	public static function delete( $branch_id, $by = 0 ) {
+	/**
+	 * پیش‌نمایش حذف: دقیقاً چه چیزی با حذف این نمایندگی انجام می‌شود.
+	 * هیچ چیزی تغییر نمی‌کند.
+	 *
+	 * @return array|WP_Error
+	 */
+	public static function delete_preview( $branch_id ) {
 		global $wpdb;
-		if ( ! current_user_can( 'manage_options' ) ) {
-			return new WP_Error( 'cmb_branch_forbidden', 'حذف نمایندگی فقط با مدیر کل است.', array( 'status' => 403 ) );
-		}
+
 		$b = self::get( $branch_id );
+
 		if ( ! $b || ! self::is_agency( $b ) || 'deleted' === self::status( $b ) ) {
 			return new WP_Error( 'cmb_branch_delete', 'فقط نمایندگی موجود را می‌توان حذف کرد؛ مرکز اصلی حذف نمی‌شود.', array( 'status' => 409 ) );
 		}
-		$lock = CMB_Branch_Wallet::lock( (int) $b->id );
+
+		$id     = (int) $b->id;
+		$bt     = cmb_table( 'bookings' );
+		$busy   = cmb_occupying_sql();
+		$rows   = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$bt} WHERE branch_id = %d AND {$busy} AND booking_date >= %s ORDER BY booking_date ASC, id ASC", $id, cmb_today() ) ); // phpcs:ignore
+		$future = array();
+
+		foreach ( (array) $rows as $r ) {
+			$svc      = CMB_Services::get_service( (int) $r->service_id );
+			$future[] = array(
+				'code'    => (string) $r->tracking_code,
+				'date'    => cmb_fa_num( cmb_jalali_date( (string) $r->booking_date, 'full' ) ),
+				'block'   => cmb_block_label( $r->block_key ),
+				'service' => $svc ? (string) $svc->title : '',
+				'name'    => (string) $r->customer_name,
+				'paid'    => ! empty( $r->deposit_amount ) && 'paid' === (string) $r->pay_status ? (int) $r->deposit_amount : 0,
+			);
+		}
+
+		$lt      = cmb_table( 'branch_ledger' );
+		$topups  = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COALESCE(SUM(amount),0) FROM {$lt} WHERE branch_id = %d AND type = 'topup' AND status = 'done'", $id ) ); // phpcs:ignore
+		$open    = self::open_topups( $id );
+		$users   = array();
+
+		foreach ( self::users( $id ) as $u ) {
+			$users[] = array( 'name' => (string) $u['name'], 'role' => (string) $u['role'] );
+		}
+
+		return array(
+			'id'      => $id,
+			'title'   => (string) $b->title,
+			'future'  => $future,
+			'wallet'  => CMB_Branch_Wallet::summary( $id ),
+			'topups'  => $topups,
+			'pending' => $open['count'],
+			'wait'    => $open['wait'],
+			'users'   => $users,
+		);
+	}
+
+	/**
+	 * حذف کامل نمایندگی در یک مرحله.
+	 *
+	 *   · شارژهای نیمه‌کاره‌ی کیف پول همین حالا از درگاه پرسیده می‌شوند؛ فقط
+	 *     شارژی که نتیجه‌اش واقعاً معلوم نیست (پرداخت در جریان) جلوی حذف را
+	 *     می‌گیرد، تا پولی گم نشود.
+	 *   · نوبت‌های آینده، اگر مدیر تأیید کرده باشد (cancel_future)، مثل لغو
+	 *     مدیر سایت لغو می‌شوند: بیعانه به کیف پول مشتری، هزینه‌ی نمایندگی
+	 *     آزاد، پیامک لغو به مشتری.
+	 *   · هزینه‌های بلوکه‌ی باقی‌مانده (نوبت‌های گذشته‌ای که هنوز تعیین وضعیت
+	 *     نشده‌اند) آزاد می‌شوند و مانده‌ی کیف پول با یک ردیف «تسویه‌ی حذف» در
+	 *     دفتر صفر می‌شود. دفتر نمایندگی حذف‌شده از این به بعد ثابت می‌ماند.
+	 *   · نامک آزاد می‌شود تا بتوان نمایندگی تازه‌ای با همان نامک ساخت.
+	 *   · دسترسی پنل کاربرانش بسته می‌شود؛ حساب مشتری‌شان و همه‌ی سوابق نوبت
+	 *     و مالی می‌ماند.
+	 *
+	 * @param array $args cancel_future: نوبت‌های آینده لغو شوند.
+	 *
+	 * @return array|WP_Error { cancelled, settled, users }
+	 */
+	public static function delete( $branch_id, $by = 0, array $args = array() ) {
+		global $wpdb;
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return new WP_Error( 'cmb_branch_forbidden', 'حذف نمایندگی فقط با مدیر کل است.', array( 'status' => 403 ) );
+		}
+
+		$b = self::get( $branch_id );
+
+		if ( ! $b || ! self::is_agency( $b ) || 'deleted' === self::status( $b ) ) {
+			return new WP_Error( 'cmb_branch_delete', 'فقط نمایندگی موجود را می‌توان حذف کرد؛ مرکز اصلی حذف نمی‌شود.', array( 'status' => 409 ) );
+		}
+
+		$id = (int) $b->id;
+
+		// ۱) شارژهای نیمه‌کاره: نتیجه همین حالا پرسیده می‌شود (بیرون از قفل؛ واریز خودش قفل دارد)
+		$open = self::resolve_topups( $id );
+
+		if ( $open['count'] > 0 ) {
+			$msg = $open['wait'] > 0
+				? sprintf( 'یک شارژ کیف پول این نمایندگی هنوز در درگاه باز است؛ شاید مدیر نمایندگی همین حالا در حال پرداخت باشد. درگاه تا حدود %s دقیقه‌ی دیگر نتیجه را قطعی می‌کند؛ بعد از آن دوباره «حذف نمایندگی» را بزنید.', cmb_fa_num( $open['wait'] ) )
+				: 'درگاه پرداخت برای بررسی نتیجه‌ی شارژ کیف پول این نمایندگی جواب نداد؛ چند دقیقه‌ی دیگر دوباره «حذف نمایندگی» را بزنید.';
+
+			return new WP_Error( 'cmb_branch_pending_topup', $msg, array( 'status' => 409, 'wait' => $open['wait'] ) );
+		}
+
+		// ۲) نوبت‌های آینده
+		$bt     = cmb_table( 'bookings' );
+		$busy   = cmb_occupying_sql();
+		$future = array_map( 'intval', (array) $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$bt} WHERE branch_id = %d AND {$busy} AND booking_date >= %s", $id, cmb_today() ) ) ); // phpcs:ignore
+
+		if ( $future && empty( $args['cancel_future'] ) ) {
+			return new WP_Error(
+				'cmb_branch_has_future',
+				sprintf( 'این نمایندگی %s نوبت آینده دارد. برای حذف، لغو آن‌ها را هم تأیید کنید.', cmb_fa_num( count( $future ) ) ),
+				array( 'status' => 409, 'count' => count( $future ) )
+			);
+		}
+
+		// از همین لحظه نوبت تازه‌ای نمی‌گیرد
+		$wpdb->update( cmb_table( 'branches' ), array( 'status' => 'inactive', 'is_active' => 0 ), array( 'id' => $id ) );
+		self::flush( $id );
+
+		$failed = array();
+
+		foreach ( $future as $bid ) {
+			$res = CMB_Bookings::set_status( $bid, 'cancelled', array( 'fee' => 'release' ) );
+
+			if ( is_wp_error( $res ) ) {
+				$row      = CMB_Bookings::get( $bid );
+				$failed[] = ( $row ? $row->tracking_code : '#' . $bid ) . ': ' . $res->get_error_message();
+			}
+		}
+
+		if ( $failed ) {
+			return new WP_Error( 'cmb_branch_cancel_failed', 'این نوبت‌ها لغو نشدند و نمایندگی حذف نشد (غیرفعال ماند): ' . implode( ' — ', $failed ), array( 'status' => 409 ) );
+		}
+
+		$lock = CMB_Branch_Wallet::lock( $id );
+
 		if ( 'busy' === $lock ) {
 			return new WP_Error( 'cmb_busy', 'عملیات دیگری برای این نمایندگی در حال انجام است؛ دوباره تلاش کنید.', array( 'status' => 503 ) );
 		}
+
 		try {
-			$pending_topups = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM " . cmb_table( 'payments' ) . " WHERE branch_id = %d AND kind = 'btopup' AND status IN ('created','requested')", (int) $b->id ) ); // phpcs:ignore
-			if ( $pending_topups > 0 ) {
-				return new WP_Error( 'cmb_branch_pending_topup', 'نتیجه شارژ کیف پول این نمایندگی هنوز مشخص نشده است. پس از تعیین نتیجه پرداخت، حذف را انجام دهید.', array( 'status' => 409 ) );
+			// ۳) هزینه‌های بلوکه‌ی باقی‌مانده و تسویه‌ی کیف پول
+			$settled = CMB_Branch_Wallet::close( $id, (int) $by );
+
+			if ( is_wp_error( $settled ) ) {
+				return $settled;
 			}
-			$future = self::future_count( (int) $b->id );
-			$money = CMB_Branch_Wallet::summary( (int) $b->id );
-			if ( $future > 0 || $money['held'] > 0 ) {
-				return new WP_Error( 'cmb_branch_has_obligations', 'این نمایندگی نوبت فعال یا مبلغ بلوکه دارد. ابتدا نوبت‌ها را تعیین تکلیف کنید، سپس حذف را انجام دهید.', array( 'status' => 409, 'count' => $future ) );
-			}
-			if ( 0 !== (int) $money['total'] ) {
-				return new WP_Error( 'cmb_branch_has_balance', 'کیف پول نمایندگی هنوز موجودی دارد. ابتدا از «تغییر موجودی» تسویه و دلیل آن را ثبت کنید، سپس نمایندگی را حذف کنید.', array( 'status' => 409 ) );
-			}
-			if ( false === $wpdb->update( cmb_table( 'branches' ), array( 'status' => 'deleted', 'is_active' => 0 ), array( 'id' => (int) $b->id ) ) ) {
+
+			// ۴) حذف، با آزاد شدن نامک (حداکثر ۶۰ نویسه)
+			$tag  = '--deleted-' . $id;
+			$slug = substr( (string) $b->slug, 0, 60 - strlen( $tag ) ) . $tag;
+
+			if ( false === $wpdb->update( cmb_table( 'branches' ), array( 'status' => 'deleted', 'is_active' => 0, 'slug' => $slug ), array( 'id' => $id ) ) ) {
 				return new WP_Error( 'cmb_db_error', 'حذف نمایندگی ذخیره نشد؛ دوباره تلاش کنید.', array( 'status' => 500 ) );
 			}
-			// Query all attached users, including users without the plugin role.
-			foreach ( get_users( array( 'meta_key' => 'cmb_branch_id', 'meta_value' => (string) $b->id ) ) as $user ) {
-				if ( user_can( $user, 'manage_options' ) ) { continue; }
+
+			// همه‌ی کاربران وصل، حتی بدون نقش افزونه
+			$users = 0;
+
+			foreach ( get_users( array( 'meta_key' => 'cmb_branch_id', 'meta_value' => (string) $id ) ) as $user ) {
+				if ( user_can( $user, 'manage_options' ) ) {
+					continue;
+				}
+
 				$user->remove_role( CMB_Operators_Role::ROLE );
 				$user->remove_cap( CMB_Operators_Role::CAP );
-				if ( ! $user->roles ) { $user->add_role( get_role( 'cmb_customer' ) ? 'cmb_customer' : 'subscriber' ); }
+
+				if ( ! $user->roles ) {
+					$user->add_role( get_role( 'cmb_customer' ) ? 'cmb_customer' : 'subscriber' );
+				}
+
 				update_user_meta( $user->ID, 'cmb_branch_id', 0 );
 				delete_user_meta( $user->ID, 'cmb_branch_role' );
-				if ( class_exists( 'WP_Session_Tokens' ) ) { WP_Session_Tokens::get_instance( $user->ID )->destroy_all(); }
+
+				if ( class_exists( 'WP_Session_Tokens' ) ) {
+					WP_Session_Tokens::get_instance( $user->ID )->destroy_all();
+				}
+
+				$users++;
 			}
-			delete_metadata( 'user', 0, 'cmb_panel_branch', (string) $b->id, true );
-			self::flush( (int) $b->id );
-			delete_transient( 'cmb_services_' . (int) $b->id );
-			cmb_log( 'Agency account deleted (history retained)', array( 'branch' => (int) $b->id, 'by' => (int) $by ) );
-			return true;
+
+			delete_metadata( 'user', 0, 'cmb_panel_branch', (string) $id, true );
+			self::flush( $id );
+			delete_transient( 'cmb_services_' . $id );
+			cmb_log( 'Agency deleted', array( 'branch' => $id, 'by' => (int) $by, 'cancelled' => count( $future ), 'settled' => $settled, 'users' => $users ) );
+
+			return array(
+				'cancelled' => count( $future ),
+				'settled'   => (int) $settled,
+				'users'     => $users,
+			);
 		} finally {
-			CMB_Branch_Wallet::unlock( (int) $b->id, $lock );
+			CMB_Branch_Wallet::unlock( $id, $lock );
 		}
+	}
+
+	/**
+	 * شارژهای کیف پولی که نتیجه‌شان در سیستم ثبت نشده: «ساخته‌شده» بدون
+	 * درخواست به درگاه (قدیمی‌تر از ده دقیقه) ناموفق می‌شود؛ «درخواست‌شده» از
+	 * درگاه پرسیده می‌شود (پرداخت‌شده‌ها همین حالا به کیف پول می‌آیند).
+	 *
+	 * @return array { count: شارژهایی که هنوز نتیجه‌شان معلوم نیست، wait: دقیقه تا قطعی شدن }
+	 */
+	protected static function resolve_topups( $branch_id ) {
+		global $wpdb;
+
+		$pt  = cmb_table( 'payments' );
+		$old = gmdate( 'Y-m-d H:i:s', cmb_now()->getTimestamp() - 10 * MINUTE_IN_SECONDS );
+
+		$wpdb->query( $wpdb->prepare( "UPDATE {$pt} SET status = 'failed', updated_at = %s WHERE branch_id = %d AND kind = 'btopup' AND status = 'created' AND created_gmt < %s", current_time( 'mysql' ), (int) $branch_id, $old ) ); // phpcs:ignore
+
+		foreach ( (array) $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$pt} WHERE branch_id = %d AND kind = 'btopup' AND status = 'requested'", (int) $branch_id ) ) as $p ) { // phpcs:ignore
+			CMB_Payments::verify_payment( $p, 'reconcile' );
+		}
+
+		return self::open_topups( $branch_id );
+	}
+
+	/**
+	 * شارژهای بی‌نتیجه و زمان قطعی شدنشان. درگاه تا نیم ساعت پس از شروع،
+	 * «پرداخت نشد» را قطعی نمی‌داند (CMB_Payments::verify_locked)؛ مشتری
+	 * ممکن است هنوز در صفحه‌ی بانک باشد.
+	 *
+	 * @return array { count, wait }
+	 */
+	public static function open_topups( $branch_id ) {
+		global $wpdb;
+
+		$pt   = cmb_table( 'payments' );
+		$rows = (array) $wpdb->get_col( $wpdb->prepare( "SELECT created_gmt FROM {$pt} WHERE branch_id = %d AND kind = 'btopup' AND status IN ('created','requested')", (int) $branch_id ) ); // phpcs:ignore
+		$wait = 0;
+
+		foreach ( $rows as $created ) {
+			$left = (int) ceil( ( strtotime( $created . ' UTC' ) + 30 * MINUTE_IN_SECONDS - cmb_now()->getTimestamp() ) / MINUTE_IN_SECONDS );
+			$wait = max( $wait, $left );
+		}
+
+		return array( 'count' => count( $rows ), 'wait' => $wait );
 	}
 
 	/** نوبت‌های آینده‌ی فعال (برای هشدار پیش از غیرفعال‌سازی یا تعطیلی). */

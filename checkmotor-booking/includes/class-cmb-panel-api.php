@@ -221,6 +221,7 @@ class CMB_Panel_Api {
 			'panel/admin/branch'      => array( 'POST', 'admin_branch_save', $admin ),
 			'panel/admin/branch/status' => array( 'POST', 'admin_branch_status', $admin ),
 			'panel/admin/branch/delete' => array( 'POST', 'admin_branch_delete', $admin ),
+			'panel/admin/branch/delete-check' => array( 'GET', 'admin_branch_delete_check', $admin ),
 			'panel/admin/branch/users' => array( 'POST', 'admin_branch_users', $admin ),
 			'panel/admin/branch/adjust' => array( 'POST', 'admin_branch_adjust', $admin ),
 			'panel/admin/fee-refund'  => array( 'POST', 'admin_fee_refund', $admin ),
@@ -2125,8 +2126,32 @@ class CMB_Panel_Api {
 		if ( ! $b || (string) $request->get_param( 'confirmTitle' ) !== (string) $b->title ) {
 			return new WP_Error( 'cmb_delete_confirm', 'برای تأیید حذف، نام کامل نمایندگی را وارد کنید.', array( 'status' => 400 ) );
 		}
-		$result = CMB_Branches::delete( $id, get_current_user_id() );
-		return is_wp_error( $result ) ? $result : rest_ensure_response( array( 'success' => true, 'message' => 'نمایندگی حذف و دسترسی کاربران آن بسته شد؛ سوابق نوبت‌ها و مالی محفوظ است.' ) );
+		$result = CMB_Branches::delete( $id, get_current_user_id(), array( 'cancel_future' => (bool) $request->get_param( 'cancelFuture' ) ) );
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		$parts = array( sprintf( '«%s» حذف شد.', $b->title ) );
+
+		if ( $result['cancelled'] ) {
+			$parts[] = sprintf( '%s نوبت آینده لغو و به مشتری‌ها پیامک داده شد.', cmb_fa_num( $result['cancelled'] ) );
+		}
+
+		if ( $result['settled'] ) {
+			$parts[] = sprintf( 'موجودی %s کیف پول تسویه و در دفتر ثبت شد.', cmb_toman( abs( $result['settled'] ) ) );
+		}
+
+		$parts[] = 'سوابق نوبت‌ها و مالی محفوظ است.';
+
+		return rest_ensure_response( array( 'success' => true, 'message' => implode( ' ', $parts ) ) + $result );
+	}
+
+	/** پیش‌نمایش حذف نمایندگی: نوبت‌های آینده، کیف پول، کاربران. */
+	public function admin_branch_delete_check( WP_REST_Request $request ) {
+		$out = CMB_Branches::delete_preview( (int) $request->get_param( 'id' ) );
+
+		return is_wp_error( $out ) ? $out : rest_ensure_response( $out );
 	}
 
 	/** افزودن یا حذف مدیر/اپراتور یک شعبه. */

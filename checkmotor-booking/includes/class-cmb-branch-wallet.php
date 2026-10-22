@@ -282,6 +282,11 @@ class CMB_Branch_Wallet {
 			return true;
 		}
 
+		// دفتر نمایندگی حذف‌شده تسویه و بسته شده؛ تعیین وضعیت بعدی نوبت‌هایش در آن اثری ندارد
+		if ( 'deleted' === CMB_Branches::status( (int) $row->branch_id ) ) {
+			return true;
+		}
+
 		$status = (string) $booking->status;
 		$want   = 'held';
 
@@ -369,12 +374,16 @@ class CMB_Branch_Wallet {
 
 		$t   = cmb_table( 'branch_ledger' );
 		$b   = cmb_table( 'bookings' );
+		$br  = cmb_table( 'branches' );
 		$now = cmb_now()->format( 'Y-m-d H:i:s' );
+
+		// دفتر نمایندگی حذف‌شده بسته است
+		$open = "branch_id NOT IN ( SELECT id FROM {$br} WHERE status = 'deleted' )";
 
 		$out['captured'] = (int) $wpdb->query(
 			$wpdb->prepare(
 				"UPDATE {$t} SET status = 'done', updated_at = %s
-				 WHERE type = 'fee' AND status = 'held' AND booking_id IN (
+				 WHERE type = 'fee' AND status = 'held' AND {$open} AND booking_id IN (
 					SELECT id FROM {$b} WHERE status IN ('done','no_show')
 						OR ( status = 'cancelled' AND fee_status = 'captured' )
 						OR ( status = 'cancelled' AND cancelled_by = 'branch' )
@@ -386,7 +395,7 @@ class CMB_Branch_Wallet {
 		$out['released'] = (int) $wpdb->query(
 			$wpdb->prepare(
 				"UPDATE {$t} SET status = 'void', updated_at = %s
-				 WHERE type = 'fee' AND status = 'held' AND (
+				 WHERE type = 'fee' AND status = 'held' AND {$open} AND (
 					booking_id NOT IN ( SELECT id FROM {$b} )
 					OR booking_id IN (
 						SELECT id FROM {$b} WHERE status = 'expired'
@@ -519,6 +528,48 @@ class CMB_Branch_Wallet {
 	}
 
 	/**
+	 * تسویه‌ی کیف پول هنگام حذف نمایندگی (فراخواننده قفل کیف پول را دارد).
+	 *
+	 * هزینه‌های هنوز بلوکه (نوبت‌های گذشته‌ای که تعیین وضعیت نشده‌اند) آزاد
+	 * می‌شوند و مانده با یک ردیف «تسویه‌ی حذف» صفر می‌شود؛ پس جمع دفتر صفر و
+	 * سابقه‌ی همه‌ی ردیف‌ها سر جایش است.
+	 *
+	 * @return int|WP_Error مبلغی که تسویه شد (مثبت یعنی مانده‌ی مثبت صفر شد).
+	 */
+	public static function close( $branch_id, $by = 0 ) {
+		global $wpdb;
+
+		$t   = cmb_table( 'branch_ledger' );
+		$b   = cmb_table( 'bookings' );
+		$now = cmb_now()->format( 'Y-m-d H:i:s' );
+		$ids = array_map( 'intval', (array) $wpdb->get_col( $wpdb->prepare( "SELECT booking_id FROM {$t} WHERE branch_id = %d AND type = 'fee' AND status = 'held'", (int) $branch_id ) ) ); // phpcs:ignore
+
+		if ( $ids ) {
+			$wpdb->query( $wpdb->prepare( "UPDATE {$t} SET status = 'void', updated_at = %s WHERE branch_id = %d AND type = 'fee' AND status = 'held'", $now, (int) $branch_id ) ); // phpcs:ignore
+			$wpdb->query( "UPDATE {$b} SET fee_status = 'released' WHERE id IN (" . implode( ',', $ids ) . ')' ); // phpcs:ignore
+		}
+
+		$total = self::totals( $branch_id );
+		$left  = (int) $total['total'];
+
+		if ( 0 === $left ) {
+			return 0;
+		}
+
+		$row = self::insert(
+			array(
+				'branch_id' => (int) $branch_id,
+				'amount'    => -$left,
+				'type'      => 'close',
+				'note'      => 'تسویه‌ی کیف پول هنگام حذف نمایندگی',
+				'by_user'   => (int) $by,
+			)
+		);
+
+		return is_wp_error( $row ) ? $row : $left;
+	}
+
+	/**
 	 * پول شارژ رسید (برنده‌ی verify). تکرارش (رفرش، reconcile) بی‌اثر است.
 	 *
 	 * @return int|WP_Error
@@ -535,6 +586,11 @@ class CMB_Branch_Wallet {
 
 		if ( ! $branch || $amount < 1 ) {
 			return new WP_Error( 'cmb_bw_topup', 'پرداخت شارژ شعبه‌ی معتبری ندارد.', array( 'status' => 400 ) );
+		}
+
+		// پول واقعی است و ثبت می‌شود، ولی مدیر باید بداند و به نمایندگی برگرداند
+		if ( 'deleted' === CMB_Branches::status( $branch ) && class_exists( 'CMB_Debug' ) ) {
+			CMB_Debug::log( 'error', 'server', 'btopup_deleted', sprintf( 'شارژ %s تومانی برای نمایندگی حذف‌شده رسید؛ این مبلغ را بیرون از سیستم به نمایندگی برگردانید.', number_format( $amount ) ), array( 'branch_id' => $branch, 'context' => array( 'payment' => (int) $payment->id ) ) );
 		}
 
 		$id = self::insert(
@@ -924,6 +980,7 @@ class CMB_Branch_Wallet {
 			'fee'     => 'هزینه‌ی نوبت',
 			'refund'  => 'برگشت هزینه',
 			'adjust'  => 'تغییر دستی',
+			'close'   => 'تسویه‌ی حذف',
 		);
 	}
 

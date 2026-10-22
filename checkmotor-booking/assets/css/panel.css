@@ -1339,3 +1339,15 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
   #cmb-panel .pn-head__act.pn-quickacts > * { min-width:0; white-space:normal; }
 }
 @media(prefers-reduced-motion:reduce) { #cmb-panel .pn-modal { animation:none; } }
+
+/* ═══ حذف نمایندگی: خلاصه‌ی کارهایی که انجام می‌شود ═══ */
+#cmb-panel .pn-del { display: grid; gap: 8px; margin: 14px 0 16px; }
+#cmb-panel .pn-del__i { display: block; padding: 10px 12px; border: 1px solid #e3e9ef; border-radius: 10px; background: #f8fafb; font-size: var(--t-sb); line-height: 1.8; overflow-wrap: anywhere; }
+#cmb-panel .pn-del__i--ic { display: flex; gap: 8px; align-items: flex-start; }
+#cmb-panel .pn-del__i--ic > svg { flex: 0 0 auto; width: 17px; height: 17px; margin-top: 5px; color: var(--ink-3); }
+#cmb-panel .pn-del__i--ic > div { min-width: 0; }
+#cmb-panel .pn-del__i.is-warn { border-color: #f1c27d; background: #fff8ec; }
+#cmb-panel .pn-del__list { margin: 6px 0 8px; padding-inline-start: 18px; font-size: var(--t-cp); color: var(--ink-2); }
+#cmb-panel .pn-del__list li { margin: 2px 0; }
+#cmb-panel .pn-del__ok { align-items: flex-start; font-weight: 600; }
+#cmb-panel .pn-del__ok input { margin-top: 4px; flex: 0 0 auto; }
