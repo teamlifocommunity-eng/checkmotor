@@ -1282,14 +1282,14 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
 }
 
 /* 1.43.5: compact branch list — the whole list fits on a phone screen. */
-.cmb-picker { padding-top:12px; padding-bottom:24px; }
-.cmb-picker__bar { display:flex; gap:8px; align-items:stretch; }
+.cmb-picker { padding-bottom:24px; }
+.cmb-picker__bar { display:flex; gap:8px; align-items:stretch; margin-top:12px; }
 .cmb-picker__q { position:relative; flex:1; min-width:0; margin:0; }
 .cmb-picker__q > svg { position:absolute; inset-inline-start:14px; top:50%; width:18px; height:18px; transform:translateY(-50%); color:#7b8a97; pointer-events:none; }
 .cmb-picker__q .cmb-in { width:100%; min-height:48px; padding-inline-start:42px; border-radius:12px; }
-.cmb-picker__near { display:flex; align-items:center; gap:6px; flex:none; min-height:48px; padding:0 14px; border:1.5px solid #a53c14; border-radius:12px; background:#fff7f3; color:#8a3110; font:inherit; font-size:14px; font-weight:800; white-space:nowrap; cursor:pointer; }
+.cmb-picker__near { display:flex; align-items:center; gap:6px; flex:none; min-height:48px; padding:0 14px; border:1.5px solid #d8e1e9; border-radius:12px; background:#fff; color:#35566f; font:inherit; font-size:14px; font-weight:800; white-space:nowrap; cursor:pointer; }
 .cmb-picker__near svg { width:20px; height:20px; flex:none; }
-.cmb-picker__near.is-on { background:#a53c14; color:#fff; }
+.cmb-picker__near.is-on { border-color:#a53c14; background:#fff7f3; color:#8a3110; }
 .cmb-picker__near[aria-busy] svg { animation:cmbspin 1.2s linear infinite; }
 .cmb-picker__chips { display:flex; gap:8px; margin:10px calc(-1 * var(--pad)) 0; padding:2px var(--pad) 4px; overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
 .cmb-picker__chips::-webkit-scrollbar { display:none; }
@@ -1299,21 +1299,25 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
 .cmb-pchip.is-on { background:#264055; border-color:#264055; color:#fff; }
 .cmb-pchip.is-on small { color:#c9d6e0; }
 .cmb-pchip:disabled { opacity:.45; cursor:default; }
-.cmb-picker__results { display:flex; align-items:center; gap:12px; min-height:40px; margin-top:4px; font-size:13px; color:var(--ink-2); }
+.cmb-picker__results { display:flex; align-items:center; gap:12px; min-height:32px; margin-top:4px; font-size:13px; color:var(--ink-2); }
 .cmb-picker__results > span { margin-inline-end:auto; }
-.cmb-brlist { list-style:none; margin:10px 0 0; padding:0; display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
+.cmb-brlist { list-style:none; margin:6px 0 0; padding:0; display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
 .cmb-branch { display:flex; align-items:stretch; min-width:0; background:#fff; border:1px solid #d8e1e9; border-radius:14px; box-shadow:0 1px 4px #13202b08; overflow:hidden; transition:border-color .15s, box-shadow .15s; }
 .cmb-branch:hover { border-color:#aabcc9; box-shadow:0 4px 12px #13202b0d; }
 .cmb-branch.is-selected { border-color:#a53c14; box-shadow:0 0 0 1px #a53c14; }
 .cmb-branch.is-nearest { border-color:#e3b39e; }
-.cmb-branch__select { flex:1; min-width:0; display:flex; align-items:center; gap:12px; padding:12px; margin:0; border:0; background:none; color:inherit; font:inherit; text-align:start; cursor:pointer; }
+.cmb-branch__select { flex:1; min-width:0; display:flex; align-items:center; gap:10px; padding:12px; margin:0; border:0; background:none; color:inherit; font:inherit; text-align:start; cursor:pointer; }
 .cmb-branch__select:active { background:#f5f7f9; }
-.cmb-branch__ph { position:relative; flex:none; display:grid; place-items:center; width:56px; height:56px; border-radius:12px; overflow:hidden; background:#1c2e3d; color:#b7deeb; }
+.cmb-branch__ph { position:relative; flex:none; display:grid; place-items:center; width:48px; height:48px; border-radius:12px; overflow:hidden; background:#1c2e3d; color:#b7deeb; }
 .cmb-branch__ph img { display:block; width:100%; height:100%; object-fit:cover; }
-.cmb-branch__ph svg { width:28px; height:28px; }
+.cmb-branch__ph svg { width:24px; height:24px; }
 .cmb-branch__body { flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
 .cmb-branch__t { font-size:15px; font-weight:800; line-height:1.6; color:var(--ink); }
-.cmb-branch__tags { display:flex; flex-wrap:wrap; gap:4px; }
+.cmb-branch__row { display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap; }
+.cmb-branch__tags { display:flex; flex-wrap:wrap; gap:4px; min-width:0; }
+.cmb-branch__go { display:inline-flex; align-items:center; gap:2px; margin-inline-start:auto; padding:2px 8px 2px 6px; border-radius:999px; background:#c94a14; color:#fff; font-size:12px; font-weight:800; line-height:1.9; white-space:nowrap; transition:background .15s; }
+.cmb-branch__go svg { width:14px; height:14px; }
+.cmb-branch__select:hover .cmb-branch__go { background:#ad3d0f; }
 .cmb-branch__tag { display:inline-flex; align-items:center; gap:3px; padding:1px 8px; border-radius:999px; background:#eaf4ee; color:#1d6b43; font-size:11px; font-style:normal; font-weight:700; line-height:1.9; }
 .cmb-branch__tag svg { width:12px; height:12px; }
 .cmb-branch__tag--hq { background:#fbeee7; color:#8a3110; }
@@ -1327,10 +1331,12 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
 .cmb-branch.is-off .cmb-branch__select { cursor:default; }
 .cmb-branch.is-off :is(.cmb-branch__ph,.cmb-branch__t,.cmb-branch__meta) { opacity:.6; }
 .cmb-branch__acts { flex:none; display:flex; flex-direction:column; border-inline-start:1px solid #edf1f4; }
-.cmb-branch__acts a { flex:1; display:grid; place-items:center; width:48px; min-height:44px; color:#35566f; text-decoration:none; }
+.cmb-branch__acts a { flex:1; display:grid; place-items:center; width:44px; min-height:44px; color:#8696a3; text-decoration:none; }
 .cmb-branch__acts a + a { border-top:1px solid #edf1f4; }
 .cmb-branch__acts a:hover { background:#f5f7f9; color:#a53c14; }
-.cmb-branch__acts svg { width:20px; height:20px; }
+.cmb-branch__acts svg { width:18px; height:18px; }
 /* گوشی: نشانی در صفحه‌ی شعبه و مسیریابی هست؛ ردیف کوتاه می‌ماند تا همه‌ی شعبه‌ها یک‌جا دیده شوند */
 @media (max-width:599px) { .cmb-branch__s { display:none; } .cmb-branch__select { padding:10px 12px; } }
+/* گوشی‌های باریک (۳۶۰): «رزرو» کنار برچسب بماند و ردیف بلند نشود */
+@media (max-width:379px) { .cmb-branch__select { gap:8px; padding:10px 8px; } .cmb-branch__ph { width:40px; height:40px; } .cmb-branch__acts a { width:40px; } }
 

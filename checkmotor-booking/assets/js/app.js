@@ -551,10 +551,12 @@ function branchCard(b, nearest) {
         (nearest ? '<em class="cmb-branch__near">نزدیک‌ترین</em>' : '') + '</span>' +
       '<span class="cmb-branch__body">' +
         '<span class="cmb-branch__t">' + esc(b.title) + '</span>' +
-        '<span class="cmb-branch__tags">' +
+        '<span class="cmb-branch__row"><span class="cmb-branch__tags">' +
           (selected ? '<em class="cmb-branch__tag cmb-branch__tag--sel">' + I.check + 'انتخاب فعلی</em>' : '') +
           '<em class="cmb-branch__tag' + (b.type === 'agency' ? '' : ' cmb-branch__tag--hq') + '">' + (b.type === 'agency' ? 'تأییدشده توسط چک موتور' : 'مرکز اصلی چک موتور') + '</em>' +
         '</span>' +
+        // نشانه‌ی دیداری که ردیف دکمه‌ی رزرو است؛ خود ردیف کلیک می‌خورد
+        (off ? '' : '<span class="cmb-branch__go" aria-hidden="true">رزرو' + I.chevL + '</span>') + '</span>' +
         '<span class="cmb-branch__meta">' + esc(place || 'موقعیت ثبت نشده') + (km !== null ? ' · <b>' + kmText(km) + '</b>' : '') + '</span>' +
         (off ? '<span class="cmb-branch__off">' + esc(b.unavailable || 'فعلاً نوبت نمی‌گیرد') + '</span>'
              : (b.address ? '<span class="cmb-branch__s">' + esc(b.address) + '</span>' : '')) +
@@ -596,11 +598,11 @@ function viewPicker() {
   var count = list.length;
   var nearestId = S.near && count && list[0].bookable && branchKm(list[0]) !== null ? list[0].id : 0;
   var located = !!navigator.geolocation && allBranches().some(function (b) { return b.lat != null && b.lng != null; });
-  var html = topBar('انتخاب شعبه', 'روی شعبه بزنید تا خدمات و زمان‌های خالی آن را ببینید', S.branchChosen) +
+  var html = topBar('انتخاب شعبه', 'شعبه را انتخاب کنید و نوبت بگیرید', S.branchChosen) +
     '<div class="cmb-page cmb-picker">' +
     '<div class="cmb-picker__bar">' +
       '<label class="cmb-picker__q"><span class="cmb-sr-only">جستجوی شهر، نام یا نشانی شعبه</span>' + I.search +
-        '<input class="cmb-in" id="cmb-br-q" type="search" autocomplete="off" enterkeyhint="search" placeholder="جستجوی شهر یا شعبه" value="' + esc(S.branchQ) + '"></label>' +
+        '<input class="cmb-in" id="cmb-br-q" type="search" autocomplete="off" enterkeyhint="search" placeholder="شهر یا نام شعبه" value="' + esc(S.branchQ) + '"></label>' +
       (located ? '<button type="button" class="cmb-picker__near' + (S.near ? ' is-on' : '') + '" data-branch-near' + (S.nearBusy ? ' aria-busy="true" disabled' : '') +
         ' aria-pressed="' + (S.near ? 'true' : 'false') + '" title="موقعیت شما فقط برای مرتب‌سازی همین صفحه استفاده می‌شود و جایی ذخیره نمی‌شود">' + I.locate +
         '<span>' + (S.nearBusy ? 'در حال یافتن…' : 'نزدیک من') + '</span></button>' : '') +
