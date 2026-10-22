@@ -3,7 +3,7 @@
  * Plugin Name: چک موتور — سیستم رزرو نوبت
  * Plugin URI:  https://checkmotor.ir
  * Description: سیستم رزرو نوبت آنلاین چک موتور (MVP) — ورود با کد تایید پیامکی ملی‌پیامک، تقویم ۷ روزه، شیفت صبح/بعدازظهر، پنل مدیریت نوبت‌ها.
- * Version:     1.43.3
+ * Version:     1.43.4
  * Author:      رضا امام‌حسنی
  * Text Domain: checkmotor-booking
  * Domain Path: /languages
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMB_VERSION', '1.43.3' );
+define( 'CMB_VERSION', '1.43.4' );
 define( 'CMB_FILE', __FILE__ );
 define( 'CMB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMB_URL', plugin_dir_url( __FILE__ ) );
@@ -242,6 +242,13 @@ final class CMB_Plugin {
 	public function init() {
 		// اگر نسخه‌ی دیتابیس عوض شده بود، مهاجرت انجام شود.
 		CMB_Install::maybe_upgrade();
+
+		/* ۱.۴۳.۴: انتخاب استان و شهر از فهرست پیش‌فرض شد. روی سایت‌های قبلی
+		   یک بار روشن می‌شود؛ اگر مدیر بعداً خاموشش کند، دیگر دست نمی‌خورد. */
+		if ( ! get_option( 'cmb_locmode_default' ) ) {
+			update_option( 'cmb_locmode_default', 1 );
+			CMB_Settings::update( array( 'location_mode' => 1 ) );
+		}
 	}
 
 	/**
@@ -759,7 +766,9 @@ function cmb_enqueue_panel() {
 	cmb_enqueue_location();
 	wp_enqueue_style( 'cmb-panel', CMB_URL . 'assets/css/panel.css', array(), CMB_VERSION );
 	wp_enqueue_script( 'cmb-jalali', CMB_URL . 'assets/js/jalali.js', array(), CMB_VERSION, false );
-	wp_enqueue_script( 'cmb-panel', CMB_URL . 'assets/js/panel.js', array( 'cmb-jalali', 'cmb-location', 'cmb-a11y' ), CMB_VERSION, false );
+	// استان و شهر نمایندگی‌ها از همان بانک اپ مشتری انتخاب می‌شود
+	wp_enqueue_script( 'cmb-places', CMB_URL . 'assets/js/iran-places.js', array(), CMB_VERSION, false );
+	wp_enqueue_script( 'cmb-panel', CMB_URL . 'assets/js/panel.js', array( 'cmb-jalali', 'cmb-location', 'cmb-a11y', 'cmb-places' ), CMB_VERSION, false );
 
 	$font = cmb_font_css();
 

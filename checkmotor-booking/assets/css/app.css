@@ -1366,3 +1366,60 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
   #cmb-app .cmb-termsrow .cmb-link { margin-inline-start:auto; }
   #cmb-app .cmb-actionbar--terms .cmb-actionbar__in { gap:8px; }
 }
+
+/* 1.43.4: first-visit picker — compact intro, nearest branch, map-app chooser. */
+.cmb-picker__intro p { margin:6px 0 14px; }
+.cmb-picker__steps { gap:8px; }
+.cmb-picker__steps li { padding:4px 10px 4px 12px; border-radius:999px; background:#eef2f5; }
+.cmb-picker__steps b { width:22px; height:22px; font-size:12px; }
+.cmb-picker__steps [aria-current] { background:#fbeee7; }
+.cmb-picker__filters { grid-template-columns:minmax(0,1fr) minmax(150px,220px) auto; align-items:center; }
+.cmb-picker__near { grid-column:1/-1; display:flex; align-items:center; gap:12px; width:100%; min-height:56px; padding:10px 14px; border:1.5px solid #a53c14; border-radius:12px; background:#fff7f3; color:#8a3110; font:inherit; text-align:start; cursor:pointer; }
+.cmb-picker__near svg { width:24px; height:24px; flex:none; }
+.cmb-picker__near span { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.cmb-picker__near b { font-size:15px; font-weight:800; }
+.cmb-picker__near small { font-size:12px; color:#8a5a45; }
+.cmb-picker__near.is-on { background:#a53c14; color:#fff; }
+.cmb-picker__near.is-on small { color:#ffe3d6; }
+.cmb-picker__near[aria-busy] svg { animation:cmbspin 1.2s linear infinite; }
+@keyframes cmbspin { to { transform:rotate(360deg); } }
+.cmb-picker__q { position:relative; }
+.cmb-picker__q > svg { position:absolute; inset-inline-start:14px; top:50%; width:18px; height:18px; transform:translateY(-50%); color:#7b8a97; pointer-events:none; }
+.cmb-picker__q .cmb-in { padding-inline-start:42px; }
+.cmb-picker__toggle { grid-column:auto; justify-content:center; min-height:48px; padding:0 14px; border:1px solid #d8e1e9; border-radius:10px; white-space:nowrap; font-size:13px; }
+.cmb-picker__toggle:has(input:checked) { border-color:#a53c14; background:#fff7f3; color:#8a3110; font-weight:700; }
+.cmb-picker__results { gap:14px; justify-content:flex-start; }
+.cmb-picker__results > span { margin-inline-end:auto; }
+.cmb-branch__kind { bottom:auto; top:12px; inset-inline-end:auto; inset-inline-start:12px; }
+.cmb-branch__km { position:absolute; inset-inline-start:12px; bottom:12px; display:flex; align-items:center; gap:5px; padding:5px 10px; border-radius:999px; background:#13202bd9; color:#fff; font-size:12px; font-weight:700; }
+.cmb-branch__km svg { width:14px; height:14px; }
+.cmb-picker .cmb-branch.is-nearest .cmb-branch__km { background:#a53c14; }
+.cmb-picker .cmb-branch.is-nearest { border-color:#e3b39e; }
+.cmb-sheet--map { padding-top:var(--s3); }
+.cmb-mapsheet__s { margin:4px 0 12px; font-size:13px; color:var(--ink-2); }
+.cmb-mapsheet { display:flex; flex-direction:column; gap:8px; }
+.cmb-mapsheet__i { display:flex; align-items:center; gap:12px; min-height:56px; padding:8px 12px; border:1px solid #d8e1e9; border-radius:12px; color:var(--ink); text-decoration:none; background:#fff; }
+.cmb-mapsheet__i:hover, .cmb-mapsheet__i:focus-visible { border-color:#a53c14; }
+.cmb-mapsheet__i.is-main { border-color:#a53c14; background:#fff7f3; }
+.cmb-mapsheet__ic { display:grid; place-items:center; width:38px; height:38px; flex:none; border-radius:10px; background:#eef2f5; color:#264055; }
+.cmb-mapsheet__i.is-main .cmb-mapsheet__ic { background:#a53c14; color:#fff; }
+.cmb-mapsheet__ic svg { width:20px; height:20px; }
+.cmb-mapsheet__tx { display:flex; flex-direction:column; flex:1; min-width:0; }
+.cmb-mapsheet__tx b { font-size:15px; }
+.cmb-mapsheet__tx small { font-size:12px; color:var(--ink-2); }
+.cmb-mapsheet__i > svg { width:18px; height:18px; color:#7b8a97; flex:none; }
+.cmb-mapsheet__ll { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px; font-size:12px; color:var(--ink-2); }
+.cmb-sheet--map > .cmb-btn { width:100%; }
+.cmb-location__canvas { cursor:pointer; }
+@media (max-width:600px) {
+  .cmb-picker__intro { padding:14px 0 12px; }
+  .cmb-picker__intro h1 { font-size:20px; line-height:1.5; }
+  .cmb-picker__intro p { font-size:13px; line-height:1.8; }
+  .cmb-picker__filters { grid-template-columns:minmax(0,1fr) auto; gap:10px; padding:12px; }
+  .cmb-picker__q { grid-column:1/-1; }
+  .cmb-picker__results { min-height:44px; }
+  .cmb-branch__cover { aspect-ratio:5/2; }
+  .cmb-picker .cmb-branch__body { padding:14px 16px 16px; }
+  .cmb-picker .cmb-branch__s { margin:6px 0 2px; }
+  .cmb-picker .cmb-branch__acts { margin-bottom:10px; }
+}

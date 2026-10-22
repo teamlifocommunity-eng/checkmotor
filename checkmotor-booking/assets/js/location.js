@@ -17,11 +17,11 @@ function coords(lat, lng) {
 }
 function html(o) {
   o = o || {};
-  // نمایش برای مشتری فقط با کلید نشان؛ بدون آن، لینک «مسیریابی با نشان» کافی است
+  // نمایش برای مشتری فقط با کلید نشان؛ بدون آن، دکمه‌ی «مسیریابی» کافی است
   if (!o.editable && (!coords(o.lat, o.lng) || !config.key)) { return ''; }
   var id = 'cmb-location-' + (++nextId);
   return '<section class="cmb-location" data-cmb-location data-lat="' + esc(o.lat) + '" data-lng="' + esc(o.lng) + '"' +
-    ' data-lat-input="' + esc(o.latInput || '') + '" data-lng-input="' + esc(o.lngInput || '') + '" data-editable="' + (o.editable ? '1' : '0') + '"' +
+    ' data-lat-input="' + esc(o.latInput || '') + '" data-lng-input="' + esc(o.lngInput || '') + '" data-editable="' + (o.editable ? '1' : '0') + '" data-title="' + esc(o.title || '') + '"' +
     ' aria-label="' + esc(o.editable ? 'انتخاب موقعیت مرکز' : 'موقعیت ' + (o.title || 'مرکز')) + '">' +
     '<button type="button" class="cmb-location__toggle" data-cmb-map-open aria-expanded="false" aria-controls="' + id + '">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>' +
@@ -44,7 +44,7 @@ var KEY_ERR = {
   485: 'سرویس نقشهٔ وب برای این کلید فعال نیست.'
 };
 function keyMessage(editable) {
-  if (!editable) { return 'نمایش نقشه فعلاً در دسترس نیست. از آدرس و دکمهٔ «مسیریابی با نشان» استفاده کنید.'; }
+  if (!editable) { return 'نمایش نقشه فعلاً در دسترس نیست. از آدرس و دکمهٔ «مسیریابی» استفاده کنید.'; }
   var c = keyFail.code, fix = ' در پنل نشان یک کلید از نوع «نقشهٔ وب» با دامنهٔ همین سایت بسازید و در تنظیمات چک موتور (بخش نمایندگی‌ها) بگذارید.';
   var why = !c ? 'ارتباط با نشان برای تأیید کلید نقشه برقرار نشد. اتصال اینترنت را بررسی کنید؛ اگر درست است، نوع کلید («نقشهٔ وب») و دامنه‌های مجاز آن را در پنل نشان ببینید.'
     : (KEY_ERR[c] || 'نشان کلید نقشه را نپذیرفت (کد ' + c + ').') + (c === 481 || c === 482 ? '' : fix);
@@ -125,7 +125,7 @@ function open(host) {
     return;
   }
   if (!config.key) {
-    status(host, host.dataset.editable === '1' ? 'نقشه هنوز راه‌اندازی نشده است. مدیریت سایت باید کلید وب نشان را در تنظیمات وارد کند. می‌توانید مختصات را دستی ثبت کنید.' : 'نمایش نقشه فعلاً در دسترس نیست. از آدرس و دکمهٔ «مسیریابی با نشان» استفاده کنید.');
+    status(host, host.dataset.editable === '1' ? 'نقشه هنوز راه‌اندازی نشده است. مدیریت سایت باید کلید وب نشان را در تنظیمات وارد کند. می‌توانید مختصات را دستی ثبت کنید.' : 'نمایش نقشه فعلاً در دسترس نیست. از آدرس و دکمهٔ «مسیریابی» استفاده کنید.');
     host.querySelector('.cmb-location__canvas').hidden = true;
     return;
   }
@@ -159,9 +159,13 @@ function open(host) {
         a.dispatchEvent(new Event('input', {bubbles:true})); b.dispatchEvent(new Event('input', {bubbles:true}));
         instance.set(p, false); status(host, 'موقعیت انتخاب شد؛ برای ثبت نهایی، فرم را ذخیره کنید.');
       }
+      // مشتری با زدن روی نقشه یا نشانگر، مسیریابی را در برنامه‌ی نقشه‌ی گوشی باز می‌کند
+      var go = function () { document.dispatchEvent(new CustomEvent('cmb:mapopen', { detail: { lat: point[0], lng: point[1], title: host.dataset.title || '' } })); };
       if (editable) { map.on('click', function (e) { commit([e.latlng.lat, e.latlng.lng]); }); }
+      else if (point) { map.on('click', go); }
       instance.set(point, false); instances.push(instance); map.invalidateSize();
-      status(host, editable ? (point ? 'موقعیت ثبت‌شدهٔ مرکز' : 'هنوز نقطه‌ای انتخاب نشده است.') : 'موقعیت مرکز؛ برای مسیریابی از دکمهٔ نشان استفاده کنید.');
+      if (!editable && point && instance.marker) { instance.marker.on('click', go); }
+      status(host, editable ? (point ? 'موقعیت ثبت‌شدهٔ مرکز' : 'هنوز نقطه‌ای انتخاب نشده است.') : 'برای مسیریابی با برنامهٔ نقشهٔ گوشی، روی نقشه بزنید.');
       function watch(layer) { if (layer && layer.on) { layer.on('tileerror', function () { status(host, 'دریافت نقشه ناموفق بود؛ اتصال اینترنت و دسترسی نشان را بررسی کنید. آدرس و مختصات همچنان قابل استفاده‌اند.'); }); } }
       map.eachLayer(watch); map.on('layeradd', function (e) { watch(e.layer); });
     } catch (err) {

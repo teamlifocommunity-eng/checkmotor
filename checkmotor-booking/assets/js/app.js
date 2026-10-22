@@ -63,7 +63,9 @@ var S = {
 
   /* انتخاب مرکز: فقط وقتی بیش از یک شعبه‌ی فعال هست (US-2.1). با یک
      شعبه هیچ‌چیز این بخش دیده نمی‌شود و اپ دقیقاً مثل قبل است. */
-  branchPick: false, branchChosen: false, branchQ: '', branchProvince: '', branchOpenOnly: false
+  branchPick: false, branchChosen: false, branchQ: '', branchProvince: '', branchOpenOnly: false,
+  // موقعیت مشتری فقط در همین مرورگر می‌ماند و به سرور فرستاده نمی‌شود
+  near: null, nearBusy: false, mapAt: null
 };
 
 var BR = C.branches || { picker: false, groups: [], center: 0, preselect: null };
@@ -300,6 +302,9 @@ var I = {
   alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 3.9L2.6 18a1.6 1.6 0 0 0 1.4 2.4h16a1.6 1.6 0 0 0 1.4-2.4l-8-14.1a1.6 1.6 0 0 0-2.8 0z"/><path d="M12 9.5v4M12 17h.01"/></svg>',
   ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.2 12.3l2.6 2.6 5-5"/></svg>',
   phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16.9v2.6a1.8 1.8 0 0 1-2 1.8 17.6 17.6 0 0 1-7.7-2.7 17.3 17.3 0 0 1-5.3-5.3A17.6 17.6 0 0 1 3.3 5.5 1.8 1.8 0 0 1 5.1 3.5h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9l-1.1 1.1a14 14 0 0 0 5.3 5.3l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6a1.8 1.8 0 0 1 1.6 1.9z"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>',
+  locate: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
+  nav: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>',
   pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10.5c0 6.5-8 12.5-8 12.5s-8-6-8-12.5a8 8 0 0 1 16 0z"/><circle cx="12" cy="10.5" r="2.8"/></svg>',
   tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.2l-7.3 7.3a2 2 0 0 1-2.8 0l-7.2-7.2a2 2 0 0 1-.6-1.4V4.5a2 2 0 0 1 2-2h7.4a2 2 0 0 1 1.4.6l7.1 7.1a2 2 0 0 1 0 2.9z"/><circle cx="7.8" cy="7.8" r="1.4"/></svg>',
   note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3.5H6.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V9z"/><path d="M14 3.5V9h5.5"/><path d="M8.5 13h7M8.5 16.5h4.5"/></svg>',
@@ -329,13 +334,66 @@ function note(kind, icon, text) {
   return '<div class="cmb-note cmb-note--' + kind + '">' + icon + '<div>' + esc(text) + '</div></div>';
 }
 
+/* مختصات از لینک نشانِ سرور (https://nshn.ir/?lat=..&lng=..) خوانده می‌شود؛
+   همین لینک در همه‌ی پاسخ‌ها (شعبه، نوبت، رسید) هست. */
+function mapPoint(url) {
+  var m = /[?&]lat=(-?[\d.]+)&lng=(-?[\d.]+)/.exec(String(url || ''));
+  if (!m) { return null; }
+  var lat = Number(m[1]), lng = Number(m[2]);
+  return isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat: lat, lng: lng } : null;
+}
+
+/** لینک مسیریابی: با کلیک، برگه‌ی انتخاب برنامه‌ی نقشه باز می‌شود؛ بی‌اسکریپت همان نشان است. */
+function mapLink(map, title, cls, inner) {
+  return '<a' + (cls ? ' class="' + cls + '"' : '') + ' href="' + esc(map) + '" target="_blank" rel="noopener" data-map-open data-title="' + esc(title || '') + '"' +
+    ' aria-haspopup="dialog">' + inner + '</a>';
+}
+
 /* تماس و مسیریابی مرکز: دو دکمه‌ی هم‌اندازه کنار هم (یکی باشد تمام‌عرض). */
-function branchActs(phone, map, label, compact) {
+function branchActs(phone, map, label, compact, title) {
   if (!phone && !map) { return ''; }
   var cls = 'cmb-btn cmb-btn--soft cmb-btn--sm';
   return '<div class="cmb-bracts' + (compact ? ' cmb-bracts--in' : ' cmb-mt3') + '">' +
     (phone ? '<a class="' + cls + '" href="tel:' + esc(phone) + '">' + I.phone + '<span>' + esc(label) + '</span></a>' : '') +
-    (map ? '<a class="' + cls + '" href="' + esc(map) + '" target="_blank" rel="noopener">' + I.pin + '<span>مسیریابی با نشان</span></a>' : '') +
+    (map ? mapLink(map, title, cls, I.nav + '<span>مسیریابی</span>') : '') +
+    '</div>';
+}
+
+function mobileOs() {
+  var ua = navigator.userAgent || '';
+  if (/Android/i.test(ua)) { return 'android'; }
+  if (/iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) { return 'ios'; }
+  return '';
+}
+
+/** برگه‌ی «مسیریابی با…»: برنامه‌ی نقشه‌ی گوشی، نشان، بلد، گوگل‌مپ و ویز. */
+function mapSheet() {
+  var t = S.mapAt;
+  if (S.sheet !== 'map' || !t) { return ''; }
+  var ll = t.lat + ',' + t.lng, label = t.title || 'چک موتور', os = mobileOs(), rows = [];
+  if (os === 'android') {
+    // geo: فهرست برنامه‌های نقشه‌ی نصب‌شده روی گوشی را خود اندروید نشان می‌دهد
+    rows.push(['geo:' + ll + '?q=' + ll + '(' + encodeURIComponent(label) + ')', 'برنامه‌ی نقشه‌ی گوشی', 'هر برنامه‌ای که روی گوشی نصب است', true]);
+  } else if (os === 'ios') {
+    rows.push(['https://maps.apple.com/?ll=' + ll + '&q=' + encodeURIComponent(label), 'نقشه‌ی آیفون (Apple Maps)', 'برنامه‌ی نقشه‌ی خود آیفون', true]);
+  }
+  rows.push(['https://nshn.ir/?lat=' + t.lat + '&lng=' + t.lng, 'نشان', 'مسیریابی فارسی با ترافیک لحظه‌ای']);
+  rows.push(['https://balad.ir/location?latitude=' + t.lat + '&longitude=' + t.lng + '&zoom=16', 'بلد', 'نقشه و مسیریاب ایرانی']);
+  rows.push(['https://www.google.com/maps/search/?api=1&query=' + ll, 'گوگل‌مپ', 'Google Maps']);
+  rows.push(['https://waze.com/ul?ll=' + ll + '&navigate=yes', 'ویز', 'Waze']);
+  return '<div class="cmb-scrim" data-sheet-close></div>' +
+    '<div class="cmb-sheet cmb-sheet--map" role="dialog" aria-modal="true" aria-labelledby="cmb-map-t">' +
+      '<div class="cmb-sheet__grip"></div>' +
+      '<div class="cmb-sheet__t" id="cmb-map-t">مسیریابی تا ' + esc(label) + '</div>' +
+      '<p class="cmb-mapsheet__s">برنامه‌ای را که با آن مسیریابی می‌کنید انتخاب کنید.</p>' +
+      '<div class="cmb-mapsheet">' + rows.map(function (r) {
+        return '<a class="cmb-mapsheet__i' + (r[3] ? ' is-main' : '') + '" href="' + esc(r[0]) + '"' + (/^https:/.test(r[0]) ? ' target="_blank" rel="noopener"' : '') + ' data-map-go>' +
+          '<span class="cmb-mapsheet__ic">' + (r[3] ? I.locate : I.nav) + '</span>' +
+          '<span class="cmb-mapsheet__tx"><b>' + esc(r[1]) + '</b><small>' + esc(r[2]) + '</small></span>' + I.chevL + '</a>';
+      }).join('') + '</div>' +
+      '<div class="cmb-mapsheet__ll"><bdi dir="ltr">' + fa(t.lat.toFixed(5) + ', ' + t.lng.toFixed(5)) + '</bdi>' +
+        '<button type="button" class="cmb-link" data-map-copy>کپی مختصات</button></div>' +
+      '<button class="cmb-btn cmb-btn--ghost cmb-mt3" data-sheet-close>بستن</button>' +
     '</div>';
 }
 
@@ -432,7 +490,7 @@ function viewHome() {
 
     if (window.CMBLocation) { html += window.CMBLocation.html({lat:b.lat,lng:b.lng,title:b.title}); }
 
-    html += branchActs(b.phone, b.map, 'تماس با شعبه');
+    html += branchActs(b.phone, b.map, 'تماس با شعبه', false, b.title);
   }
 
   html += '</div>';
@@ -461,13 +519,27 @@ function branchChip(b) {
     '<em>تغییر مرکز</em></button>';
 }
 
-function branchCard(b) {
-  var off = !b.bookable;
+/** فاصله‌ی هوایی (کیلومتر) از موقعیت مشتری؛ بی‌مختصات null. */
+function branchKm(b) {
+  if (!S.near || b.lat == null || b.lng == null) { return null; }
+  var r = Math.PI / 180, dLat = (b.lat - S.near.lat) * r, dLng = (b.lng - S.near.lng) * r;
+  var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(S.near.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 12742 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function kmText(km) {
+  if (km < 1) { return fa(Math.max(50, Math.round(km * 20) * 50)) + ' متر'; }
+  return fa(km < 10 ? km.toFixed(1).replace('.', '٫') : Math.round(km)) + ' کیلومتر';
+}
+
+function branchCard(b, nearest) {
+  var off = !b.bookable, km = branchKm(b);
   var selected = S.branchChosen && S.branch && Number(S.branch.id) === Number(b.id);
-  return '<article class="cmb-branch' + (off ? ' is-off' : '') + (selected ? ' is-selected' : '') + '">' +
+  return '<article class="cmb-branch' + (off ? ' is-off' : '') + (selected ? ' is-selected' : '') + (nearest ? ' is-nearest' : '') + '">' +
     '<div class="cmb-branch__cover">' +
       (b.photo ? '<img src="' + esc(b.photo) + '" alt="' + esc((b.photoAuto ? 'نشان اختصاصی ' : 'تصویر ') + b.title) + '" width="640" height="320" loading="lazy">' : I.engine) +
       '<span class="cmb-branch__kind">' + (b.type === 'agency' ? 'تأییدشده توسط چک موتور' : 'مرکز اصلی چک موتور') + '</span>' +
+      (km !== null ? '<span class="cmb-branch__km">' + I.locate + kmText(km) + (nearest ? ' · نزدیک‌ترین' : '') + '</span>' : '') +
     '</div>' +
     '<div class="cmb-branch__body">' +
       '<div class="cmb-branch__heading"><h3 class="cmb-branch__t">' + esc(b.title) + '</h3>' +
@@ -476,7 +548,7 @@ function branchCard(b) {
       '<p class="cmb-branch__s">' + esc(b.address || 'برای دریافت نشانی با مرکز تماس بگیرید.') + '</p>' +
       '<div class="cmb-branch__acts">' +
         (b.phone ? '<a href="tel:' + esc(b.phone) + '" aria-label="تماس با ' + esc(b.title) + '">' + I.phone + '<bdi dir="ltr">' + fa(esc(b.phone)) + '</bdi></a>' : '') +
-        (b.map ? '<a href="' + esc(b.map) + '" target="_blank" rel="noopener">' + I.pin + ' مسیریابی</a>' : '') +
+        (b.map ? mapLink(b.map, b.title, '', I.nav + ' مسیریابی') : '') +
       '</div>' +
       (off ? '<div class="cmb-branch__off" role="status">' + esc(b.unavailable || 'فعلاً نوبت نمی‌گیرد') + '</div>' :
         '<button type="button" class="cmb-branch__select" data-branch="' + Number(b.id) + '" aria-label="انتخاب ' + esc(b.title) + ' و مشاهده خدمات">' +
@@ -485,34 +557,75 @@ function branchCard(b) {
 }
 
 function branchSearch(v) {
-  return en(String(v || '')).replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/[\u064B-\u065F\u0670]/g, '').replace(/[\s\u200c]+/g, ' ').trim().toLowerCase();
+  return en(String(v || '')).replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/[ً-ٰٟ]/g, '').replace(/[\s‌]+/g, ' ').trim().toLowerCase();
 }
 
 function viewPicker() {
-  var q = branchSearch(S.branchQ), count = 0, groups = '';
+  var q = branchSearch(S.branchQ), list = [];
   (BR.groups || []).forEach(function (g) {
     if (S.branchProvince && S.branchProvince !== g.province) { return; }
-    var list = (g.branches || []).filter(function (b) {
-      return (!S.branchOpenOnly || b.bookable) && (!q || branchSearch([b.title, b.city, b.province, b.address, b.visualCode, g.province].join(' ')).indexOf(q) !== -1);
+    (g.branches || []).forEach(function (b) {
+      if ((!S.branchOpenOnly || b.bookable) && (!q || branchSearch([b.title, b.city, b.province, b.address, b.visualCode, g.province].join(' ')).indexOf(q) !== -1)) { list.push(b); }
     });
-    if (!list.length) { return; }
-    count += list.length;
-    groups += list.map(branchCard).join('');
   });
+  var count = list.length, nearestId = 0;
+  if (S.near) {
+    // نزدیک‌تر بالاتر؛ شعبه‌ی بی‌مختصات آخر فهرست
+    list = list.map(function (b, i) { return { b: b, i: i, km: branchKm(b) }; }).sort(function (x, y) {
+      if (x.km === null || y.km === null) { return x.km === null ? (y.km === null ? x.i - y.i : 1) : -1; }
+      return x.km - y.km;
+    }).map(function (x) { return x.b; });
+    var first = list.filter(function (b) { return b.bookable && branchKm(b) !== null; })[0];
+    nearestId = first ? first.id : 0;
+  }
+  var located = allBranches().some(function (b) { return b.lat != null && b.lng != null; });
+  var filtered = S.branchQ || S.branchProvince || S.branchOpenOnly;
   var html = topBar('انتخاب شعبه', 'محل مراجعه خود را پیش از رزرو مشخص کنید', S.branchChosen) +
-    '<div class="cmb-page cmb-picker"><div class="cmb-picker__intro"><span class="cmb-picker__eyebrow">شبکه چک موتور</span>' +
-    '<h1>از کدام شعبه نوبت می‌گیرید؟</h1><p>شعبه را انتخاب کنید تا خدمات، قیمت‌ها و زمان‌های همان شعبه را ببینید.</p>' +
-    '<ol class="cmb-picker__steps" aria-label="مراحل رزرو"><li aria-current="step"><b>' + fa(1) + '</b> انتخاب شعبه</li><li><b>' + fa(2) + '</b> انتخاب خدمت</li><li><b>' + fa(3) + '</b> زمان مراجعه</li></ol></div>' +
-    '<div class="cmb-picker__filters"><label class="cmb-field"><span class="cmb-field__l">نام شعبه، شهر یا نشانی</span>' +
-      '<input class="cmb-in" id="cmb-br-q" type="search" autocomplete="off" placeholder="مثلاً اندیمشک" value="' + esc(S.branchQ) + '"></label>' +
-    '<label class="cmb-field"><span class="cmb-field__l">استان</span><select class="cmb-in" id="cmb-br-province"><option value="">همه استان‌ها</option>' +
+    '<div class="cmb-page cmb-picker"><div class="cmb-picker__intro">' +
+    '<h1>از کدام شعبه نوبت می‌گیرید؟</h1><p>خدمات، قیمت و زمان‌های خالی هر شعبه جداست؛ اول شعبه را انتخاب کنید.</p>' +
+    '<ol class="cmb-picker__steps" aria-label="مراحل رزرو"><li aria-current="step"><b>' + fa(1) + '</b> شعبه</li><li><b>' + fa(2) + '</b> خدمت</li><li><b>' + fa(3) + '</b> زمان</li></ol></div>' +
+    '<div class="cmb-picker__filters">' +
+    (located && navigator.geolocation ? '<button type="button" class="cmb-picker__near' + (S.near ? ' is-on' : '') + '" data-branch-near' + (S.nearBusy ? ' aria-busy="true" disabled' : '') + '>' + I.locate +
+      '<span><b>' + (S.nearBusy ? 'در حال پیدا کردن موقعیت شما…' : S.near ? 'مرتب‌شده بر اساس نزدیکی به شما' : 'نزدیک‌ترین شعبه به من') + '</b>' +
+      '<small>' + (S.near ? 'برای به‌روزرسانی موقعیت دوباره بزنید' : 'موقعیت شما جایی ذخیره نمی‌شود') + '</small></span></button>' : '') +
+    '<label class="cmb-field cmb-picker__q"><span class="cmb-sr-only">جستجوی نام شعبه، شهر یا نشانی</span>' + I.search +
+      '<input class="cmb-in" id="cmb-br-q" type="search" autocomplete="off" enterkeyhint="search" placeholder="جستجوی شهر، نام یا نشانی شعبه" value="' + esc(S.branchQ) + '"></label>' +
+    '<label class="cmb-field"><span class="cmb-sr-only">استان</span><select class="cmb-in" id="cmb-br-province" autocomplete="off"><option value="">همه استان‌ها</option>' +
       (BR.groups || []).map(function (g) { return '<option value="' + esc(g.province) + '"' + (S.branchProvince === g.province ? ' selected' : '') + '>' + esc(g.province) + '</option>'; }).join('') +
-    '</select></label><label class="cmb-picker__toggle"><input type="checkbox" id="cmb-br-open"' + (S.branchOpenOnly ? ' checked' : '') + '> فقط شعبه‌های قابل رزرو</label></div>' +
-    '<div class="cmb-picker__results" role="status" aria-live="polite">' + fa(count) + ' شعبه پیدا شد' +
-      (S.branchQ || S.branchProvince || S.branchOpenOnly ? '<button class="cmb-link" data-branch-clear>پاک کردن فیلترها</button>' : '') + '</div>';
-  html += groups ? '<div class="cmb-branchgrid" aria-label="شعبه‌های چک موتور">' + groups + '</div>' : empty(I.pin, 'شعبه‌ای با این مشخصات پیدا نشد', 'نام شهر یا شعبه را تغییر دهید یا فیلترها را پاک کنید.');
+    '</select></label><label class="cmb-picker__toggle"><input type="checkbox" id="cmb-br-open"' + (S.branchOpenOnly ? ' checked' : '') + '><span>فقط قابل رزرو</span></label></div>' +
+    '<div class="cmb-picker__results" role="status" aria-live="polite"><span>' + fa(count) + ' شعبه' + (S.near ? '، نزدیک‌ترین بالاتر' : '') + '</span>' +
+      (S.near ? '<button class="cmb-link" data-branch-near-off>ترتیب استانی</button>' : '') +
+      (filtered ? '<button class="cmb-link" data-branch-clear>پاک کردن فیلترها</button>' : '') + '</div>';
+  html += count ? '<div class="cmb-branchgrid" aria-label="شعبه‌های چک موتور">' + list.map(function (b) { return branchCard(b, b.id === nearestId); }).join('') + '</div>'
+    : empty(I.pin, 'شعبه‌ای با این مشخصات پیدا نشد', 'نام شهر یا شعبه را تغییر دهید یا فیلترها را پاک کنید.');
   if (!count) { html += '<button class="cmb-btn cmb-btn--soft" data-branch-clear>نمایش همه شعبه‌ها</button>'; }
   return html + '</div>';
+}
+
+// زدن روی نقشه‌ی نشان (location.js) همان برگه‌ی انتخاب برنامه‌ی نقشه را باز می‌کند
+document.addEventListener('cmb:mapopen', function (e) {
+  var d = e.detail || {};
+  if (!isFinite(d.lat) || !isFinite(d.lng)) { return; }
+  S.mapAt = { lat: Number(d.lat), lng: Number(d.lng), title: d.title || '' }; S.sheet = 'map'; paint();
+});
+
+/** موقعیت مشتری فقط برای مرتب‌سازی همین صفحه؛ ذخیره یا ارسال نمی‌شود. */
+function locateNear() {
+  if (!navigator.geolocation) { toast('مرورگر شما موقعیت مکانی نمی‌دهد؛ از جستجو یا استان استفاده کنید.', 'bad'); return; }
+  S.nearBusy = true; paint();
+  navigator.geolocation.getCurrentPosition(function (pos) {
+    S.nearBusy = false;
+    S.near = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    S.branchProvince = '';
+    paint();
+    var r = $('.cmb-picker__results');
+    if (r && r.scrollIntoView) { r.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+  }, function (err) {
+    S.nearBusy = false; paint();
+    toast(err && err.code === 1
+      ? 'اجازه‌ی موقعیت مکانی داده نشد. از تنظیمات مرورگر اجازه دهید یا شهر را جستجو کنید.'
+      : 'موقعیت شما پیدا نشد. مکان‌یاب (GPS) گوشی را روشن کنید و دوباره بزنید.', 'bad');
+  }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 });
 }
 
 function rememberBranch(id) {
@@ -933,7 +1046,7 @@ function stepDetails() {
       field('mileage', 'کارکرد (کیلومتر)', 'tel', '۱۲۰۰۰۰', f.mileage, false) +
     '</div>' +
     '<label class="cmb-field"><span class="cmb-field__l">توضیحات (اختیاری)</span>' +
-    '<textarea class="cmb-in" id="cmb-f-note" placeholder="ECU خودرو چیست؟">' + esc(f.note) + '</textarea></label>' +
+    '<textarea class="cmb-in" id="cmb-f-note" autocomplete="cmb-note" placeholder="ECU خودرو چیست؟">' + esc(f.note) + '</textarea></label>' +
     '</div>';
 
   if (S.notes.ecu) { html += note('info', I.info, S.notes.ecu); }
@@ -1089,9 +1202,14 @@ function termsSheet() {
     '</div>';
 }
 
+/* پرکردن خودکار مرورگر (آدرس‌های ذخیره‌شده‌ی کروم) فیلدهای خودرو را با شهر و
+   خیابان پر می‌کرد؛ برچسبِ ناشناخته آن را برای این فیلدها خاموش می‌کند. */
+var AUTOFILL = { name: 'name' };
+
 function field(key, label, type, ph, value, req) {
   return '<label class="cmb-field"><span class="cmb-field__l">' + esc(label) + (req ? ' <i>*</i>' : '') + '</span>' +
     '<input class="cmb-in' + (S.bad[key] ? ' is-bad' : '') + '" id="cmb-f-' + key + '" type="' + type + '"' +
+    ' name="cmb-' + key + '" autocomplete="' + (AUTOFILL[key] || 'cmb-' + key) + '"' +
     (type === 'tel' ? ' inputmode="numeric"' : '') +
     ' placeholder="' + esc(ph) + '" value="' + esc(value) + '"></label>';
 }
@@ -1107,7 +1225,7 @@ function field(key, label, type, ph, value, req) {
 function cityField(value) {
   return '<label class="cmb-field"><span class="cmb-field__l">شهر <i>*</i></span>' +
     '<input class="cmb-in' + (S.bad.city ? ' is-bad' : '') + '" id="cmb-f-city" type="text"' +
-    ' list="cmb-cities" autocomplete="address-level2"' +
+    ' list="cmb-cities" autocomplete="cmb-city"' +
     ' placeholder="مثلاً بوشهر" value="' + esc(value) + '">' +
     (CITIES.length
       ? '<datalist id="cmb-cities">' + CITIES.map(function (c) { return '<option value="' + esc(c) + '">'; }).join('') + '</datalist>'
@@ -1137,6 +1255,8 @@ function provinceCityFields(f) {
     var guess = findProvinceOfCity(f.city);
     if (guess) { f.province = guess; }
   }
+  /* فرم خالی: استانِ شعبه‌ی انتخاب‌شده پیشنهاد می‌شود (قابل تغییر) */
+  if (!f.province && !f.city && S.branch && S.branch.province && PLACES[S.branch.province]) { f.province = S.branch.province; }
 
   var cityList = (f.province && PLACES[f.province]) ? PLACES[f.province] : [];
   var inList   = !!f.city && cityList.indexOf(f.city) !== -1;
@@ -1147,7 +1267,7 @@ function provinceCityFields(f) {
   var html = selectField('province', 'استان', PROVINCES, f.province, true, 'انتخاب کنید');
 
   html += '<label class="cmb-field"><span class="cmb-field__l">شهر <i>*</i></span>' +
-    '<select class="cmb-in' + (S.bad.city ? ' is-bad' : '') + '" id="cmb-f-city-sel"' + (f.province ? '' : ' disabled') + '>' +
+    '<select class="cmb-in' + (S.bad.city ? ' is-bad' : '') + '" id="cmb-f-city-sel" autocomplete="cmb-city"' + (f.province ? '' : ' disabled') + '>' +
     '<option value="" disabled' + ((f.city || isOther) ? '' : ' selected') + '>' +
       (f.province ? 'انتخاب کنید' : 'ابتدا استان را انتخاب کنید') + '</option>' +
     cityList.map(function (c) {
@@ -1159,7 +1279,7 @@ function provinceCityFields(f) {
   if (isOther) {
     html += '<label class="cmb-field"><span class="cmb-field__l">نام شهر <i>*</i></span>' +
       '<input class="cmb-in' + (S.bad.city ? ' is-bad' : '') + '" id="cmb-f-city-other" type="text"' +
-      ' autocomplete="address-level2" placeholder="نام شهر را بنویسید" value="' + esc(f.city) + '"></label>';
+      ' autocomplete="cmb-city" placeholder="نام شهر را بنویسید" value="' + esc(f.city) + '"></label>';
   }
 
   return html;
@@ -1174,7 +1294,7 @@ function provinceCityFields(f) {
  */
 function selectField(key, label, options, value, req, ph) {
   return '<label class="cmb-field"><span class="cmb-field__l">' + esc(label) + (req ? ' <i>*</i>' : '') + '</span>' +
-    '<select class="cmb-in' + (S.bad[key] ? ' is-bad' : '') + '" id="cmb-f-' + key + '">' +
+    '<select class="cmb-in' + (S.bad[key] ? ' is-bad' : '') + '" id="cmb-f-' + key + '" autocomplete="cmb-' + key + '">' +
     '<option value="" disabled' + (value ? '' : ' selected') + '>' + esc(ph) + '</option>' +
     options.map(function (o) {
       return '<option value="' + esc(o) + '"' + (String(value) === String(o) ? ' selected' : '') + '>' + fa(esc(o)) + '</option>';
@@ -1226,7 +1346,7 @@ function viewReceipt() {
       '</div>' +
     '</div>';
 
-  html += branchActs(r.branchPhone, r.branchMap, 'تماس با مرکز');
+  html += branchActs(r.branchPhone, r.branchMap, 'تماس با مرکز', false, r.branch);
 
   if (r.pay && r.pay.status === 'paid' && r.cancelHint) { html += note('info', I.info, fa(r.cancelHint)); }
   if (r.note) { html += note('warn', I.alert, r.note); }
@@ -1434,7 +1554,7 @@ function viewMine() {
         (b.branch ? '<div class="cmb-bk__row">' + I.pin + '<span><b>' + esc(b.branch) + '</b>' + (b.branchAddress ? ' — ' + esc(b.branchAddress) : '') + '</span></div>' : '') +
         (b.branch && b.branchPhone ? '<div class="cmb-bk__row">' + I.phone + '<span>تلفن مرکز: <bdi dir="ltr">' + fa(esc(b.branchPhone)) + '</bdi></span></div>' : '') +
         payLine(b) +
-        (b.branch ? branchActs(b.branchPhone, b.branchMap, 'تماس با مرکز', true) : '') +
+        (b.branch ? branchActs(b.branchPhone, b.branchMap, 'تماس با مرکز', true, b.branch) : '') +
       '</div>' +
       pendingBox(b) +
       cancelBox(b) +
@@ -1827,7 +1947,7 @@ function render() {
           '<img src="' + esc(S.lightbox) + '" alt="">' +
         '</div>'
       : '') +
-    termsSheet() +
+    termsSheet() + mapSheet() +
     '<div id="cmb-toasts" class="cmb-toasts"></div>';
 
   /* نوار پرداخت از پوسته بیرون می‌آید و فرزند مستقیم ریشه می‌شود (کنار
@@ -2580,6 +2700,22 @@ function bind() {
     if (up('[data-start]')) { e.preventDefault(); startBooking(); return; }
 
     if (up('[data-services-retry]')) { e.preventDefault(); S.servicesTried = false; S.servicesError = ''; load('home'); return; }
+    if ((el = up('[data-map-open]'))) {
+      var pt = mapPoint(el.getAttribute('href'));
+      // بی‌مختصات همان لینک نشان باز می‌شود
+      if (pt) { e.preventDefault(); pt.title = el.getAttribute('data-title') || ''; S.mapAt = pt; S.sheet = 'map'; paint(); }
+      return;
+    }
+    if (up('[data-map-go]')) { S.sheet = null; setTimeout(paint, 0); return; }
+    if (up('[data-map-copy]')) {
+      e.preventDefault();
+      var txt = S.mapAt ? S.mapAt.lat + ',' + S.mapAt.lng : '';
+      var done = function () { toast('مختصات کپی شد.', 'ok'); }, fail = function () { toast(txt, ''); };
+      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(txt).then(done, fail); } else { fail(); }
+      return;
+    }
+    if (up('[data-branch-near]')) { e.preventDefault(); locateNear(); return; }
+    if (up('[data-branch-near-off]')) { e.preventDefault(); S.near = null; paint(); return; }
     if (up('[data-branch-clear]')) { e.preventDefault(); S.branchQ = ''; S.branchProvince = ''; S.branchOpenOnly = false; paint(); return; }
     if (up('[data-branch-change]')) { e.preventDefault(); S.branchPick = true; S.branchQ = ''; go('home'); return; }
 

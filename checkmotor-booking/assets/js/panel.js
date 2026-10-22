@@ -2444,14 +2444,10 @@ function agencyModal() {
         ? fld('ag-slug', 'نامک لینک (لاتین)', f.slug, ' dir="ltr" readonly', 'نامک مرکز اصلی ثابت است.')
         : fld('ag-slug', 'نامک لینک (لاتین)', f.slug, ' dir="ltr" placeholder="andimeshk"', 'در لینک مستقیم: <bdi dir="ltr" style="white-space:nowrap">?branch=andimeshk</bdi>')) +
       fld('ag-sort', 'ترتیب', f.sortOrder || 0, ' type="number" dir="ltr"') +
-      fld('ag-prov', 'استان', f.province) +
-      fld('ag-city', 'شهر', f.city) +
+      agencyPlaceFields(f, fld) +
     '</div>' +
     '<label class="pn-field"><span class="pn-field__l">نشانی</span><textarea class="pn-in" id="ag-address">' + esc(f.address || '') + '</textarea></label>' +
-    '<div class="pn-grid">' +
-      fld('ag-phone', 'تلفن تماس مشتری', f.phone, ' dir="ltr" inputmode="tel"') +
-      fld('ag-contact', 'نام مسئول', f.contactName) +
-    '</div>' +
+    fld('ag-contact', 'نام مسئول', f.contactName) +
     (isNew ? '<div class="pn-grid">' + fld('ag-mphone', 'موبایل مدیر نمایندگی', f.managerPhone, ' dir="ltr" inputmode="tel" placeholder="09…"', 'با همین شماره و کد پیامکی وارد پنل می‌شود.') : '') +
     fld('ag-sms', 'موبایل‌های دریافت پیامک (اختیاری)', f.managerPhones, ' dir="ltr" placeholder="0912…، 0913…"', 'پیامک نوبت جدید و هشدار موجودی؛ مدیر نمایندگی خودکار می‌گیرد.') +
     (isNew ? '</div>' : '') +
@@ -2481,6 +2477,32 @@ function agencyModal() {
     '</div>';
 }
 
+/* استان و شهر نمایندگی از بانک iran-places.js؛ شهری که در فهرست نیست با
+   «شهر دیگر» تایپ می‌شود و مقدار قدیمیِ بیرون از فهرست هم از دست نمی‌رود. */
+function agencyPlaceFields(f, fld) {
+  var P = window.CMB_PLACES && typeof window.CMB_PLACES === 'object' ? window.CMB_PLACES : null;
+  if (!P) { return fld('ag-prov', 'استان', f.province) + fld('ag-city', 'شهر', f.city); }
+  var provs = Object.keys(P), prov = f.province || '', cities = P[prov] || [];
+  var other = !!f.cityOther || (!!f.city && cities.indexOf(f.city) === -1);
+  function opt(v, t, on) { return '<option value="' + esc(v) + '"' + (on ? ' selected' : '') + '>' + esc(t) + '</option>'; }
+  return '<label class="pn-field"><span class="pn-field__l">استان</span><select class="pn-in" id="ag-prov" autocomplete="off">' +
+      opt('', 'انتخاب استان…', !prov) +
+      (prov && provs.indexOf(prov) === -1 ? opt(prov, prov, true) : '') +
+      provs.map(function (p) { return opt(p, p, p === prov); }).join('') + '</select></label>' +
+    '<label class="pn-field"><span class="pn-field__l">شهر</span><select class="pn-in" id="ag-city-sel" autocomplete="off"' + (prov ? '' : ' disabled') + '>' +
+      opt('', prov ? 'انتخاب شهر…' : 'اول استان را انتخاب کنید', !f.city && !other) +
+      cities.map(function (c) { return opt(c, c, !other && c === f.city); }).join('') +
+      opt('__other__', 'شهر دیگر (تایپ می‌کنم)', other) + '</select>' +
+      (other ? '<input class="pn-in" id="ag-city" style="margin-top:8px" value="' + esc(f.city || '') + '" placeholder="نام شهر" autocomplete="off">' : '') +
+    '</label>';
+}
+
+function agencyCity() {
+  var sel = $('#ag-city-sel');
+  if (!sel) { return val('#ag-city').trim(); }
+  return sel.value === '__other__' ? val('#ag-city').trim() : sel.value;
+}
+
 function saveAgency() {
   if (S.busy || S.uploading || !S.modal || !S.modal.agency) { return; }
   var f = S.modal.agency;
@@ -2490,9 +2512,8 @@ function saveAgency() {
     slug: val('#ag-slug').trim().toLowerCase(),
     sortOrder: Number(en(val('#ag-sort')) || 0),
     province: val('#ag-prov').trim(),
-    city: val('#ag-city').trim(),
+    city: agencyCity(),
     address: val('#ag-address').trim(),
-    phone: en(val('#ag-phone')).trim(),
     contactName: val('#ag-contact').trim(),
     managerPhones: en(val('#ag-sms')).trim(),
     lat: en(val('#ag-lat')).trim(),
@@ -4552,7 +4573,7 @@ function bind() {
     var id = e.target.id, p = {'bp-address':'address','bp-phone':'phone','bp-lat':'lat','bp-lng':'lng'};
     if (S.profile && p[id]) { S.profile[p[id]] = e.target.value; }
     if (S.modal && S.modal.agency && /^ag-/.test(id)) {
-      var f = {'ag-title':'title','ag-slug':'slug','ag-sort':'sortOrder','ag-prov':'province','ag-city':'city','ag-address':'address','ag-phone':'phone','ag-contact':'contactName','ag-mphone':'managerPhone','ag-sms':'managerPhones','ag-lat':'lat','ag-lng':'lng'};
+      var f = {'ag-title':'title','ag-slug':'slug','ag-sort':'sortOrder','ag-prov':'province','ag-city':'city','ag-address':'address','ag-contact':'contactName','ag-mphone':'managerPhone','ag-sms':'managerPhones','ag-lat':'lat','ag-lng':'lng'};
       if (f[id]) { S.modal.agency[f[id]] = e.target.value; }
       if (id === 'ag-policy-own') { S.modal.agency.allowOwnServices = Number(e.target.value); }
       if (id === 'ag-policy-customize') { S.modal.agency.allowCustomizeServices = Number(e.target.value); }
@@ -5269,6 +5290,15 @@ function bind() {
 
     if (e.target && e.target.id === 'bp-photo' && e.target.files && e.target.files[0]) {
       uploadBranchPhoto(e.target.files[0]);
+    }
+
+    // استان عوض شد: شهرهای همان استان؛ «شهر دیگر»: کادر تایپ
+    if (e.target && S.modal && S.modal.agency && (e.target.id === 'ag-prov' || e.target.id === 'ag-city-sel')) {
+      var ag = S.modal.agency;
+      if (e.target.id === 'ag-prov') { ag.province = e.target.value; ag.city = ''; ag.cityOther = false; }
+      else { ag.cityOther = e.target.value === '__other__'; ag.city = ag.cityOther ? '' : e.target.value; }
+      paintModal();
+      if (ag.cityOther && $('#ag-city')) { $('#ag-city').focus(); }
     }
 
     // فرم ساخت/ویرایش نمایندگی (ادمین): عکس با همان فرم ذخیره می‌شود (US-1.1)
