@@ -485,6 +485,13 @@ class CMB_Branch_Wallet {
 		}
 
 		$lock = self::lock( $branch_id );
+		if ( 'busy' === $lock ) { return new WP_Error( 'cmb_busy', 'کیف پول در حال تغییر است؛ دوباره تلاش کنید.', array( 'status' => 503 ) ); }
+		$fresh = CMB_Services::get_branch( (int) $branch_id, true );
+		if ( ! $fresh || 'deleted' === CMB_Branches::status( $fresh ) ) {
+			self::unlock( $branch_id, $lock );
+			return new WP_Error( 'cmb_not_found', 'حساب نمایندگی حذف شده است.', array( 'status' => 404 ) );
+		}
+
 
 		if ( $amount < 0 && self::free( $branch_id ) < abs( $amount ) ) {
 			self::unlock( $branch_id, $lock );
@@ -602,7 +609,7 @@ class CMB_Branch_Wallet {
 
 		$b = CMB_Branches::get( $branch_id );
 
-		if ( ! $b || ! CMB_Branches::is_agency( $b ) ) {
+		if ( ! $b || ! CMB_Branches::is_agency( $b ) || 'deleted' === CMB_Branches::status( $b ) ) {
 			return new WP_Error( 'cmb_bw_topup', 'شارژ فقط برای کیف پول نمایندگی است.', array( 'status' => 400 ) );
 		}
 
@@ -640,7 +647,17 @@ class CMB_Branch_Wallet {
 		$now   = CMB_Payments::now_local();
 		$phone = cmb_get_user_phone( $user_id );
 
-		$wpdb->insert(
+		// Serialize account deletion with payment creation, without holding a lock over the gateway call.
+		$lock = self::lock( (int) $b->id );
+		if ( 'busy' === $lock ) {
+			return new WP_Error( 'cmb_busy', 'عملیات دیگری برای این نمایندگی در حال انجام است؛ دوباره تلاش کنید.', array( 'status' => 503 ) );
+		}
+		$fresh = CMB_Services::get_branch( (int) $b->id, true );
+		if ( ! $fresh || 'deleted' === CMB_Branches::status( $fresh ) ) {
+			self::unlock( (int) $b->id, $lock );
+			return new WP_Error( 'cmb_not_found', 'حساب نمایندگی حذف شده است.', array( 'status' => 404 ) );
+		}
+		$inserted = $wpdb->insert(
 			$pt,
 			array(
 				'booking_id'  => 0,
@@ -659,7 +676,8 @@ class CMB_Branch_Wallet {
 			)
 		);
 
-		$pid = (int) $wpdb->insert_id;
+		$pid = $inserted ? (int) $wpdb->insert_id : 0;
+		self::unlock( (int) $b->id, $lock );
 
 		if ( ! $pid ) {
 			return new WP_Error( 'cmb_db_error', 'ثبت پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.', array( 'status' => 500 ) );

@@ -1299,3 +1299,70 @@ select.cmb-in {
 .cmb-dbg__act { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
 .cmb-dbg__act button { border: 1px solid #d5dbe2; background: #fff; border-radius: 10px; padding: 9px 8px; font: inherit; cursor: pointer; }
 .cmb-dbg__act button:first-child { background: #1d2733; color: #fff; border-color: #1d2733; }
+
+/* 1.43: branch selection, with a clear visual identity and one primary action. */
+.cmb-shell--picker { max-width:940px; }
+.cmb-picker { padding-bottom:24px; }
+.cmb-picker__intro { padding:28px 0 20px; }
+.cmb-picker__eyebrow { display:block; color:var(--steel-600); font-size:13px; font-weight:700; margin-bottom:8px; }
+.cmb-picker__intro h1 { margin:0; color:var(--ink); font-size:clamp(21px,3vw,28px); font-weight:800; line-height:1.6; }
+.cmb-picker__intro p { color:var(--ink-2); font-size:14px; line-height:1.9; margin:8px 0 20px; }
+.cmb-picker__steps { list-style:none; display:flex; flex-wrap:wrap; gap:12px 24px; padding:0; margin:0; color:var(--ink-2); font-size:13px; }
+.cmb-picker__steps li { display:flex; align-items:center; gap:8px; }
+.cmb-picker__steps b { display:grid; place-items:center; width:28px; height:28px; border-radius:50%; background:#e7ebef; color:#52616e; }
+.cmb-picker__steps [aria-current] { color:#a53c14; font-weight:800; }
+.cmb-picker__steps [aria-current] b { color:#fff; background:#a53c14; }
+.cmb-picker__filters { display:grid; grid-template-columns:minmax(0,2fr) minmax(130px,1fr); gap:12px; background:#fff; padding:18px; border:1px solid #d8e1e9; border-radius:18px; }
+.cmb-picker__filters .cmb-field { margin:0; min-width:0; }
+.cmb-picker__filters .cmb-in { width:100%; min-height:48px; }
+.cmb-picker__toggle { grid-column:1/-1; display:flex; align-items:center; gap:10px; min-height:44px; color:var(--ink-2); font-size:14px; cursor:pointer; }
+.cmb-picker__toggle input { width:20px; height:20px; accent-color:#a53c14; }
+.cmb-picker__results { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:56px; font-size:13px; color:var(--ink-2); }
+.cmb-picker__group { margin:8px 0 28px; }
+.cmb-picker__group .cmb-sec { margin:0 0 12px; }
+.cmb-branchgrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; align-items:stretch; }
+.cmb-picker .cmb-branch { display:flex; flex-direction:column; gap:0; padding:0; margin:0; min-width:0; overflow:hidden; border:1px solid #d8e1e9; border-radius:18px; background:#fff; box-shadow:0 3px 12px #13202b05; }
+.cmb-picker .cmb-branch:hover { border-color:#aabcc9; box-shadow:0 5px 16px #13202b0a; }
+.cmb-picker .cmb-branch.is-selected { border-color:#a53c14; box-shadow:0 0 0 1px #a53c14; }
+.cmb-branch__cover { position:relative; width:100%; aspect-ratio:2/1; background:#1c2e3d; display:grid; place-items:center; overflow:hidden; }
+.cmb-branch__cover > img { display:block; width:100%; height:100%; object-fit:cover; }
+.cmb-branch__cover > svg { color:#b7deeb; width:64px; height:64px; }
+.cmb-branch__kind { position:absolute; inset-inline-end:12px; bottom:12px; padding:5px 10px; background:#fff; color:#264055; border:1px solid #dce6ee; border-radius:8px; font-size:11px; font-weight:700; }
+.cmb-picker .cmb-branch__body { display:flex; flex-direction:column; flex:1; width:100%; min-width:0; padding:18px; box-sizing:border-box; }
+.cmb-branch__heading { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+.cmb-picker .cmb-branch__t { margin:0; font-size:17px; line-height:1.7; }
+.cmb-branch__selected { display:flex; align-items:center; gap:4px; color:#a53c14; font-size:11px; font-weight:700; }
+.cmb-branch__selected svg { width:14px; height:14px; }
+.cmb-branch__city { display:flex; align-items:center; gap:6px; margin:0; font-size:13px; font-weight:700; color:#35566f; }
+.cmb-branch__city svg { width:16px; height:16px; flex:none; }
+.cmb-picker .cmb-branch__s { margin:10px 0 4px; font-size:13px; line-height:1.9; color:#52616e; }
+.cmb-picker .cmb-branch__acts { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:0 0 16px; flex-wrap:wrap; }
+.cmb-picker .cmb-branch__acts a { display:inline-flex; align-items:center; gap:6px; min-height:44px; font-size:13px; color:#35566f; }
+.cmb-picker .cmb-branch__select { margin-top:auto; min-height:48px; color:#fff; background:#264055; border-radius:10px; padding:10px 14px; font-size:14px; transition:background .18s; }
+.cmb-picker .cmb-branch__select:hover { background:#163045; }
+.cmb-picker .cmb-branch__off { margin-top:auto; border-radius:10px; background:#f1f5f9; color:#52616e; min-height:48px; display:flex; align-items:center; justify-content:center; font-size:13px; }
+@media (max-width:600px) {
+  .cmb-branchgrid { grid-template-columns:minmax(0,1fr); }
+  .cmb-picker__filters { grid-template-columns:minmax(0,1fr); padding:14px; }
+  .cmb-picker__steps { gap:10px 14px; font-size:12px; }
+  .cmb-picker__intro { padding-top:18px; }
+}
+
+/* 1.43.1: receipts, booking cards and payment details wrap safely. */
+html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !important; overscroll-behavior:none; }
+#cmb-app :is(.cmb-card,.cmb-bk,.cmb-svc,.cmb-note,.cmb-kv,.cmb-sheet,.cmb-wtx) { min-width:0; overflow-wrap:anywhere; }
+#cmb-app .cmb-bk__top { flex-wrap:wrap; }
+#cmb-app .cmb-bk__top > div { min-width:0; flex:1 1 160px; }
+#cmb-app .cmb-note > div { min-width:0; }
+#cmb-app :is(.cmb-code,.cmb-receipt__code) { white-space:normal; overflow-wrap:anywhere; max-width:100%; }
+#cmb-app .cmb-kv { flex-wrap:wrap; }
+#cmb-app .cmb-kv__k { flex:0 1 auto; min-width:0; max-width:100%; }
+#cmb-app .cmb-kv__v { flex:1 1 120px; min-width:0; max-width:100%; overflow-wrap:anywhere; }
+#cmb-app .cmb-sheet { max-height:90vh; max-height:90dvh; }
+#cmb-app .cmb-dbg__h button { min-width:44px; min-height:44px; }
+@media(max-width:400px) {
+  #cmb-app .cmb-termsrow { flex-wrap:wrap; gap:0; }
+  #cmb-app .cmb-termsrow .cmb-check { flex:1 1 100%; padding:10px 12px; font-size:14px; }
+  #cmb-app .cmb-termsrow .cmb-link { margin-inline-start:auto; }
+  #cmb-app .cmb-actionbar--terms .cmb-actionbar__in { gap:8px; }
+}

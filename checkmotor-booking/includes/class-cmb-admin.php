@@ -954,6 +954,12 @@ class CMB_Admin {
 							فعال بودن را تعیین می‌کند. با روشن کردن، خدمت نمایندگی فقط در همان نمایندگی دیده می‌شود و بیعانه ندارد.</p></td>
 					</tr>
 					<?php
+					?>
+					<tr><th><label for="cmb-agency-customize">شخصی‌سازی الگوی خدمات</label></th>
+					<td><label><input id="cmb-agency-customize" type="checkbox" name="agency_customize_services" value="1" <?php checked( (int) $s['agency_customize_services'], 1 ); ?> />
+						مدیر نمایندگی بتواند عنوان، شرح، پوستر و ظرفیت الگو را برای شعبه خودش تغییر دهد</label>
+					<p class="description">این مجوز مستقل از ساخت خدمت جدید است. مجوز هر نمایندگی در پنل ← نمایندگی‌ها ← ویرایش و مجوزها قابل تغییر است.</p></td></tr>
+					<?php
 					$agency_money = array(
 						'agency_fee'            => array( 'هزینه‌ی هر رزرو موفق', 'از کیف پول نمایندگی، هنگام ثبت نوبت بلوکه و بعد از انجام قطعی کسر می‌شود.' ),
 						'agency_welcome_credit' => array( 'اعتبار اولیه', 'فقط یک بار، در اولین فعال‌سازی هر نمایندگی.' ),
@@ -1520,6 +1526,7 @@ class CMB_Admin {
 		// تیک «خدمت مخصوص نمایندگی» فقط وقتی بخش نمایندگی‌ها در فرم بوده
 		if ( isset( $_POST['agency_fee'] ) ) {
 			$values['agency_own_services'] = isset( $_POST['agency_own_services'] ) ? 1 : 0;
+			$values['agency_customize_services'] = isset( $_POST['agency_customize_services'] ) ? 1 : 0;
 		}
 
 		foreach ( array( 'pattern_booking_branch', 'pattern_reminder_branch', 'pattern_cancel_branch', 'pattern_agency_new', 'pattern_agency_cancel', 'pattern_agency_low', 'pattern_agency_topup', 'pattern_agency_active' ) as $key ) {

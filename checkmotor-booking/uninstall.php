@@ -71,6 +71,8 @@ foreach ( $cmb_options as $cmb_option ) {
 $wpdb->query( // phpcs:ignore
 	"DELETE FROM {$wpdb->options}
 	 WHERE option_name LIKE '\_transient\_cmb\_%'
+	    OR option_name LIKE 'cmb\_agency\_policy\_%'
+	    OR option_name LIKE 'cmb\_service\_customized\_%'
 	    OR option_name LIKE '\_transient\_timeout\_cmb\_%'"
 );
 

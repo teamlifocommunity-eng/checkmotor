@@ -187,21 +187,21 @@ function fieldHTML(id, value, opts) {
   return '<div class="jd" data-jd="' + id + '"' +
       (opts.min ? ' data-jd-min="' + opts.min + '"' : '') + '>' +
     '<input type="hidden" id="' + id + '" value="' + (value || '') + '">' +
-    '<button type="button" class="pn-in jd__btn" data-jd-open>' +
+    '<button type="button" class="pn-in jd__btn" data-jd-open aria-expanded="false" aria-controls="' + id + '-calendar" aria-haspopup="dialog">' +
       '<span class="jd__val' + (label ? '' : ' is-empty') + '">' +
         (label || (opts.placeholder || 'انتخاب تاریخ')) + '</span>' +
       (value ? '<span class="jd__x" data-jd-clear>×</span>' : '') +
     '</button>' +
-    '<div class="jd__pop" hidden></div>' +
+    '<div class="jd__pop" id="' + id + '-calendar" role="dialog" aria-label="انتخاب تاریخ" hidden></div>' +
   '</div>';
 }
 
 /** رندر شبکه‌ی یک ماه */
 function monthHTML(jy, jm, selected, min) {
   var head = '<div class="jd__hd">' +
-    '<button type="button" class="jd__nav" data-jd-move="-1">‹</button>' +
+    '<button type="button" class="jd__nav" data-jd-move="-1" aria-label="ماه قبل">‹</button>' +
     '<div class="jd__title">' + faNum(MONTHS[jm - 1] + ' ' + jy) + '</div>' +
-    '<button type="button" class="jd__nav" data-jd-move="1">›</button>' +
+    '<button type="button" class="jd__nav" data-jd-move="1" aria-label="ماه بعد">›</button>' +
     '</div>';
 
   var week = '<div class="jd__week">' +
@@ -245,6 +245,14 @@ function monthHTML(jy, jm, selected, min) {
  * فیلدهای .jd را — حتی آن‌هایی که بعداً ساخته می‌شوند — می‌گرداند.
  */
 function bind(onChange) {
+  document.addEventListener('keydown', function (e) {
+    var open = document.querySelector('.jd__pop:not([hidden])');
+    if (e.key !== 'Escape' || !open) { return; }
+    var trigger = open.parentElement.querySelector('[data-jd-open]');
+    closeAll();
+    if (trigger) { trigger.focus({preventScroll:true}); }
+    e.preventDefault(); e.stopImmediatePropagation();
+  });
   document.addEventListener('click', function (e) {
     var t = e.target;
     var wrap = t.closest ? t.closest('.jd') : null;
@@ -266,7 +274,7 @@ function bind(onChange) {
     if (t.closest('[data-jd-open]')) {
       e.preventDefault();
 
-      if (!pop.hidden) { pop.hidden = true; return; }
+      if (!pop.hidden) { closeAll(); return; }
 
       closeAll();
 
@@ -277,6 +285,7 @@ function bind(onChange) {
       pop.dataset.m = j[1];
       pop.innerHTML = monthHTML(j[0], j[1], hidden.value, wrap.dataset.jdMin || '');
       pop.hidden = false;
+      wrap.querySelector('[data-jd-open]').setAttribute('aria-expanded', 'true');
       return;
     }
 
@@ -304,7 +313,8 @@ function bind(onChange) {
 
       var g = pick.getAttribute('data-jd-pick');
       setValue(wrap, g);
-      pop.hidden = true;
+      closeAll();
+      wrap.querySelector('[data-jd-open]').focus({preventScroll:true});
 
       if (onChange) { onChange(hidden.id, g); }
     }
@@ -335,7 +345,11 @@ function setValue(wrap, g) {
 function closeAll() {
   var pops = document.querySelectorAll('.jd__pop');
 
-  for (var i = 0; i < pops.length; i++) { pops[i].hidden = true; }
+  for (var i = 0; i < pops.length; i++) {
+    pops[i].hidden = true;
+    var trigger = pops[i].parentElement.querySelector('[data-jd-open]');
+    if (trigger) { trigger.setAttribute('aria-expanded', 'false'); }
+  }
 }
 
 /* ─── خروجی ─── */

@@ -42,12 +42,12 @@ class CMB_Services {
 	/**
 	 * اطلاعات یک شعبه.
 	 */
-	public static function get_branch( $branch_id = 0 ) {
+	public static function get_branch( $branch_id = 0, $refresh = false ) {
 		global $wpdb;
 
 		$branch_id = $branch_id ? (int) $branch_id : self::default_branch_id();
 
-		if ( array_key_exists( $branch_id, self::$branch_cache ) ) {
+		if ( ! $refresh && array_key_exists( $branch_id, self::$branch_cache ) ) {
 			return self::$branch_cache[ $branch_id ];
 		}
 
@@ -66,6 +66,7 @@ class CMB_Services {
 
 		$table = cmb_table( 'branches' );
 		$where = $only_active ? 'WHERE is_active = 1' : '';
+		if ( CMB_Branches::ready() ) { $where .= ( $where ? ' AND' : 'WHERE' ) . " status <> 'deleted'"; }
 
 		return $wpdb->get_results( "SELECT * FROM {$table} {$where} ORDER BY id ASC" ); // phpcs:ignore
 	}
@@ -131,7 +132,7 @@ class CMB_Services {
 		$key       = 'cmb_services_' . $branch_id;
 		$cached    = get_transient( $key );
 
-		if ( is_array( $cached ) && ( empty( $cached['branch'] ) || ! CMB_Branches::ready() || array_key_exists( 'lat', $cached['branch'] ) ) ) {
+		if ( is_array( $cached ) && ( empty( $cached['branch'] ) || ! CMB_Branches::ready() || array_key_exists( 'photoAuto', $cached['branch'] ) ) ) {
 			return $cached;
 		}
 
@@ -267,18 +268,11 @@ class CMB_Services {
 			return;
 		}
 
-		$wpdb->query(
-			$wpdb->prepare(
-				"UPDATE " . cmb_table( 'services' ) . " SET title = %s, description = %s, poster_id = %d, duration_note = %s
-				 WHERE catalog_id = %d AND branch_id <> %d", // phpcs:ignore
-				$svc->title,
-				(string) $svc->description,
-				(int) $svc->poster_id,
-				(string) $svc->duration_note,
-				(int) $svc->id,
-				(int) $svc->branch_id
-			)
-		);
+		$copies = (array) $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM ' . cmb_table( 'services' ) . ' WHERE catalog_id = %d AND branch_id <> %d', (int) $svc->id, (int) $svc->branch_id ) ); // phpcs:ignore
+		foreach ( $copies as $copy ) {
+			if ( self::catalog_customized( $copy ) ) { continue; }
+			$wpdb->update( cmb_table( 'services' ), array( 'title' => $svc->title, 'description' => (string) $svc->description, 'poster_id' => (int) $svc->poster_id, 'duration_note' => (string) $svc->duration_note ), array( 'id' => (int) $copy->id ) );
+		}
 
 		self::flush_cache();
 	}
@@ -310,6 +304,25 @@ class CMB_Services {
 	public static function is_catalog_copy( $service ) {
 		return $service && CMB_Branches::ready() && CMB_Branches::is_agency( (int) $service->branch_id )
 			&& ! empty( $service->catalog_id );
+	}
+
+	public static function catalog_customized( $service ) {
+		return self::is_catalog_copy( $service ) && (bool) get_option( 'cmb_service_customized_' . (int) $service->id, false );
+	}
+
+	/** Restore only the template; the agency keeps its price, weekdays and activation. */
+	public static function reset_catalog_copy( $service ) {
+		global $wpdb;
+		$source = self::is_catalog_copy( $service ) ? self::get_service( (int) $service->catalog_id ) : null;
+		if ( ! $source ) { return new WP_Error( 'cmb_catalog_missing', 'الگوی مرکزی این خدمت پیدا نشد.', array( 'status' => 404 ) ); }
+		$data = array( 'title' => $source->title, 'description' => $source->description, 'poster_id' => (int) $source->poster_id, 'duration_note' => $source->duration_note );
+		if ( self::has_own_capacity_column() ) { $data['own_capacity'] = isset( $source->own_capacity ) ? $source->own_capacity : ''; }
+		if ( false === $wpdb->update( cmb_table( 'services' ), $data, array( 'id' => (int) $service->id ) ) ) {
+			return new WP_Error( 'cmb_db_error', 'بازگردانی الگوی خدمت انجام نشد.', array( 'status' => 500 ) );
+		}
+		delete_option( 'cmb_service_customized_' . (int) $service->id );
+		self::flush_cache();
+		return true;
 	}
 
 	public static function flush_cache() {
@@ -710,7 +723,7 @@ class CMB_Services {
 				'slug'             => $slug,
 				'title'            => $title,
 				'description'      => isset( $data['description'] ) ? sanitize_textarea_field( $data['description'] ) : '',
-				'poster_id'        => 0,
+				'poster_id'        => isset( $data['poster_id'] ) && wp_attachment_is_image( (int) $data['poster_id'] ) ? (int) $data['poster_id'] : 0,
 				'price'            => isset( $data['price'] ) ? max( 0, (int) cmb_en_num( $data['price'] ) ) : 0,
 				'duration_note'    => isset( $data['duration_note'] ) ? sanitize_text_field( $data['duration_note'] ) : '',
 				'allowed_weekdays' => isset( $data['allowed_weekdays'] ) ? self::clean_weekdays( $data['allowed_weekdays'] ) : '',
@@ -833,7 +846,8 @@ class CMB_Services {
 	}
 
 	public static function update_service( $service_id, array $data ) {
-		self::flush_cache();
+		$before = self::get_service( $service_id );
+		if ( ! $before ) { return false; }
 
 		global $wpdb;
 
@@ -872,10 +886,18 @@ class CMB_Services {
 		}
 
 		if ( empty( $fields ) ) {
-			return false;
+			return true;
 		}
 
 		$ok = false !== $wpdb->update( $table, $fields, array( 'id' => (int) $service_id ) );
+		if ( $ok && self::is_catalog_copy( $before ) ) {
+			foreach ( array( 'title', 'description', 'poster_id', 'duration_note', 'own_capacity' ) as $key ) {
+				if ( array_key_exists( $key, $fields ) && (string) $fields[ $key ] !== (string) ( isset( $before->$key ) ? $before->$key : '' ) ) {
+					update_option( 'cmb_service_customized_' . (int) $service_id, 1, false );
+					break;
+				}
+			}
+		}
 
 		self::flush_cache();
 

@@ -125,59 +125,104 @@ function toast(msg, kind) {
 /* ─── شبکه ─── */
 
 var nonceWait = null;
+var dataEpoch = 0, loadSequence = 0, activeLoads = {}, pendingWrites = 0, switchingBranch = false;
 
 function freshNonce() {
   if (nonceWait) { return nonceWait; }
 
-  nonceWait = fetch(NURL, { credentials: 'include', cache: 'no-store' })
+  var controller = window.AbortController ? new AbortController() : null;
+  var timeout = controller ? setTimeout(function () { controller.abort(); }, 15000) : null;
+  nonceWait = fetch(NURL, { credentials: 'include', cache: 'no-store', signal: controller ? controller.signal : undefined })
     .then(function (r) { return r.json(); })
     .then(function (n) {
       if (n && n.nonce) { NONCE = n.nonce; }
       if (n && typeof n.canManage !== 'undefined') { S.can = !!n.canManage; }
+      if (timeout) { clearTimeout(timeout); }
       nonceWait = null;
       return n || {};
     })
-    .catch(function () { nonceWait = null; return {}; });
+    .catch(function () { if (timeout) { clearTimeout(timeout); } nonceWait = null; return {}; });
 
   return nonceWait;
 }
 
-function req(method, path, body, retried) {
+function req(method, path, body, retried, requestBranch) {
+  if (typeof requestBranch === 'undefined') { requestBranch = ctx().isAdmin ? Number(ctx().branchId || 0) : 0; }
+  var controller = window.AbortController ? new AbortController() : null;
+  var timer = controller ? setTimeout(function () { controller.abort(); }, path === 'panel/debug/selftest' ? 120000 : 30000) : null;
+  var headers = { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE };
+  if (requestBranch) { headers['X-CMB-Branch'] = String(requestBranch); }
   return fetch(ROOT + path, {
-    method: method,
-    headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
-    credentials: 'include', cache: 'no-store',
+    method: method, headers: headers, credentials: 'include', cache: 'no-store',
+    signal: controller ? controller.signal : undefined,
     body: body ? JSON.stringify(body) : undefined
-  })
-    .then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (j) {
-        var stale = (r.status === 401 || r.status === 403) &&
-          (!j.code || String(j.code).indexOf('nonce') !== -1 || String(j.code).indexOf('cookie') !== -1);
-
-        if (stale && !retried) {
-          return freshNonce().then(function () { return req(method, path, body, true); });
-        }
-
-        if (!r.ok) {
-          // کد پیگیری خطا برای پیدا کردنش در «گزارش خطا»
-          var ref = j && j.data && j.data.ref ? String(j.data.ref) : '';
-          var msg = j.message || 'خطایی رخ داد.';
-          if (ref && ((C.dbg && C.dbg.refs) || r.status >= 500)) { msg += ' (کد پیگیری: ' + ref + ')'; }
-          return { success: false, message: msg, code: j.code || '', ref: ref };
-        }
-
-        if (j && typeof j.success === 'undefined') { j.success = true; }
-        return j;
-      });
-    })
-    .catch(function () { return { success: false, message: 'ارتباط با سرور برقرار نشد.' }; });
+  }).then(function (r) {
+    return r.json().catch(function () { return null; }).then(function (j) {
+      if (timer) { clearTimeout(timer); }
+      if (!j || typeof j !== 'object' || Array.isArray(j)) {
+        return { success: false, code: 'cmb_bad_response', message: 'پاسخ سرور معتبر نیست. صفحه را تازه کنید یا کمی بعد دوباره تلاش کنید.' };
+      }
+      var stale = (r.status === 401 || r.status === 403) &&
+        (!j.code || String(j.code).indexOf('nonce') !== -1 || String(j.code).indexOf('cookie') !== -1);
+      if (stale && !retried) {
+        return freshNonce().then(function () { return req(method, path, body, true, requestBranch); });
+      }
+      if (!r.ok) {
+        var ref = j.data && j.data.ref ? String(j.data.ref) : '';
+        var msg = j.message || 'خطایی رخ داد.';
+        if (ref && ((C.dbg && C.dbg.refs) || r.status >= 500)) { msg += ' (کد پیگیری: ' + ref + ')'; }
+        return { success: false, message: msg, code: j.code || '', ref: ref };
+      }
+      if (typeof j.success === 'undefined') { j.success = true; }
+      return j;
+    });
+  }).catch(function (err) {
+    if (timer) { clearTimeout(timer); }
+    return { success: false, message: err && err.name === 'AbortError'
+      ? (method === 'GET' ? 'پاسخ سرور طول کشید؛ دوباره دریافت اطلاعات را بزنید.' : 'پاسخ سرور طول کشید؛ پیش از تکرار عملیات، نتیجه را با تازه‌سازی بررسی کنید.')
+      : 'ارتباط با سرور برقرار نشد. اتصال اینترنت را بررسی کنید.' };
+  });
 }
+
 function get(p) { return req('GET', p); }
+
+function uploadRequest(form, retried, branchId) {
+  if (typeof branchId === 'undefined') { branchId = Number(ctx().branchId || 0); }
+  var controller = window.AbortController ? new AbortController() : null;
+  var timeout = controller ? setTimeout(function () { controller.abort(); }, 45000) : null;
+  return fetch(ROOT + 'panel/poster', {
+    method: 'POST', headers: { 'X-WP-Nonce': NONCE, 'X-CMB-Branch': String(branchId) },
+    credentials: 'include', body: form, signal: controller ? controller.signal : undefined
+  }).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (j) {
+      if (timeout) { clearTimeout(timeout); }
+      if (!retried && r.status === 403 && /nonce|cookie/.test(String(j.code || ''))) {
+        return freshNonce().then(function () { return uploadRequest(form, true, branchId); });
+      }
+      if (!r.ok || !j || !j.posterId) { return { success: false, message: j && j.message || 'آپلود ناموفق بود؛ دوباره تلاش کنید.' }; }
+      return j;
+    });
+  }).catch(function () {
+    if (timeout) { clearTimeout(timeout); }
+    return { success: false, message: 'ارسال تصویر کامل نشد. اتصال اینترنت را بررسی کنید و دوباره تلاش کنید.' };
+  });
+}
 /* هر تغییری (ثبت، لغو، ذخیره…) می‌تواند داده‌ی هر نمایی را عوض کند؛
    پس بعد از آن، جابه‌جایی بین نماها دوباره از سرور می‌خواند. */
+function invalidateData() {
+  dataEpoch++;
+  activeLoads = {};
+  S.fetching = false;
+  S.got = {};
+}
 function post(p, b) {
+  if (switchingBranch && p !== 'panel/branch/switch') {
+    return Promise.resolve({ success: false, message: 'در حال تغییر شعبه هستیم؛ چند لحظه صبر کنید.' });
+  }
+  pendingWrites++;
   return req('POST', p, b).then(function (r) {
-    if (r && r.success !== false) { S.got = {}; }
+    pendingWrites--;
+    if (r && r.success !== false) { invalidateData(); }
     return r;
   });
 }
@@ -370,7 +415,8 @@ var CTX0 = {
 };
 
 function ctx() {
-  return (S.summary && S.summary.ctx) ? S.summary.ctx : CTX0;
+  if (S.summary && S.summary.ctx) { CTX0 = S.summary.ctx; }
+  return CTX0;
 }
 
 /** وضعیت شعبه به رنگ نشان‌ها. */
@@ -801,7 +847,9 @@ function viewSettings() {
  * کوئری شمارش می‌زند و ممکن است کمی طول بکشد.
  */
 function loadHealth() {
+  var epoch = dataEpoch;
   get('panel/health').then(function (r) {
+    if (epoch !== dataEpoch) { return; }
     if (r && Array.isArray(r.checks)) { S.health = r; paint(); }
   });
 }
@@ -1063,7 +1111,7 @@ function viewServices() {
      خودش است (جز بیعانه، که مشتری نمایندگی نمی‌دهد). */
   var html = head('خدمات', m.catalog
       ? (m.center ? 'عنوان، شرح و پوستر خدمات را مدیر کل تعیین می‌کند؛ قیمت، روزها و فعال بودن را اینجا تغییر دهید'
-        : (m.canAdd ? 'خدمات کاتالوگ مرکز را با قیمت خودتان فعال کنید، یا خدمت مخصوص نمایندگی خودتان را اضافه کنید'
+        : (m.canCustomize ? 'الگوی خدمات را برای همین نمایندگی شخصی‌سازی کنید؛ تغییرات شما روی شعبه‌های دیگر اثر ندارد' : m.canAdd ? 'خدمات کاتالوگ مرکز را با قیمت خودتان فعال کنید، یا خدمت مخصوص نمایندگی خودتان را اضافه کنید'
           : 'خدمات از کاتالوگ مرکز می‌آید؛ قیمت، روزها و فعال بودن هر خدمت مال شماست'))
       : 'قیمت، شرح و روزهای ارائه‌ی هر خدمت را اینجا تغییر دهید',
     m.canAdd ? '<button class="pn-btn pn-btn--dark" data-svc-new>' + I.plus + ' افزودن خدمت</button>' : '');
@@ -1091,7 +1139,7 @@ function viewServices() {
             '<h3 style="font-size:17px;font-weight:800">' + esc(s.title) + '</h3>' +
             (s.active ? '<span class="pn-badge pn-badge--confirmed">فعال</span>'
                       : '<span class="pn-badge pn-badge--cancelled">غیرفعال</span>') +
-            (m.catalog && !m.center ? (s.catalog ? '<span class="pn-badge pn-badge--quick">کاتالوگ مرکز</span>'
+            (m.catalog && !m.center ? (s.fromCatalog || s.catalog ? '<span class="pn-badge pn-badge--quick">' + (s.customized ? 'الگوی شخصی‌سازی‌شده' : 'الگوی مرکز') + '</span>'
                                     : '<span class="pn-badge pn-badge--pending">خدمت نمایندگی</span>') : '') +
           '</div>' +
           (s.description ? '<p style="font-size:13px;color:var(--ink-2);margin-top:8px;line-height:1.85">' + esc(s.description) + '</p>' : '') +
@@ -1173,6 +1221,7 @@ function catalogModal() {
         '<button type="button" class="pn-seg__b' + (Number(s.active) !== 1 ? ' is-on' : '') + '" data-svc-active="0">ارائه نمی‌کنیم</button>' +
       '</div></div>' +
 
+    (s.customized ? '<button class="pn-btn pn-btn--soft" data-svc-reset="' + s.id + '">بازگشت به الگوی مرکز</button>' : '') +
     '<div class="pn-hint">' + (agency ? 'عنوان، شرح و پوستر را مدیر کل برای همه‌ی نمایندگی‌ها یکسان تعیین می‌کند.'
       : 'عنوان، شرح، پوستر، سهمیه و بیعانه‌ی خدمت را فقط مدیر کل تعیین می‌کند (کاتالوگ مرکزی).') + '</div>' +
 
@@ -1194,6 +1243,7 @@ function svcModal() {
   return '<div class="pn-modal__hd"><div class="pn-modal__t">' + (isNew ? 'خدمت تازه' : 'ویرایش خدمت') + '</div>' +
     '<button class="pn-modal__x" data-close>' + I.x + '</button></div>' +
 
+    (s.fromCatalog ? note('info', I.info, 'این یک نسخه از الگوی مرکز است. تغییر عنوان، شرح، پوستر و ظرفیت فقط روی همین نمایندگی اثر دارد.') : '') +
     '<label class="pn-field"><span class="pn-field__l">عنوان خدمت</span>' +
     '<input class="pn-in" id="sv-title" value="' + esc(s.title) + '"></label>' +
 
@@ -1280,7 +1330,8 @@ function svcModal() {
       '<button class="pn-btn pn-btn--pri" data-svc-save' + (S.busy ? ' disabled' : '') + '>' +
       (S.busy ? '<span class="pn-spin"></span> در حال ذخیره…' : (isNew ? 'ثبت خدمت' : 'ذخیره تغییرات')) + '</button>' +
       '<button class="pn-btn pn-btn--soft" data-close>انصراف</button>' +
-      (isNew ? '' : '<button class="pn-btn pn-btn--bad" data-svc-del="' + s.id + '">حذف</button>') +
+      (s.fromCatalog ? '<button class="pn-btn pn-btn--soft" data-svc-reset="' + s.id + '">بازگشت به الگوی مرکز</button>'
+        : (isNew ? '' : '<button class="pn-btn pn-btn--bad" data-svc-del="' + s.id + '">حذف</button>')) +
     '</div>';
 }
 
@@ -1840,7 +1891,7 @@ function viewClosures() {
   if (!S.closures.items.length) {
     html += empty('بازه‌ی بسته‌ای وجود ندارد');
   } else {
-    html += '<div class="pn-tablewrap"><table class="pn-table" style="min-width:520px"><thead><tr>' +
+    html += '<div class="pn-tablewrap"><table class="pn-table pn-table--closures"><thead><tr>' +
       '<th>تاریخ</th><th>محدوده</th><th>دلیل</th><th></th></tr></thead><tbody>';
 
     S.closures.items.forEach(function (c) {
@@ -2073,9 +2124,9 @@ function viewProfile() {
         '<label class="pn-btn pn-btn--soft pn-btn--sm" style="cursor:pointer">' +
           '<input type="file" id="bp-photo" accept="image/jpeg,image/png,image/webp" hidden>' +
           (S.uploading ? 'در حال آپلود…' : 'انتخاب عکس') + '</label>' +
-        (P.photo ? '<button class="pn-btn pn-btn--bad pn-btn--sm" data-bp-photo-clear>حذف</button>' : '') +
+        (P.photoId ? '<button class="pn-btn pn-btn--soft pn-btn--sm" data-bp-photo-clear>استفاده از تصویر خودکار</button>' : '') +
       '</div>') +
-    '</div><div class="pn-hint">عکس نمای بیرونی مرکز، در کارت انتخاب مرکز به مشتری نشان داده می‌شود.</div></div>';
+    '</div><div class="pn-hint">نشان اختصاصی شعبه خودکار آماده است و در کارت انتخاب شعبه نمایش داده می‌شود. در صورت تمایل می‌توانید عکس واقعی جایگزین کنید.</div></div>';
 
   if (P.users && P.users.length) {
     html += '<div class="pn-card"><div class="pn-card__t">' + I.users + ' کاربران پنل</div>' +
@@ -2146,6 +2197,7 @@ function profileGeo() {
 
 /** عکس مرکز: همان مسیر آپلود پوستر، با for=branch. بدون done، روی پروفایل ذخیره می‌شود. */
 function uploadBranchPhoto(file, done) {
+  if (S.uploading) { return; }
   if (!file) { return; }
 
   if (file.size > 4 * 1024 * 1024) { toast('حجم تصویر باید کمتر از ۴ مگابایت باشد.', 'bad'); return; }
@@ -2157,8 +2209,7 @@ function uploadBranchPhoto(file, done) {
   S.uploading = true;
   paint();
 
-  fetch(ROOT + 'panel/poster', { method: 'POST', headers: { 'X-WP-Nonce': NONCE }, credentials: 'include', body: fd })
-    .then(function (r) { return r.json().catch(function () { return {}; }); })
+  uploadRequest(fd)
     .then(function (j) {
       S.uploading = false;
 
@@ -2169,7 +2220,14 @@ function uploadBranchPhoto(file, done) {
       }
 
       if (done) { done(j); return; }
-      saveProfile({ photoId: j.posterId });
+      post('panel/branch/save', { photoId: j.posterId }).then(function (r) {
+        if (r.success === false) { toast(r.message || 'تصویر ذخیره نشد.', 'bad'); paint(); return; }
+        if (S.profile && r.branch && S.profile.id === r.branch.id) {
+          ['photo', 'photoId', 'photoAuto', 'autoPhoto'].forEach(function (key) { S.profile[key] = r.branch[key]; });
+        }
+        toast('تصویر شعبه ذخیره شد.', 'ok');
+        paint();
+      });
     })
     .catch(function () {
       S.uploading = false;
@@ -2182,73 +2240,93 @@ function uploadBranchPhoto(file, done) {
 
 function viewAgencies() {
   var A = S.agencies;
-  var html = head('نمایندگی‌ها', 'ساخت، فعال‌سازی، کاربران و کیف پول هر نمایندگی',
+  var html = head('نمایندگی‌ها', 'مدیریت حساب، خدمات، دسترسی‌ها و موجودی نمایندگی‌ها',
     '<button class="pn-btn pn-btn--dark" data-ag-new>' + I.plus + ' نمایندگی تازه</button>' +
     '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>');
-
   if (!A) { return html + skel(3); }
-
-  var st = A.settings || {};
-
-  html += '<div class="pn-card"><div class="pn-card__t">' + I.wallet + ' مبلغ‌ها (برای همه‌ی نمایندگی‌ها)</div>' +
+  var st = A.settings || {}, items = A.items || [];
+  var agencies = items.filter(function (b) { return b.type === 'agency'; });
+  html += '<div class="pn-ag-overview">' +
+    [['نمایندگی', agencies.length], ['فعال', agencies.filter(function (b) { return b.status === 'active'; }).length],
+    ['پیش‌نویس', agencies.filter(function (b) { return b.status === 'draft'; }).length]].map(function (x) {
+      return '<div><b>' + fa(x[1]) + '</b><span>' + x[0] + '</span></div>';
+    }).join('') + '</div>' +
+    '<details class="pn-card pn-ag-settings"' + (S.agSettingsOpen ? ' open' : '') + '><summary>' + I.gear + ' تنظیمات عمومی خدمات و مبالغ</summary>' +
+    '<div class="pn-policy-grid">' +
+      '<label class="pn-policy"><input type="checkbox" id="ag-own"' + (Number(st.agency_own_services) ? ' checked' : '') + '><span><b>ساخت خدمت اختصاصی</b><small>نمایندگی بتواند خدمتی جدا از کاتالوگ مرکز بسازد.</small></span></label>' +
+      '<label class="pn-policy"><input type="checkbox" id="ag-customize"' + (Number(st.agency_customize_services) ? ' checked' : '') + '><span><b>شخصی‌سازی الگوی خدمات</b><small>عنوان، شرح، پوستر و ظرفیت الگو را فقط برای خودش تغییر دهد.</small></span></label>' +
+    '</div><p class="pn-hint">این مجوزها برای مدیر نمایندگی است. در ویرایش هر نمایندگی می‌توانید مجوز متفاوتی تعیین کنید. قیمت، روزها و فعال بودن خدمات همیشه با مدیر شعبه است.</p>' +
     '<div class="pn-grid">' +
-      [['ag-fee', 'agency_fee', 'هزینه‌ی هر رزرو موفق'], ['ag-welcome', 'agency_welcome_credit', 'اعتبار اولیه (یک بار)'],
-       ['ag-low', 'agency_low_balance', 'آستانه‌ی پیامک هشدار'], ['ag-min', 'agency_topup_min', 'حداقل شارژ آنلاین']].map(function (f) {
-        return '<label class="pn-field"><span class="pn-field__l">' + f[2] + '</span>' +
-          '<div class="pn-unit"><input class="pn-in num" id="' + f[0] + '" type="number" min="0" step="10000" value="' + Number(st[f[1]] || 0) + '"><span>تومان</span></div></label>';
+      [['ag-fee', 'agency_fee', 'هزینه هر رزرو موفق'], ['ag-welcome', 'agency_welcome_credit', 'اعتبار اولیه (یک بار)'],
+       ['ag-low', 'agency_low_balance', 'آستانه پیامک هشدار'], ['ag-min', 'agency_topup_min', 'حداقل شارژ آنلاین']].map(function (f) {
+        return '<label class="pn-field"><span class="pn-field__l">' + f[2] + '</span><div class="pn-unit"><input class="pn-in num" id="' + f[0] + '" type="number" min="0" value="' + Number(st[f[1]] || 0) + '"><span>تومان</span></div></label>';
       }).join('') +
-    '</div>' +
-    '<div class="pn-actions" style="margin-top:8px"><button class="pn-btn pn-btn--soft" data-ag-fees' + (S.busy ? ' disabled' : '') + '>ذخیره‌ی مبلغ‌ها</button></div>' +
-    '<div class="pn-hint">مبلغ هر رزرو روی خود نوبت ثبت می‌شود؛ تغییرش فقط روی رزروهای بعدی اثر دارد.</div></div>';
-
-  (A.items || []).forEach(function (b) {
-    var agency = b.type === 'agency';
-    var w = b.wallet;
-
-    html += '<div class="pn-card pn-agc">' +
-      '<div class="pn-agc__hd">' +
-        '<div style="flex:1;min-width:200px">' +
-          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-            '<h3 style="font-size:17px;font-weight:800">' + esc(b.title) + '</h3>' +
-            (agency ? '' : '<span class="pn-badge pn-badge--quick">مرکز</span>') +
-            branchBadge(b.status, b.statusLabel) +
-            (b.status === 'active' && !b.bookable ? '<span class="pn-badge pn-badge--no_show">نوبت نمی‌گیرد: ' + esc(b.reasonLabel) + '</span>' : '') +
-          '</div>' +
-          '<div class="pn-table__s" style="margin-top:6px">' + esc([b.province, b.city].filter(Boolean).join(' / ')) +
-            (b.address ? ' — ' + esc(b.address) : '') + '</div>' +
-          '<div class="pn-table__s num">' + fa(b.future) + ' نوبت آینده · ' + fa(b.services) + ' خدمت فعال · ' +
-            fa((b.users || []).length) + ' کاربر پنل' + (b.activatedAt ? ' · فعال از ' + fa(esc(b.activatedAt)) : '') + '</div>' +
-          (agency && b.slug ? '<div class="pn-table__s">لینک مستقیم مشتری: <span class="num" dir="ltr">' + esc((C.app || '/') + '?branch=' + b.slug) + '</span></div>' : '') +
-        '</div>' +
-        (w ? '<div class="pn-agc__w">' +
-          '<div><span>آزاد</span><b class="num">' + esc(fa(w.freeFa)) + '</b></div>' +
-          '<div><span>بلوکه</span><b class="num">' + esc(fa(w.heldFa)) + '</b></div>' +
-          '<div><span>کل</span><b class="num">' + esc(fa(w.totalFa)) + '</b></div>' +
-        '</div>' : '') +
+    '</div><button class="pn-btn pn-btn--pri" data-ag-fees' + (S.busy ? ' disabled' : '') + '>ذخیره تنظیمات عمومی</button>' +
+    '<p class="pn-hint">تغییر مبالغ فقط روی رزروهای بعدی اثر دارد.</p></details>';
+  items.forEach(function (b) {
+    var agency = b.type === 'agency', w = b.wallet;
+    html += '<article class="pn-card pn-agc"><div class="pn-agc__hd">' +
+      (b.photo ? '<img class="pn-agc__photo" src="' + esc(b.photo) + '" width="160" height="96" alt="' + esc('نشان ' + b.title) + '" loading="lazy">' : '') +
+      '<div class="pn-agc__info"><div class="pn-agc__title"><h3>' + esc(b.title) + '</h3>' + branchBadge(b.status, b.statusLabel) +
+        (agency ? '' : '<span class="pn-badge pn-badge--quick">مرکز اصلی</span>') + '</div>' +
+        '<p>' + esc([b.province, b.city].filter(Boolean).join(' / ')) + (b.address ? ' · ' + esc(b.address) : '') + '</p>' +
+        '<div class="pn-agc__meta"><span>' + fa(b.future) + ' نوبت آینده</span><span>' + fa(b.services) + ' خدمت فعال</span><span>' + fa((b.users || []).length) + ' کاربر پنل</span></div>' +
+        (agency && b.status === 'active' && !b.bookable ? '<p class="pn-agc__warning">' + esc(b.reasonLabel) + '</p>' : '') +
+      '</div></div>' +
+      (w ? '<div class="pn-agc__balance"><span>موجودی آزاد <b>' + esc(fa(w.freeFa)) + '</b></span><span>بلوکه <b>' + esc(fa(w.heldFa)) + '</b></span><span>کل <b>' + esc(fa(w.totalFa)) + '</b></span></div>' : '') +
+      '<div class="pn-svcacts">' +
+        '<button class="pn-btn pn-btn--dark pn-btn--sm" data-ag-enter="' + b.id + '">پنل شعبه ' + I.chevL + '</button>' +
+        '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-edit="' + b.id + '">' + I.edit + ' ویرایش و مجوزها</button>' +
+        '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-users="' + b.id + '">' + I.users + ' کاربران</button>' +
+        (agency ? '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-adjust="' + b.id + '">' + I.wallet + ' تغییر موجودی</button>' +
+          '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-status="' + b.id + ':' + (b.status === 'active' ? 'inactive' : 'active') + '">' + (b.status === 'active' ? 'غیرفعال کردن' : 'فعال کردن') + '</button>' +
+          '<button class="pn-btn pn-btn--bad pn-btn--sm" data-ag-delete="' + b.id + '">' + I.trash + ' حذف نمایندگی</button>' : '') +
       '</div>' +
-      '<div class="pn-svcacts" style="margin-top:12px">' +
-        '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-enter="' + b.id + '">' + I.out + ' ورود به پنل این شعبه</button>' +
-        '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-edit="' + b.id + '">' + I.edit + (agency ? ' ویرایش' : ' اطلاعات و موقعیت مرکز') + '</button>' +
-        '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-users="' + b.id + '">' + I.users + ' کاربران و نقش‌ها</button>' +
-        (agency ?
-          '<button class="pn-btn pn-btn--soft pn-btn--sm" data-ag-adjust="' + b.id + '">' + I.wallet + ' تغییر موجودی</button>' +
-          (b.status === 'active'
-            ? '<button class="pn-btn pn-btn--bad pn-btn--sm" data-ag-status="' + b.id + ':inactive">غیرفعال کن</button>'
-            : '<button class="pn-btn pn-btn--pri pn-btn--sm" data-ag-status="' + b.id + ':active">فعال کن</button>') : '') +
-      '</div>' +
-      (agency && b.status === 'draft' ? '<div class="pn-hint">پیش از فعال‌سازی: از «ورود به پنل این شعبه» خدمات را با قیمت نمایندگی فعال کنید. اولین فعال‌سازی ' + esc(fa(money(st.agency_welcome_credit || 0))) + ' تومان اعتبار اولیه واریز می‌کند و به مدیر نمایندگی پیامک می‌دهد.</div>' : '') +
-    '</div>';
+      (agency && b.slug ? '<div class="pn-agc__link"><span>لینک رزرو شعبه</span><a dir="ltr" href="' + esc((C.app || '/') + '?branch=' + encodeURIComponent(b.slug)) + '" target="_blank" rel="noopener">' + esc((C.app || '/') + '?branch=' + b.slug) + '</a></div>' : '') +
+      (agency && b.status === 'draft' ? '<p class="pn-hint">برای شروع، خدمات و قیمت‌ها را در پنل شعبه آماده کنید و سپس نمایندگی را فعال کنید.</p>' : '') +
+    '</article>';
   });
-
-  if ((A.items || []).length < 2) {
-    html += note('info', I.info, 'هنوز نمایندگی‌ای ساخته نشده است. تا وقتی فقط مرکز فعال است، مشتری‌ها مرحله‌ی انتخاب مرکز را نمی‌بینند و همه‌چیز مثل قبل است.');
-  }
-
+  if (!agencies.length) { html += note('info', I.info, 'اولین نمایندگی را بسازید. تصویر اختصاصی آن خودکار آماده می‌شود؛ نیازی به بارگذاری عکس نیست.'); }
   return html;
 }
 
 function findAgency(id) {
   return ((S.agencies && S.agencies.items) || []).filter(function (x) { return x.id === id; })[0];
+}
+
+function agencyPolicyFields(f) {
+  if (f.isCenter || f.type === 'center') { return ''; }
+  var policy = f.servicePolicy || {};
+  return '<div class="pn-policy-box"><h3>مجوز خدمات این نمایندگی</h3><div class="pn-grid">' +
+    [['ag-policy-own', 'ساخت خدمت اختصاصی', 'allowOwnServices', 'own'], ['ag-policy-customize', 'شخصی‌سازی الگوی مرکز', 'allowCustomizeServices', 'customize']].map(function (x) {
+      var v = typeof f[x[2]] !== 'undefined' ? Number(f[x[2]]) : (typeof policy[x[3]] !== 'undefined' ? Number(policy[x[3]]) : -1);
+      return '<label class="pn-field"><span class="pn-field__l">' + x[1] + '</span><select class="pn-in" id="' + x[0] + '">' +
+        [[-1, 'طبق تنظیم عمومی'], [1, 'مجاز'], [0, 'غیرمجاز']].map(function (o) { return '<option value="' + o[0] + '"' + (v === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label>';
+    }).join('') +
+    '</div><p class="pn-hint">مجوزها فقط برای مدیر همین نمایندگی‌اند. اپراتورها اجازه تغییر خدمات ندارند.</p></div>';
+}
+
+function agDeleteModal() {
+  var m = S.modal, b = m.agDelete;
+  return '<div class="pn-modal__hd"><h2 class="pn-modal__t">حذف نمایندگی</h2><button class="pn-modal__x" data-close aria-label="بستن">' + I.x + '</button></div>' +
+    note('warn', I.alert, '«' + esc(b.title) + '» از فهرست نمایندگی‌ها و انتخاب مشتری حذف می‌شود و دسترسی پنل کاربران آن بسته می‌شود. حساب مشتری این کاربران، سوابق نوبت‌ها و مالی محفوظ می‌ماند.') +
+    '<p class="pn-hint">پیش از حذف، نوبت‌های فعال و موجودی کیف پول باید تعیین تکلیف شده باشند.</p>' +
+    '<label class="pn-field"><span class="pn-field__l">برای تأیید، نام «' + esc(b.title) + '» را بنویسید</span><input class="pn-in" id="ag-delete-title" autocomplete="off" value="' + esc(m.confirmTitle || '') + '"></label>' +
+    '<div class="pn-modal__ft"><button class="pn-btn pn-btn--bad" data-ag-delete-confirm' + (S.busy || m.confirmTitle !== b.title ? ' disabled' : '') + '>' + (S.busy ? 'در حال حذف…' : 'حذف نمایندگی') + '</button><button class="pn-btn pn-btn--soft" data-close>انصراف</button></div>';
+}
+
+function deleteAgency() {
+  if (S.busy || !S.modal || !S.modal.agDelete) { return; }
+  var m = S.modal;
+  S.busy = true; paintModal();
+  post('panel/admin/branch/delete', { id: m.agDelete.id, confirmTitle: m.confirmTitle }).then(function (r) {
+    S.busy = false;
+    if (r.success === false) { toast(r.message, 'bad'); paintModal(); return; }
+    S.modal = null; S.agencies = null;
+    toast(r.message, 'ok');
+    if (Number(ctx().branchId) === Number(m.agDelete.id)) { switchBranch(0, 'agencies'); }
+    else { refreshSummary(); load('agencies'); }
+  });
 }
 
 function agencyModal() {
@@ -2263,6 +2341,7 @@ function agencyModal() {
 
   return '<div class="pn-modal__hd"><div class="pn-modal__t">' + (isNew ? 'نمایندگی تازه' : 'ویرایش ' + esc(f.title)) + '</div>' +
       '<button class="pn-modal__x" data-close>' + I.x + '</button></div>' +
+    agencyPolicyFields(f) +
     fld('ag-title', 'نام نمایندگی', f.title, '', 'مثلاً «نمایندگی اندیمشک»') +
     '<div class="pn-field"><span class="pn-field__l">نوع</span>' +
       '<div class="pn-in pn-in--ro">' + (f.isCenter ? 'مرکز اصلی (بدون کیف پول و کسر)' : 'نمایندگی (کیف پول و کسر هر رزرو)') + '</div>' +
@@ -2296,10 +2375,10 @@ function agencyModal() {
           '<label class="pn-btn pn-btn--soft pn-btn--sm" style="cursor:pointer">' +
             '<input type="file" id="ag-photo" accept="image/jpeg,image/png,image/webp" hidden>' +
             (S.uploading ? 'در حال آپلود…' : 'انتخاب عکس') + '</label>' +
-          (f.photo ? '<button type="button" class="pn-btn pn-btn--bad pn-btn--sm" data-ag-photo-clear>حذف</button>' : '') +
+          (f.photoId ? '<button type="button" class="pn-btn pn-btn--soft pn-btn--sm" data-ag-photo-clear>استفاده از تصویر خودکار</button>' : '') +
         '</div>' +
       '</div>' +
-      '<div class="pn-hint">عکس نمای بیرونی، در کارت انتخاب مرکز به مشتری نشان داده می‌شود. با «ذخیره» ثبت می‌شود.</div>' +
+      '<div class="pn-hint">تصویر اختصاصی با رنگ و کد شعبه به‌صورت خودکار ساخته می‌شود. بارگذاری عکس واقعی اختیاری است.</div>' +
     '</div>' +
     (isNew ? note('info', I.info, 'نمایندگی به‌صورت <b>پیش‌نویس</b> ساخته می‌شود و تا فعالش نکنید به مشتری‌ها نشان داده نمی‌شود. خدمات کاتالوگ مرکز غیرفعال برایش کپی می‌شوند.') : '') +
     '<div class="pn-modal__ft">' +
@@ -2310,6 +2389,7 @@ function agencyModal() {
 }
 
 function saveAgency() {
+  if (S.busy || S.uploading || !S.modal || !S.modal.agency) { return; }
   var f = S.modal.agency;
   var body = {
     id: f.id || 0,
@@ -2326,6 +2406,8 @@ function saveAgency() {
     lng: en(val('#ag-lng')).trim()
   };
 
+  if ($('#ag-policy-own')) { body.allowOwnServices = Number(val('#ag-policy-own')); }
+  if ($('#ag-policy-customize')) { body.allowCustomizeServices = Number(val('#ag-policy-customize')); }
   if ($('#ag-mphone')) { body.managerPhone = en(val('#ag-mphone')).trim(); }
   if (typeof f.photoId !== 'undefined') { body.photoId = Number(f.photoId) || 0; }
 
@@ -2464,9 +2546,12 @@ function agAdjust() {
 }
 
 function agStatus(id, status, confirmed) {
+  if (S.busy) { return; }
   if (!confirmed && status === 'active' && !window.confirm('این نمایندگی فعال شود و در فهرست مشتری‌ها بیاید؟')) { return; }
 
+  S.busy = true;
   post('panel/admin/branch/status', { id: id, status: status, confirm: confirmed ? 1 : 0 }).then(function (r) {
+    S.busy = false;
     if (r.success === false && r.code === 'cmb_branch_has_future') {
       if (window.confirm(r.message + ' غیرفعال شود؟')) { agStatus(id, status, true); }
       return;
@@ -2483,13 +2568,18 @@ function agStatus(id, status, confirmed) {
 }
 
 function saveFees() {
+  if (S.busy) { return; }
   var body = {
+    agency_own_services: checked('#ag-own') ? 1 : 0,
+    agency_customize_services: checked('#ag-customize') ? 1 : 0,
     agency_fee: en(val('#ag-fee')),
     agency_welcome_credit: en(val('#ag-welcome')),
     agency_low_balance: en(val('#ag-low')),
     agency_topup_min: en(val('#ag-min'))
   };
 
+  if (S.agencies) { S.agencies.settings = Object.assign({}, S.agencies.settings, body); }
+  S.agSettingsOpen = true;
   S.busy = true;
   paint();
 
@@ -2498,7 +2588,7 @@ function saveFees() {
 
     if (r.success === false) { toast(r.message || 'ذخیره ناموفق بود.', 'bad'); paint(); return; }
 
-    toast(r.message || 'ذخیره شد.', 'ok');
+    toast('تنظیمات عمومی ذخیره شد.', 'ok');
     if (S.agencies) { S.agencies.settings = r.settings; }
     paint();
   });
@@ -2506,7 +2596,13 @@ function saveFees() {
 
 /** مدیر سایت: پنل یک شعبه‌ی دیگر را ببیند. */
 function switchBranch(id, then) {
+  if (switchingBranch || pendingWrites || S.busy || S.uploading) { toast('ابتدا منتظر پایان عملیات جاری بمانید.', 'bad'); return; }
+  switchingBranch = true;
+  invalidateData();
+  S.modal = null; S.svcEdit = null;
+  paint();
   post('panel/branch/switch', { branch: Number(id) }).then(function (r) {
+    switchingBranch = false;
     if (r.success === false || !r.counts) { toast(r.message || 'تغییر شعبه ناموفق بود.', 'bad'); paint(); return; }
 
     // همه‌ی داده‌های شعبه‌ی قبلی کنار می‌رود
@@ -3426,13 +3522,6 @@ function render() {
 
   shellKey = key;
 
-  /* منو با هر تعویض بخش از نو کشیده می‌شود؛ جای پیمایشش نگه داشته
-     می‌شود تا با زدن گزینه‌های پایین منو به بالا نپرد. */
-  var oldNav = $('.pn-side__nav');
-  var oldSide = $('.pn-side');
-  var navY = oldNav ? oldNav.scrollTop : 0;
-  var sideY = oldSide ? oldSide.scrollTop : 0;
-
   root.innerHTML =
     '<div class="pn' + (S.menu ? ' is-menu' : '') + '">' +
       // پرده‌ی پشت منوی کشویی — فقط روی موبایل دیده می‌شود
@@ -3450,40 +3539,8 @@ function render() {
     '</div>' +
     '<div id="pn-toasts" class="pn-toasts"></div><div id="pn-modal"></div>';
 
-  var navEl = $('.pn-side__nav');
-  var sideEl = $('.pn-side');
-  if (navEl) { navEl.scrollTop = navY; }
-  if (sideEl) { sideEl.scrollTop = sideY; }
-  navIntoView();
-  navFade();
-
   paintToasts();
   paintModal();
-}
-
-/** گزینه‌ی فعال منو اگر بیرون از دید است، به وسط منو بیاید. */
-function navIntoView() {
-  var nav = $('.pn-side__nav');
-  var on = $('.pn-side__b.is-on');
-
-  if (!nav || !on || nav.scrollHeight <= nav.clientHeight) { return; }
-
-  var n = nav.getBoundingClientRect();
-  var o = on.getBoundingClientRect();
-
-  if (o.top < n.top || o.bottom > n.bottom) {
-    nav.scrollTop += (o.top - n.top) - (nav.clientHeight - o.height) / 2;
-  }
-}
-
-/** سایه‌ی محو بالا/پایین منو، فقط وقتی آن طرف گزینه‌ی پنهانی هست. */
-function navFade() {
-  var nav = $('.pn-side__nav');
-  if (!nav) { return; }
-
-  var more = nav.scrollHeight - nav.clientHeight > 2;
-  nav.classList.toggle('has-more-t', more && nav.scrollTop > 2);
-  nav.classList.toggle('has-more-b', more && nav.scrollTop + nav.clientHeight < nav.scrollHeight - 2);
 }
 
 function paintToasts() {
@@ -3502,8 +3559,12 @@ function paintModal() {
 
   if (!S.modal && !S.svcEdit) { host.innerHTML = ''; if (window.CMBLocation) { window.CMBLocation.sync(); } if (window.CMBA11y) { window.CMBA11y.sync(document.getElementById('cmb-panel')); } return; }
 
+  var focusBefore = grabFocus();
+  var oldModal = host.querySelector('.pn-modal');
+  var modalScroll = oldModal ? oldModal.scrollTop : 0;
+  if (S.svcEdit) { readSvcForm(); }
   var m = S.modal || {};
-  var inner = S.svcEdit ? svcModal()
+  var inner = m.agDelete ? agDeleteModal() : S.svcEdit ? svcModal()
     : (m.install ? installModal()
     : (m.wallet ? walletModal()
     : (m.agency ? agencyModal()
@@ -3515,6 +3576,9 @@ function paintModal() {
   if (window.CMBLocation) { window.CMBLocation.sync(); }
   if (window.CMBA11y) { window.CMBA11y.sync(document.getElementById('cmb-panel')); }
   if (S.svcEdit) { amountWarn(); }
+  var newModal = host.querySelector('.pn-modal');
+  if (newModal) { newModal.scrollTop = modalScroll; }
+  restoreFocus(focusBefore);
 }
 
 /* ═══ بارگذاری ═══ */
@@ -3533,7 +3597,7 @@ function jobs() {
                 function (r) { S.customers = r; }],
     services: ['panel/services', function (r) {
       S.services = r.items || [];
-      S.svcMeta = { catalog: !!r.catalog, center: !!r.center, canEdit: r.canEdit !== false, canAdd: r.canAdd !== false };
+      S.svcMeta = { catalog: !!r.catalog, center: !!r.center, canEdit: r.canEdit !== false, canAdd: r.canAdd !== false, canCustomize: !!r.canCustomize };
       openPendingSvc();
     }],
     bwallet:  ['panel/branch-wallet?page=' + S.bwPage +
@@ -3596,11 +3660,17 @@ function load(view, force) {
   /* داده‌ی قبلی سر جایش می‌ماند و فقط کم‌رنگ می‌شود. اسکلت فقط
      وقتی دیده می‌شود که هنوز هیچ داده‌ای نداریم — وگرنه هر
      تازه‌سازی، جدول را یک لحظه از صفحه پاک می‌کرد. */
-  S.fetching = true;
+  var epoch = dataEpoch, ticket = ++loadSequence;
+  activeLoads[view] = ticket;
+  S.fetching = !!activeLoads[S.view];
   paint();
 
   get(job[0]).then(function (r) {
-    S.fetching = false;
+    if (epoch !== dataEpoch || activeLoads[view] !== ticket) { return; }
+    delete activeLoads[view];
+    S.fetching = !!activeLoads[S.view];
+    var currentJob = jobs()[view];
+    if (!currentJob || currentJob[0] !== job[0]) { paint(); return; }
 
     if (r.success === false) {
       toast(r.message || 'دریافت اطلاعات ناموفق بود.', 'bad');
@@ -3781,7 +3851,12 @@ function setStatus(id, status, extra) {
 
 /** شمارنده‌های خلاصه (و عدد کنار «نوبت‌ها» در منو) بی‌صدا تازه شوند. */
 function refreshSummary() {
+  var epoch = dataEpoch, ticket = ++loadSequence;
+  activeLoads.summary = ticket;
   get('panel/summary').then(function (r) {
+    if (epoch !== dataEpoch || activeLoads.summary !== ticket) { return; }
+    delete activeLoads.summary;
+    S.fetching = !!activeLoads[S.view];
     if (r.success !== false && looksValid('summary', r)) {
       S.summary = r;
       S.got[jobs().summary[0]] = Date.now();
@@ -3798,7 +3873,7 @@ function refreshSummary() {
  * ست نمی‌کنیم تا مرورگر boundary را خودش بگذارد.
  */
 function uploadPoster(file) {
-  if (!file) { return; }
+  if (!file || S.uploading) { return; }
 
   if (file.size > 4 * 1024 * 1024) {
     toast('حجم تصویر باید کمتر از ۴ مگابایت باشد.', 'bad');
@@ -3807,18 +3882,14 @@ function uploadPoster(file) {
 
   var fd = new FormData();
   fd.append('file', file);
-  fd.append('service_id', S.svcEdit.id);
+  var editingService = S.svcEdit;
+  if (!editingService || !editingService.id) { return; }
+  fd.append('service_id', editingService.id);
 
   S.uploading = true;
   paintModal();
 
-  fetch(ROOT + 'panel/poster', {
-    method: 'POST',
-    headers: { 'X-WP-Nonce': NONCE },
-    credentials: 'include',
-    body: fd
-  })
-    .then(function (r) { return r.json().catch(function () { return {}; }); })
+  uploadRequest(fd)
     .then(function (j) {
       S.uploading = false;
 
@@ -3828,8 +3899,9 @@ function uploadPoster(file) {
         return;
       }
 
-      S.svcEdit.posterId = j.posterId;
-      S.svcEdit.poster = j.poster || '';
+      editingService.posterId = j.posterId;
+      editingService.poster = j.poster || '';
+      invalidateData();
       S.services = null;
 
       toast('پوستر آپلود شد.', 'ok');
@@ -3874,13 +3946,19 @@ function pushService(svc, okMsg) {
  * سرور خطا داد، فهرست از نو خوانده می‌شود و مقدار واقعی برمی‌گردد.
  */
 function toggleService(id) {
+  if (S.busy) { return; }
   var svc = findService(id);
   if (!svc) { return; }
 
   svc.active = svc.active ? 0 : 1;
   paint();
 
-  pushService(svc, svc.active ? 'خدمت فعال شد.' : 'خدمت غیرفعال شد.');
+  S.busy = true;
+  post('panel/service', { id: svc.id, active: svc.active }).then(function (r) {
+    S.busy = false;
+    toast(r.success === false ? r.message : (svc.active ? 'خدمت فعال شد.' : 'خدمت غیرفعال شد.'), r.success === false ? 'bad' : 'ok');
+    load('services');
+  });
 }
 
 /**
@@ -3897,6 +3975,7 @@ function copyService(id) {
   var copy = JSON.parse(JSON.stringify(svc));
 
   copy.id = 0;
+  copy.catalog = false; copy.fromCatalog = false; copy.customized = false; copy.catalogId = 0;
   copy.title = svc.title + ' (کپی)';
   copy.poster = '';
   copy.posterId = 0;
@@ -3938,6 +4017,17 @@ function moveService(id, dir) {
  * می‌دهد که به‌جایش غیرفعالش کنید — تاریخچه نباید عنوانش را از
  * دست بدهد.
  */
+function resetService(id) {
+  if (S.busy || !window.confirm('عنوان، شرح، پوستر و ظرفیت به الگوی مرکز برگردد؟ قیمت، روزها و وضعیت حفظ می‌شود.')) { return; }
+  S.busy = true; paintModal();
+  post('panel/service/reset', { id: id }).then(function (r) {
+    S.busy = false;
+    if (r.success === false) { toast(r.message, 'bad'); paintModal(); return; }
+    S.svcEdit = null; S.services = null;
+    toast(r.message, 'ok'); load('services');
+  });
+}
+
 function deleteService(id) {
   if (!id) { return; }
   if (!window.confirm('این خدمت حذف شود؟ اگر نوبتی رویش ثبت شده باشد، حذف انجام نمی‌شود.')) { return; }
@@ -3994,6 +4084,7 @@ function readSvcForm() {
 }
 
 function saveService() {
+  if (S.busy || S.uploading || !S.svcEdit) { return; }
   var s = S.svcEdit;
 
   readSvcForm();
@@ -4355,18 +4446,23 @@ function shiftBoard(days) {
 /* ═══ رویدادها ═══ */
 
 function bind() {
-  // پیمایش منو (رویداد scroll حباب نمی‌زند؛ در مرحله‌ی capture گرفته می‌شود)
-  document.addEventListener('scroll', function (e) {
-    if (e.target && e.target.classList && e.target.classList.contains('pn-side__nav')) { navFade(); }
+  document.addEventListener('toggle', function (e) {
+    if (e.target && e.target.isConnected && e.target.classList && e.target.classList.contains('pn-ag-settings')) { S.agSettingsOpen = e.target.open; }
   }, true);
-  window.addEventListener('resize', navFade);
-
   document.addEventListener('input', function (e) {
+    if (e.target && e.target.id === 'ag-delete-title' && S.modal && S.modal.agDelete) {
+      S.modal.confirmTitle = e.target.value;
+      var delButton = $('[data-ag-delete-confirm]');
+      if (delButton) { delButton.disabled = S.busy || S.modal.confirmTitle !== S.modal.agDelete.title; }
+    }
+
     var id = e.target.id, p = {'bp-address':'address','bp-phone':'phone','bp-lat':'lat','bp-lng':'lng'};
     if (S.profile && p[id]) { S.profile[p[id]] = e.target.value; }
     if (S.modal && S.modal.agency && /^ag-/.test(id)) {
       var f = {'ag-title':'title','ag-slug':'slug','ag-sort':'sortOrder','ag-prov':'province','ag-city':'city','ag-address':'address','ag-phone':'phone','ag-contact':'contactName','ag-mphone':'managerPhone','ag-sms':'managerPhones','ag-lat':'lat','ag-lng':'lng'};
       if (f[id]) { S.modal.agency[f[id]] = e.target.value; }
+      if (id === 'ag-policy-own') { S.modal.agency.allowOwnServices = Number(e.target.value); }
+      if (id === 'ag-policy-customize') { S.modal.agency.allowCustomizeServices = Number(e.target.value); }
     }
   });
   // انتخابگر تاریخ شمسی: مقدار میلادی را در input مخفی می‌گذارد
@@ -4603,6 +4699,7 @@ function bind() {
       return;
     }
 
+    if ((el = up('[data-svc-reset]'))) { e.preventDefault(); resetService(Number(el.getAttribute('data-svc-reset'))); return; }
     if ((el = up('[data-svc-del]'))) {
       e.preventDefault();
       deleteService(Number(el.getAttribute('data-svc-del')));
@@ -4927,7 +5024,7 @@ function bind() {
     if (up('[data-bp-save]')) { e.preventDefault(); saveProfile(); return; }
     if (up('[data-bp-geo]')) { e.preventDefault(); profileGeo(); return; }
     if (up('[data-bp-photo-clear]')) { e.preventDefault(); saveProfile({ photoId: 0 }); return; }
-    if (up('[data-ag-photo-clear]') && S.modal && S.modal.agency) { e.preventDefault(); S.modal.agency.photoId = 0; S.modal.agency.photo = ''; paintModal(); return; }
+    if (up('[data-ag-photo-clear]') && S.modal && S.modal.agency) { e.preventDefault(); S.modal.agency.photoId = 0; S.modal.agency.photo = S.modal.agency.autoPhoto || ''; paintModal(); return; }
 
     /* ── مدیر سایت: نمایندگی‌ها ── */
 
@@ -4945,6 +5042,13 @@ function bind() {
       return;
     }
 
+    if ((el = up('[data-ag-delete]'))) {
+      e.preventDefault();
+      var deleting = findAgency(Number(el.getAttribute('data-ag-delete')));
+      if (deleting && deleting.type === 'agency') { S.modal = { agDelete: deleting, confirmTitle: '' }; paintModal(); }
+      return;
+    }
+    if (up('[data-ag-delete-confirm]')) { e.preventDefault(); deleteAgency(); return; }
     if (up('[data-ag-save]')) { e.preventDefault(); saveAgency(); return; }
 
     if ((el = up('[data-ag-status]'))) {
@@ -5076,9 +5180,10 @@ function bind() {
 
     // فرم ساخت/ویرایش نمایندگی (ادمین): عکس با همان فرم ذخیره می‌شود (US-1.1)
     if (e.target && e.target.id === 'ag-photo' && e.target.files && e.target.files[0] && S.modal && S.modal.agency) {
+      var editingAgency = S.modal.agency;
       uploadBranchPhoto(e.target.files[0], function (j) {
-        S.modal.agency.photoId = j.posterId;
-        S.modal.agency.photo = j.poster || '';
+        editingAgency.photoId = j.posterId;
+        editingAgency.photo = j.poster || '';
         paintModal();
       });
     }

@@ -239,7 +239,7 @@ class CMB_Bookings {
 		$fee   = ( CMB_Branches::ready() && CMB_Branches::is_agency( $branch_id ) ) ? CMB_Branches::fee() : 0;
 		$wlock = null;
 
-		if ( $fee > 0 ) {
+		if ( CMB_Branches::ready() && CMB_Branches::is_agency( $branch_id ) ) {
 			$wlock = CMB_Branch_Wallet::lock( $branch_id );
 
 			if ( 'busy' === $wlock ) {
@@ -248,6 +248,16 @@ class CMB_Bookings {
 				return new WP_Error( 'cmb_busy', 'سرور همین حالا مشغول ثبت نوبت دیگری برای همین مرکز است. چند ثانیه‌ی دیگر دوباره «ثبت» را بزنید.', array( 'status' => 503 ) );
 			}
 
+			// Deletion uses this same lock. Re-read after acquiring it, even with a zero fee.
+			$fresh_branch = CMB_Services::get_branch( $branch_id, true );
+			if ( ! CMB_Branches::bookable( $fresh_branch ) ) {
+				CMB_Branch_Wallet::unlock( $branch_id, $wlock );
+				cmb_unlock( $lock_name, $locked );
+				return self::branch_unavailable( $branch_id );
+			}
+		}
+
+		if ( $fee > 0 ) {
 			cmb_tx( 'START TRANSACTION' );
 
 			if ( CMB_Branch_Wallet::free( $branch_id ) < $fee ) {
@@ -283,8 +293,8 @@ class CMB_Bookings {
 				cmb_tx( 'COMMIT' );
 			}
 
-			CMB_Branch_Wallet::unlock( $branch_id, $wlock );
 		}
+		if ( null !== $wlock ) { CMB_Branch_Wallet::unlock( $branch_id, $wlock ); }
 
 		cmb_unlock( $lock_name, $locked );
 

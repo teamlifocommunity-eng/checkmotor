@@ -119,3 +119,15 @@
 	background: #f3f5f7;
 	color: #5b6772;
 }
+
+/* 1.43.1: fit plugin fields and uploaded previews within WordPress columns. */
+.cmb-admin { min-width:0; overflow-wrap:anywhere; }
+.cmb-admin :is(input,select,textarea,img) { max-width:100%; box-sizing:border-box; }
+.cmb-admin .cmb-check { white-space:normal; }
+.cmb-admin .cmb-card { min-width:0; max-width:100%; box-sizing:border-box; }
+@media(max-width:782px) {
+  .cmb-admin .form-table th { width:auto; }
+  .cmb-admin .cmb-box { padding-inline:12px; }
+  .cmb-admin :is(input[type="text"],input[type="number"],input[type="url"],textarea,select) { font-size:16px; }
+  .cmb-admin .cmb-row-actions .button { min-height:44px; white-space:normal; }
+}

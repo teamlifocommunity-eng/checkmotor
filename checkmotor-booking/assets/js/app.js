@@ -63,7 +63,7 @@ var S = {
 
   /* انتخاب مرکز: فقط وقتی بیش از یک شعبه‌ی فعال هست (US-2.1). با یک
      شعبه هیچ‌چیز این بخش دیده نمی‌شود و اپ دقیقاً مثل قبل است. */
-  branchPick: false, branchChosen: false, branchQ: ''
+  branchPick: false, branchChosen: false, branchQ: '', branchProvince: '', branchOpenOnly: false
 };
 
 var BR = C.branches || { picker: false, groups: [], center: 0, preselect: null };
@@ -463,38 +463,56 @@ function branchChip(b) {
 
 function branchCard(b) {
   var off = !b.bookable;
-  return '<article class="cmb-branch' + (off ? ' is-off' : '') + '">' +
-    '<div class="cmb-branch__ph">' + (b.photo ? '<img src="' + esc(b.photo) + '" alt="نمای ' + esc(b.title) + '" width="64" height="64" loading="lazy">' : I.engine) + '</div>' +
-    '<div class="cmb-branch__body"><h3 class="cmb-branch__t">' + esc(b.title) + '</h3>' +
-      '<span class="cmb-branch__tag' + (b.type === 'agency' ? '' : ' cmb-branch__tag--hq') + '">' + (b.type === 'agency' ? 'تأییدشده توسط چک موتور' : 'مرکز اصلی چک موتور') + '</span>' +
-      '<p class="cmb-branch__s">' + esc([b.city, b.address].filter(Boolean).join(' — ')) + '</p>' +
-      (off ? '<p class="cmb-branch__off">' + esc(b.unavailable || 'فعلاً نوبت نمی‌گیرد') + '</p>' :
-        '<button type="button" class="cmb-branch__select" data-branch="' + b.id + '" aria-label="انتخاب ' + esc(b.title) + '">انتخاب این مرکز ' + I.chevL + '</button>') +
+  var selected = S.branchChosen && S.branch && Number(S.branch.id) === Number(b.id);
+  return '<article class="cmb-branch' + (off ? ' is-off' : '') + (selected ? ' is-selected' : '') + '">' +
+    '<div class="cmb-branch__cover">' +
+      (b.photo ? '<img src="' + esc(b.photo) + '" alt="' + esc((b.photoAuto ? 'نشان اختصاصی ' : 'تصویر ') + b.title) + '" width="640" height="320" loading="lazy">' : I.engine) +
+      '<span class="cmb-branch__kind">' + (b.type === 'agency' ? 'نمایندگی چک موتور' : 'مرکز اصلی چک موتور') + '</span>' +
+    '</div>' +
+    '<div class="cmb-branch__body">' +
+      '<div class="cmb-branch__heading"><h3 class="cmb-branch__t">' + esc(b.title) + '</h3>' +
+      (selected ? '<span class="cmb-branch__selected">' + I.check + ' انتخاب فعلی</span>' : '') + '</div>' +
+      '<p class="cmb-branch__city">' + I.pin + esc([b.province, b.city].filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('، ') || 'موقعیت ثبت نشده') + '</p>' +
+      '<p class="cmb-branch__s">' + esc(b.address || 'برای دریافت نشانی با مرکز تماس بگیرید.') + '</p>' +
       '<div class="cmb-branch__acts">' +
         (b.phone ? '<a href="tel:' + esc(b.phone) + '" aria-label="تماس با ' + esc(b.title) + '">' + I.phone + '<bdi dir="ltr">' + fa(esc(b.phone)) + '</bdi></a>' : '') +
-        (b.map ? '<a href="' + esc(b.map) + '" target="_blank" rel="noopener">' + I.pin + ' مسیریابی با نشان</a>' : '') + '</div>' +
-      (window.CMBLocation ? window.CMBLocation.html({lat:b.lat,lng:b.lng,title:b.title}) : '') +
+        (b.map ? '<a href="' + esc(b.map) + '" target="_blank" rel="noopener">' + I.pin + ' مسیریابی</a>' : '') +
+      '</div>' +
+      (off ? '<div class="cmb-branch__off" role="status">' + esc(b.unavailable || 'فعلاً نوبت نمی‌گیرد') + '</div>' :
+        '<button type="button" class="cmb-branch__select" data-branch="' + Number(b.id) + '" aria-label="انتخاب ' + esc(b.title) + ' و مشاهده خدمات">' +
+          '<span>انتخاب شعبه و دیدن خدمات</span>' + I.chevL + '</button>') +
     '</div></article>';
 }
 
 function branchSearch(v) {
-  return String(v || '').replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/[\u064B-\u065F\u0670]/g, '').replace(/[\s\u200c]+/g, ' ').trim().toLowerCase();
+  return en(String(v || '')).replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/[\u064B-\u065F\u0670]/g, '').replace(/[\s\u200c]+/g, ' ').trim().toLowerCase();
 }
 
 function viewPicker() {
-  var q = branchSearch(S.branchQ), count = 0;
-  var html = topBar('انتخاب مرکز', 'مرکز و نمایندگی‌های چک موتور؛ محل مراجعه را انتخاب کنید', S.branchChosen) +
-    '<div class="cmb-page cmb-mt3"><div class="cmb-pickerintro">' + I.pin + '<div><b>کدام مرکز به شما نزدیک‌تر است؟</b><p>ابتدا مرکز را انتخاب کنید؛ سپس خدمات و زمان‌های همان مرکز را می‌بینید.</p></div></div>' +
-    '<label class="cmb-field cmb-branchsearch"><span class="cmb-field__l">جستجوی مرکز، شهر یا استان</span><input class="cmb-in" id="cmb-br-q" type="search" autocomplete="off" placeholder="مثلاً بوشهر یا اندیمشک" value="' + esc(S.branchQ) + '"></label>';
+  var q = branchSearch(S.branchQ), count = 0, groups = '';
   (BR.groups || []).forEach(function (g) {
-    var list = (g.branches || []).filter(function (b) { return !q || branchSearch([b.title, b.city, b.province, g.province].join(' ')).indexOf(q) !== -1; });
-    if (!list.length) { return; } count += list.length;
-    html += '<div class="cmb-sec"><h2 class="cmb-sec__t">' + esc(g.province) + '</h2><span class="cmb-hint">' + fa(list.length) + ' مرکز</span></div>';
-    list.forEach(function (b) { html += branchCard(b); });
+    if (S.branchProvince && S.branchProvince !== g.province) { return; }
+    var list = (g.branches || []).filter(function (b) {
+      return (!S.branchOpenOnly || b.bookable) && (!q || branchSearch([b.title, b.city, b.province, b.address, b.visualCode, g.province].join(' ')).indexOf(q) !== -1);
+    });
+    if (!list.length) { return; }
+    count += list.length;
+    groups += list.map(branchCard).join('');
   });
-  if (!count) { html += empty(I.pin, 'مرکزی پیدا نشد', 'نام مرکز، شهر یا استان را جور دیگری بنویسید.') + '<button class="cmb-btn cmb-btn--soft" data-branch-clear>پاک کردن جستجو</button>'; }
-  html += '<p class="cmb-sr-only" role="status">' + fa(count) + ' مرکز پیدا شد</p></div>';
-  return html;
+  var html = topBar('انتخاب شعبه', 'محل مراجعه خود را پیش از رزرو مشخص کنید', S.branchChosen) +
+    '<div class="cmb-page cmb-picker"><div class="cmb-picker__intro"><span class="cmb-picker__eyebrow">شبکه چک موتور</span>' +
+    '<h1>از کدام شعبه نوبت می‌گیرید؟</h1><p>شعبه را انتخاب کنید تا خدمات، قیمت‌ها و زمان‌های همان شعبه را ببینید.</p>' +
+    '<ol class="cmb-picker__steps" aria-label="مراحل رزرو"><li aria-current="step"><b>' + fa(1) + '</b> انتخاب شعبه</li><li><b>' + fa(2) + '</b> انتخاب خدمت</li><li><b>' + fa(3) + '</b> زمان مراجعه</li></ol></div>' +
+    '<div class="cmb-picker__filters"><label class="cmb-field"><span class="cmb-field__l">نام شعبه، شهر یا نشانی</span>' +
+      '<input class="cmb-in" id="cmb-br-q" type="search" autocomplete="off" placeholder="مثلاً اندیمشک" value="' + esc(S.branchQ) + '"></label>' +
+    '<label class="cmb-field"><span class="cmb-field__l">استان</span><select class="cmb-in" id="cmb-br-province"><option value="">همه استان‌ها</option>' +
+      (BR.groups || []).map(function (g) { return '<option value="' + esc(g.province) + '"' + (S.branchProvince === g.province ? ' selected' : '') + '>' + esc(g.province) + '</option>'; }).join('') +
+    '</select></label><label class="cmb-picker__toggle"><input type="checkbox" id="cmb-br-open"' + (S.branchOpenOnly ? ' checked' : '') + '> فقط شعبه‌های قابل رزرو</label></div>' +
+    '<div class="cmb-picker__results" role="status" aria-live="polite">' + fa(count) + ' شعبه پیدا شد' +
+      (S.branchQ || S.branchProvince || S.branchOpenOnly ? '<button class="cmb-link" data-branch-clear>پاک کردن فیلترها</button>' : '') + '</div>';
+  html += groups ? '<div class="cmb-branchgrid" aria-label="شعبه‌های چک موتور">' + groups + '</div>' : empty(I.pin, 'شعبه‌ای با این مشخصات پیدا نشد', 'نام شهر یا شعبه را تغییر دهید یا فیلترها را پاک کنید.');
+  if (!count) { html += '<button class="cmb-btn cmb-btn--soft" data-branch-clear>نمایش همه شعبه‌ها</button>'; }
+  return html + '</div>';
 }
 
 function rememberBranch(id) {
@@ -1790,7 +1808,7 @@ function render() {
   // وگرنه آخرین بخش محتوا زیر نوار ثابت گم می‌شود.
   var wizard = (S.page === 'book' && !S.receipt);
   var bar = inner.indexOf('cmb-actionbar') !== -1;
-  var shellClass = 'cmb-shell';
+  var shellClass = 'cmb-shell' + (S.page === 'home' && S.branchPick ? ' cmb-shell--picker' : '');
 
   if (wizard) {
     shellClass += bar ? ' cmb-shell--bar' : ' cmb-shell--bare';
@@ -2533,6 +2551,11 @@ function stopTimer() {
 /* ═══ رویدادها ═══ */
 
 function bind() {
+  document.addEventListener('change', function (e) {
+    if (e.target && e.target.id === 'cmb-br-province') { S.branchProvince = e.target.value; paint(); }
+    if (e.target && e.target.id === 'cmb-br-open') { S.branchOpenOnly = e.target.checked; paint(); }
+  });
+
   document.addEventListener('input', function (e) {
     if (e.target && e.target.id === 'cmb-br-q') {
       S.branchQ = e.target.value;
@@ -2557,7 +2580,7 @@ function bind() {
     if (up('[data-start]')) { e.preventDefault(); startBooking(); return; }
 
     if (up('[data-services-retry]')) { e.preventDefault(); S.servicesTried = false; S.servicesError = ''; load('home'); return; }
-    if (up('[data-branch-clear]')) { e.preventDefault(); S.branchQ = ''; paint(); return; }
+    if (up('[data-branch-clear]')) { e.preventDefault(); S.branchQ = ''; S.branchProvince = ''; S.branchOpenOnly = false; paint(); return; }
     if (up('[data-branch-change]')) { e.preventDefault(); S.branchPick = true; S.branchQ = ''; go('home'); return; }
 
     // تماس و مسیریابی داخل کارت مرکز کار خودشان را می‌کنند

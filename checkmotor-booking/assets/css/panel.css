@@ -128,6 +128,34 @@ body.cmb-body > *:not(#cmb-panel):not(script):not(style):not(noscript):not(link)
 .pn-side__s { font-size: var(--t-cp); color: rgba(255,255,255,.5); margin-top: 1px; }
 
 .pn-side__nav { display: flex; flex-direction: column; gap: 3px; flex: 1; overflow-y: auto; }
+/* 1.43.2: a quiet scrollbar that belongs to the dark navigation. */
+#cmb-panel :is(.pn-side,.pn-side__nav) {
+  --pn-scroll-track:#1b2d3b;
+  --pn-scroll-thumb:#738a9b;
+  --pn-scroll-hover:#a4bac9;
+  color-scheme:dark;
+  scrollbar-width:thin;
+  scrollbar-color:var(--pn-scroll-thumb) var(--pn-scroll-track);
+  scrollbar-gutter:stable;
+  overscroll-behavior:contain;
+}
+/* Chromium and Safari get rounded ends and no stepper arrows. */
+@supports selector(::-webkit-scrollbar) {
+  #cmb-panel :is(.pn-side,.pn-side__nav) { scrollbar-width:auto; scrollbar-color:auto; }
+  #cmb-panel :is(.pn-side,.pn-side__nav)::-webkit-scrollbar { width:8px; height:8px; }
+  #cmb-panel :is(.pn-side,.pn-side__nav)::-webkit-scrollbar-track { background:var(--pn-scroll-track); border-radius:999px; margin-block:6px; }
+  #cmb-panel :is(.pn-side,.pn-side__nav)::-webkit-scrollbar-thumb {
+    background:var(--pn-scroll-thumb); border:2px solid var(--pn-scroll-track);
+    border-radius:999px; min-height:40px;
+  }
+  #cmb-panel :is(.pn-side,.pn-side__nav)::-webkit-scrollbar-thumb:hover { background:var(--pn-scroll-hover); }
+  #cmb-panel :is(.pn-side,.pn-side__nav)::-webkit-scrollbar-thumb:active { background:var(--flame); }
+  #cmb-panel :is(.pn-side,.pn-side__nav)::-webkit-scrollbar-button { display:none; width:0; height:0; }
+  #cmb-panel :is(.pn-side,.pn-side__nav)::-webkit-scrollbar-corner { background:transparent; }
+}
+@media(forced-colors:active) {
+  #cmb-panel :is(.pn-side,.pn-side__nav) { --pn-scroll-track:Canvas; --pn-scroll-thumb:ButtonText; --pn-scroll-hover:Highlight; scrollbar-color:auto; }
+}
 .pn-side__b {
   display: flex; align-items: center; gap: var(--s3);
   padding: 11px var(--s3); border-radius: var(--r-sm);
@@ -145,40 +173,6 @@ body.cmb-body > *:not(#cmb-panel):not(script):not(style):not(noscript):not(link)
 /* خروج: قرمز ملایم، تا با دکمه‌های رفتن به بخش‌ها اشتباه نشود */
 .pn-side__b--out { color: #ff9d8c; }
 .pn-side__b--out:hover { background: rgba(255,94,72,.12); color: #ffb9ad; }
-
-/* ── نوار پیمایش منو ──
-   به‌جای نوار سفید و پهن پیش‌فرض ویندوز، یک نوار باریک و گرد هم‌رنگ پنل که
-   در لبه‌ی منو (در فاصله‌ی حاشیه‌ی کناری) می‌نشیند و به گزینه‌ها نمی‌چسبد.
-   کم‌رنگ است، با رفتن نشانگر روی منو پررنگ‌تر و هنگام کشیدن نارنجی می‌شود. */
-.pn-side__nav { padding-inline-end: 6px; margin-inline-end: -8px; overscroll-behavior: contain; }
-.pn-side__nav::-webkit-scrollbar { width: 6px; }
-.pn-side__nav::-webkit-scrollbar-track { background: transparent; margin: 4px 0; }
-.pn-side__nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 999px; }
-.pn-side__nav:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,.3); }
-.pn-side__nav::-webkit-scrollbar-thumb:active { background: var(--flame); }
-.pn-side__nav::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-
-/* فایرفاکس ::-webkit-scrollbar ندارد. کروم ۱۲۱ به بعد اگر scrollbar-color
-   ببیند همان ::-webkit-scrollbar (گرد، بی‌فلش) را نادیده می‌گیرد؛ پس ویژگی
-   استاندارد فقط برای مرورگری که آن را ندارد. */
-@supports not selector(::-webkit-scrollbar) {
-  .pn-side__nav { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.14) transparent; }
-  .pn-side__nav:hover { scrollbar-color: rgba(255,255,255,.3) transparent; }
-}
-
-/* لبه‌ی محو: فقط وقتی آن طرف گزینه‌ی پنهانی هست (navFade در panel.js) */
-.pn-side__nav.has-more-b {
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
-          mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
-}
-.pn-side__nav.has-more-t {
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 28px);
-          mask-image: linear-gradient(to bottom, transparent, #000 28px);
-}
-.pn-side__nav.has-more-t.has-more-b {
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 28px, #000 calc(100% - 34px), transparent);
-          mask-image: linear-gradient(to bottom, transparent, #000 28px, #000 calc(100% - 34px), transparent);
-}
 
 .pn-side__foot { padding-top: var(--s4); border-top: 1px solid rgba(255,255,255,.1); }
 .pn-side__me { font-size: var(--t-ft); color: rgba(255,255,255,.5); padding: 0 var(--s3) var(--s2); }
@@ -693,13 +687,6 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
     box-shadow: none;
     overflow-y: auto; overscroll-behavior: contain;
   }
-  .pn-side::-webkit-scrollbar { width: 5px; }
-  .pn-side::-webkit-scrollbar-track { background: transparent; }
-  .pn-side::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 999px; }
-  .pn-side::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-  @supports not selector(::-webkit-scrollbar) {
-    .pn-side { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
-  }
   .pn.is-menu .pn-side {
     transform: none; visibility: visible; transition-delay: 0s;
     box-shadow: -14px 0 40px rgba(11,18,25,.28);
@@ -707,7 +694,7 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
 
   .pn-side__brand { display: flex; padding-inline-end: 44px; }
   .pn-side__foot { display: block; }
-  .pn-side__nav { flex-direction: column; gap: 3px; overflow: visible; margin-inline-end: 0; padding-inline-end: 0; -webkit-mask-image: none; mask-image: none; }
+  .pn-side__nav { flex-direction: column; gap: 3px; overflow: visible; }
   .pn-side__b {
     flex-direction: row; text-align: right;
     font-size: var(--t-bd); font-weight: 600;
@@ -1188,15 +1175,6 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
 #cmb-panel :is(.cmb-btn,.pn-btn,.pn-modal__x,.cmb-top__back,.pn-side__b,.pn-topbar__burger) { min-height:44px; }
 #cmb-panel :is(.cmb-top__back,.pn-modal__x) { min-width:44px; }
 #cmb-panel :is(.cmb-in,.pn-in)::placeholder { color:#64717D; opacity:1; }
-/* نمایشگر کوتاه (لپ‌تاپ): منو جمع‌وجورتر تا کمتر به پیمایش برسد. فقط با
-   ماوس؛ روی لمس همان هدف ۴۴ پیکسلی می‌ماند. */
-@media (min-width: 981px) and (max-height: 900px) and (pointer: fine) {
-  .pn-side__brand { padding-bottom: var(--s4); }
-  .pn-side__nav { gap: 2px; }
-  #cmb-panel .pn-side__b { min-height: 38px; padding-top: 8px; padding-bottom: 8px; }
-  .pn-side__foot { padding-top: var(--s3); }
-}
-
 /* ═══ آزمون و عیب‌یابی ═══ */
 .pn-dbgtabs { max-width: 100%; }
 .pn-dbgtabs .pn-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--flame); color: #fff; font-size: 11px; margin-inline-start: 4px; }
@@ -1268,3 +1246,96 @@ input[type="date"].pn-in::-webkit-date-and-time-value { text-align: right; }
 .pn-branch__sel { min-height:44px; }
 .pn-poster__act { display:flex; flex-wrap:wrap; gap:8px; }
 .pn-topbar__burger,.pn-topbar__app,.pn-side__x { min-width:44px; min-height:44px; }
+
+/* 1.43: consistent agency, service and form layout. */
+#cmb-panel .pn-main__in { max-width:1240px; }
+#cmb-panel .pn-card { border-color:#dce4eb; box-shadow:0 2px 10px #13202b04; }
+#cmb-panel .pn-head { gap:16px; }
+#cmb-panel .pn-field { min-width:0; }
+#cmb-panel .pn-in { min-height:46px; border-color:#cbd6df; }
+#cmb-panel textarea.pn-in { min-height:96px; line-height:1.9; }
+#cmb-panel .pn-svcacts { gap:8px; flex-wrap:wrap; }
+#cmb-panel .pn-svcacts .pn-btn { min-height:44px; }
+#cmb-panel .pn-modal__ft { gap:10px; flex-wrap:wrap; padding-top:18px; }
+#cmb-panel .pn-modal { scroll-padding:24px; }
+#cmb-panel .pn-ag-overview { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-bottom:20px; }
+#cmb-panel .pn-ag-overview > div { display:flex; align-items:baseline; gap:10px; padding:18px 20px; background:#fff; border:1px solid #dce4eb; border-radius:14px; }
+#cmb-panel .pn-ag-overview b { font-size:25px; color:#264055; }
+#cmb-panel .pn-ag-overview span { font-size:13px; color:#52616e; }
+#cmb-panel .pn-ag-settings > summary { display:flex; align-items:center; gap:10px; cursor:pointer; min-height:44px; font-size:15px; font-weight:800; list-style:none; }
+#cmb-panel .pn-ag-settings > summary::after { content:'+'; margin-inline-start:auto; font-size:24px; color:#52616e; }
+#cmb-panel .pn-ag-settings[open] > summary { margin-bottom:18px; }
+#cmb-panel .pn-ag-settings[open] > summary::after { content:'−'; }
+#cmb-panel .pn-ag-settings > summary svg { width:22px; height:22px; color:#35566f; }
+#cmb-panel .pn-policy-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+#cmb-panel .pn-policy { display:flex; align-items:flex-start; gap:12px; padding:16px; background:#f6f8fa; border:1px solid #dce4eb; border-radius:12px; cursor:pointer; }
+#cmb-panel .pn-policy input { width:20px; height:20px; margin-top:4px; accent-color:#264055; flex:none; }
+#cmb-panel .pn-policy b { display:block; font-size:14px; line-height:1.8; color:#264055; }
+#cmb-panel .pn-policy small { display:block; font-size:12px; color:#52616e; line-height:1.9; margin-top:4px; }
+#cmb-panel .pn-policy-box { border:1px solid #dce4eb; background:#f6f8fa; padding:16px; border-radius:12px; margin-bottom:20px; }
+#cmb-panel .pn-policy-box h3 { font-size:15px; margin:0 0 12px; color:#264055; }
+#cmb-panel .pn-agc__hd { display:flex; align-items:flex-start; gap:18px; flex-wrap:nowrap; }
+#cmb-panel .pn-agc__photo { width:160px; height:96px; flex:none; border-radius:12px; object-fit:cover; background:#1c2e3d; }
+#cmb-panel .pn-agc__info { flex:1; min-width:0; }
+#cmb-panel .pn-agc__title { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+#cmb-panel .pn-agc__title h3 { font-size:17px; margin:0; line-height:1.8; }
+#cmb-panel .pn-agc__info p { margin:8px 0; font-size:13px; line-height:1.9; color:#52616e; overflow-wrap:anywhere; }
+#cmb-panel .pn-agc__meta { display:flex; flex-wrap:wrap; gap:6px 16px; color:#52616e; font-size:12px; }
+#cmb-panel .pn-agc__info .pn-agc__warning { color:#8d4e00; font-size:12px; }
+#cmb-panel .pn-agc__balance { display:flex; flex-wrap:wrap; gap:12px 28px; padding:14px 0; margin:12px 0; border-block:1px solid #e4eaf0; color:#52616e; font-size:12px; }
+#cmb-panel .pn-agc__balance b { color:#264055; margin-inline-start:8px; font-size:14px; }
+#cmb-panel .pn-agc__link { display:flex; align-items:baseline; gap:8px 16px; flex-wrap:wrap; border-top:1px solid #e4eaf0; margin-top:16px; padding-top:12px; font-size:12px; color:#52616e; }
+#cmb-panel .pn-agc__link a { color:#35566f; overflow-wrap:anywhere; }
+#cmb-panel :is(summary,select):focus-visible { outline:3px solid #35566f; outline-offset:3px; }
+@media(max-width:650px) {
+  #cmb-panel .pn-policy-grid { grid-template-columns:minmax(0,1fr); }
+  #cmb-panel .pn-ag-overview { gap:8px; }
+  #cmb-panel .pn-ag-overview > div { padding:12px; gap:4px; flex-direction:column; }
+  #cmb-panel .pn-agc__hd { flex-direction:column; gap:12px; }
+  #cmb-panel .pn-agc__photo { width:100%; height:150px; object-fit:cover; }
+  #cmb-panel .pn-agc__balance { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; }
+  #cmb-panel .pn-agc__balance span { display:flex; justify-content:space-between; }
+  #cmb-panel .pn-svcacts .pn-btn { flex:1 1 auto; }
+  #cmb-panel .pn-modal__ft .pn-btn { flex:1 1 auto; }
+}
+
+/* 1.43.1: keep long content and every control reachable on small screens. */
+html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !important; overscroll-behavior:none; }
+#cmb-panel :is(.pn-main,.pn-main__in,.pn-card,.pn-grid,.pn-head__act,.pn-filters,.pn-tabs,.pn-modal__hd > div) { min-width:0; max-width:100%; }
+#cmb-panel :is(.pn-card,.pn-note,.pn-modal,.pn-table td,.pn-mini,.pn-code,.pn-kv) { overflow-wrap:anywhere; }
+#cmb-panel .pn-note > div { min-width:0; }
+#cmb-panel .pn-code { white-space:normal; }
+#cmb-panel .pn-mini__c { max-width:100%; }
+#cmb-panel .pn-tabs { max-width:100%; overflow-x:auto; }
+#cmb-panel :is(.pn-tabs__b,.pn-chip,.pn-seg__b) { min-height:44px; }
+#cmb-panel .pn-tabs__b { flex-shrink:0; }
+#cmb-panel .pn-chips--eq { grid-auto-flow:row; grid-template-columns:repeat(auto-fit,minmax(min(100%,105px),1fr)); }
+#cmb-panel .pn-kv { flex-wrap:wrap; }
+#cmb-panel .pn-kv__k { flex:0 1 auto; max-width:100%; min-width:0; }
+#cmb-panel .pn-kv__v { flex:1 1 120px; min-width:0; max-width:100%; overflow-wrap:anywhere; }
+#cmb-panel .pn-refunds { grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr)); }
+#cmb-panel .pn-revlist { grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr)); }
+#cmb-panel :is(.pn-refund__hd,.pn-rev__hd) { flex-wrap:wrap; }
+#cmb-panel :is(.pn-refund__hd,.pn-rev__hd) > div { min-width:0; flex:1 1 150px; }
+#cmb-panel .pn-refund__amount { flex:0 1 auto; white-space:normal; }
+#cmb-panel .pn-modal__x { flex:none; }
+#cmb-panel .pn-modal { max-height:88vh; max-height:88dvh; }
+#cmb-panel :is(.jd__nav,.jd__today) { min-height:44px; min-width:44px; }
+#cmb-panel .jd__pop { max-height:calc(100vh - 24px); max-height:calc(100dvh - 24px); overflow-y:auto; overscroll-behavior:contain; }
+@media(max-width:980px) {
+  #cmb-panel .pn-table { min-width:0; max-width:100%; }
+  #cmb-panel .pn-table td { min-width:0; overflow-wrap:anywhere; white-space:normal; }
+  #cmb-panel .pn-table td > * { min-width:0; max-width:100%; }
+  #cmb-panel .pn-modal { max-height:92vh; max-height:92dvh; }
+}
+@media(max-width:560px) {
+  #cmb-panel .jd__pop { position:fixed; inset:auto; top:50%; left:50%; transform:translate(-50%,-50%); width:min(300px,calc(100vw - 24px)); z-index:100; }
+  #cmb-panel .pn-table:not(.pn-table--ledger) td { display:block; text-align:right; }
+  #cmb-panel .pn-table:not(.pn-table--ledger) td::before { display:block; margin-bottom:4px; }
+  #cmb-panel .pn-table:not(.pn-table--ledger) td > div { text-align:right; }
+  #cmb-panel .pn-table--ledger tr { grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-areas:"desc desc" "amt st" "date date" "bal bal"; }
+  #cmb-panel .pn-table--ledger td { white-space:normal; }
+  #cmb-panel .pn-grid--2 { grid-template-columns:minmax(0,1fr); }
+  #cmb-panel .pn-head__act.pn-quickacts > * { min-width:0; white-space:normal; }
+}
+@media(prefers-reduced-motion:reduce) { #cmb-panel .pn-modal { animation:none; } }

@@ -4,11 +4,32 @@
 var active = null, previous = null;
 var selector = 'button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex="0"]';
 function visible(el) { return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length); }
+function revealTab(el) {
+  var tabs = el.closest('.pn-tabs');
+  if (!tabs || tabs.scrollWidth <= tabs.clientWidth) { return; }
+  var box = tabs.getBoundingClientRect(), item = el.getBoundingClientRect();
+  if (item.left < box.left + 4) { tabs.scrollLeft += item.left - box.left - 4; }
+  else if (item.right > box.right - 4) { tabs.scrollLeft += item.right - box.right + 4; }
+}
+function restorePrevious(root) {
+  var target = previous && previous.isConnected ? previous : null;
+  if (!target && previous && previous.id) { target = document.getElementById(previous.id); }
+  if (!target && previous) {
+    var data = Array.prototype.filter.call(previous.attributes, function (a) { return a.name.indexOf('data-') === 0; });
+    if (data.length) {
+      target = Array.prototype.filter.call(root.querySelectorAll(selector), function (el) {
+        return el.tagName === previous.tagName && data.every(function (a) { return el.getAttribute(a.name) === a.value; });
+      })[0];
+    }
+  }
+  if (target && !target.closest('[inert]') && visible(target)) { target.focus({preventScroll:true}); }
+}
 function sync(root) {
   if (!root) { return; }
   root.querySelectorAll('svg').forEach(function (el) { el.setAttribute('aria-hidden', 'true'); el.setAttribute('focusable', 'false'); });
   root.querySelectorAll('.cmb-top__t').forEach(function (el) { el.setAttribute('role','heading'); el.setAttribute('aria-level','1'); });
   root.querySelectorAll('[data-tab],.pn-side__b[data-view]').forEach(function (el) { if (el.classList.contains('is-on')) { el.setAttribute('aria-current','page'); } else { el.removeAttribute('aria-current'); } });
+  root.querySelectorAll('.pn-tabs__b.is-on').forEach(revealTab);
   root.querySelectorAll('.pn-modal__x,.cmb-lightbox__x,.cmb-top__back').forEach(function (el) { if (!el.hasAttribute('aria-label')) { el.setAttribute('aria-label',el.classList.contains('cmb-top__back') ? 'بازگشت' : 'بستن پنجره'); } });
   root.querySelectorAll('#pn-toasts,#cmb-toasts').forEach(function (el) { el.setAttribute('role','status'); el.setAttribute('aria-live','polite'); el.setAttribute('aria-atomic','true'); });
   root.querySelectorAll('button').forEach(function (el) { if (!el.getAttribute('type')) { el.setAttribute('type','button'); } });
@@ -17,7 +38,7 @@ function sync(root) {
     if (label && label.querySelector('i')) { el.setAttribute('aria-required','true'); }
     if (el.classList.contains('is-bad')) {
       el.setAttribute('aria-invalid','true');
-      var hint = document.createElement('span'); hint.className = 'cmb-field-error'; hint.id = el.id + '-error';
+      var hint = document.getElementById(el.id + '-error') || document.createElement('span'); hint.className = 'cmb-field-error'; hint.id = el.id + '-error';
       hint.textContent = 'لطفاً ' + (label.querySelector('.cmb-field__l') ? label.querySelector('.cmb-field__l').textContent.replace('*','').trim() : 'این فیلد') + ' را به‌درستی وارد کنید.';
       label.appendChild(hint); el.setAttribute('aria-describedby', hint.id);
     }
@@ -25,13 +46,18 @@ function sync(root) {
   root.querySelectorAll('#cmb-otp input,#lg-code').forEach(function (el,index) { el.setAttribute('aria-label',el.id === 'lg-code' ? 'کد تأیید پیامکی' : 'رقم ' + (index + 1) + ' کد تأیید'); });
   var dialog = root.querySelector('.pn-modal,.cmb-lightbox,.cmb-sheet');
   var main = root.querySelector('.pn-main'), side = root.querySelector('.pn-side');
-  var drawer = !dialog && root.querySelector('.pn.is-menu') && window.matchMedia('(max-width:980px)').matches;
+  var small = window.matchMedia('(max-width:980px)').matches;
+  var menuOpen = !!root.querySelector('.pn.is-menu');
+  var drawer = !dialog && menuOpen && small;
   if (drawer) { dialog = side; }
   if (main) { main.inert = !!dialog; }
-  if (side) { side.inert = !!dialog && dialog !== side; if (dialog !== side) { side.removeAttribute('role'); side.removeAttribute('aria-modal'); } }
+  if (side) { side.inert = (small && !menuOpen) || (!!dialog && dialog !== side); if (dialog !== side) { side.removeAttribute('role'); side.removeAttribute('aria-modal'); } }
   var shell = root.querySelector('.cmb-shell'), nav = root.querySelector('.cmb-nav');
   if (shell) { shell.inert = !!dialog; }
   if (nav) { nav.inert = !!dialog; }
+  root.querySelectorAll('.cmb-actionbar').forEach(function (el) { el.inert = !!dialog && !dialog.contains(el); });
+  document.documentElement.classList.toggle('cmb-has-dialog', !!dialog);
+  document.body.classList.toggle('cmb-has-dialog', !!dialog);
   if (dialog) {
     dialog.setAttribute('role','dialog'); dialog.setAttribute('aria-modal','true');
     var title = dialog.querySelector('.pn-modal__t,.cmb-sheet__t');
@@ -40,10 +66,13 @@ function sync(root) {
       var focus = Array.prototype.filter.call(dialog.querySelectorAll(selector),visible)[0];
       if (focus) { focus.focus({preventScroll:true}); }
     }
-  } else if (active && previous && document.documentElement.contains(previous)) { previous.focus({preventScroll:true}); }
+  } else if (active && previous) { restorePrevious(root); }
   active = dialog;
 }
-document.addEventListener('focusin',function (e) { if (!e.target.closest('.pn-modal,.cmb-sheet,.cmb-lightbox,.pn.is-menu .pn-side')) { previous = e.target; } });
+document.addEventListener('focusin',function (e) {
+  if (e.target.matches('.pn-tabs__b')) { revealTab(e.target); }
+  if (!e.target.closest('.pn-modal,.cmb-sheet,.cmb-lightbox,.pn.is-menu .pn-side')) { previous = e.target; }
+});
 document.addEventListener('keydown',function (e) {
   if (e.key !== 'Tab' || !active || !document.documentElement.contains(active)) { return; }
   var list = Array.prototype.filter.call(active.querySelectorAll(selector),visible);
@@ -53,4 +82,12 @@ document.addEventListener('keydown',function (e) {
   else if (!e.shiftKey && (document.activeElement === last || !active.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
 });
 window.CMBA11y = {sync:sync};
+var resizeFrame = 0;
+window.addEventListener('resize', function () {
+  if (resizeFrame) { return; }
+  resizeFrame = requestAnimationFrame(function () {
+    resizeFrame = 0;
+    document.querySelectorAll('#cmb-app,#cmb-panel').forEach(sync);
+  });
+});
 })();

@@ -101,6 +101,7 @@ class CMB_Branches {
 			'draft'    => 'پیش‌نویس',
 			'active'   => 'فعال',
 			'inactive' => 'غیرفعال',
+			'deleted'  => 'حذف‌شده',
 		);
 
 		return isset( $map[ $status ] ) ? $map[ $status ] : $status;
@@ -116,13 +117,14 @@ class CMB_Branches {
 	 *
 	 * @return object[]
 	 */
-	public static function all() {
+	public static function all( $include_deleted = false ) {
 		global $wpdb;
 
 		$table = cmb_table( 'branches' );
 		$order = self::ready() ? 'sort_order ASC, id ASC' : 'id ASC';
+		$where = self::ready() && ! $include_deleted ? "WHERE status <> 'deleted'" : '';
 
-		return (array) $wpdb->get_results( "SELECT * FROM {$table} ORDER BY {$order}" ); // phpcs:ignore
+		return (array) $wpdb->get_results( "SELECT * FROM {$table} {$where} ORDER BY {$order}" ); // phpcs:ignore
 	}
 
 	/**
@@ -307,6 +309,41 @@ class CMB_Branches {
 		);
 	}
 
+	/** A stable, local illustration. No external service, upload, or API key is needed. */
+	public static function identity( $branch ) {
+		$b = self::row( $branch );
+		$id = $b ? (int) $b->id : 0;
+		$palettes = array( array( '#163A52', '#80D2CF' ), array( '#303C70', '#B3BDF5' ), array( '#285347', '#B7DEAB' ), array( '#60422F', '#F0C18C' ), array( '#55395E', '#DDADD8' ), array( '#3C5165', '#A5CFE4' ) );
+		$seed = hexdec( substr( hash( 'sha256', 'cmb-branch-' . $id ), 0, 6 ) );
+		$colors = $palettes[ $seed % count( $palettes ) ];
+		$code = ( self::is_center( $b ) ? 'HQ-' : 'CM-' ) . str_pad( (string) $id, 3, '0', STR_PAD_LEFT );
+		$offset = 25 + ( $seed % 85 );
+		$svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320" viewBox="0 0 640 320">'
+			. '<rect width="640" height="320" rx="24" fill="' . $colors[0] . '"/>'
+			. '<circle cx="' . $offset . '" cy="315" r="160" fill="' . $colors[1] . '" opacity=".12"/>'
+			. '<path d="M400 0L640 200M450 0L640 150M500 0L640 100" stroke="' . $colors[1] . '" stroke-width="22" opacity=".12"/>'
+			. '<g transform="translate(220 52)" fill="none" stroke="' . $colors[1] . '" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">'
+			. '<path d="M48 66H82V42H132V66H156L184 94V146H156V166H58V146H30V94Z"/>'
+			. '<path d="M82 42V20H132V42M100 78L87 111H122L109 140"/>'
+			. '<path d="M17 87V142M196 93V145"/></g>'
+			. '<rect x="24" y="24" width="128" height="36" rx="18" fill="white" opacity=".12"/>'
+			. '<text x="88" y="48" text-anchor="middle" fill="white" font-family="Arial,sans-serif" font-size="17" font-weight="700">' . $code . '</text>'
+			. '<text x="320" y="278" text-anchor="middle" fill="white" font-family="Arial,sans-serif" font-size="21" letter-spacing="5">CHECKMOTOR</text></svg>';
+		return array( 'url' => 'data:image/svg+xml;base64,' . base64_encode( $svg ), 'code' => $code );
+	}
+
+	/** Per-agency overrides: -1 inherits the global setting; 0 denies; 1 allows. */
+	public static function service_policy( $branch_id ) {
+		$raw = (array) get_option( 'cmb_agency_policy_' . (int) $branch_id, array() );
+		$out = array();
+		foreach ( array( 'own' => 'agency_own_services', 'customize' => 'agency_customize_services' ) as $key => $setting ) {
+			$value = isset( $raw[ $key ] ) && in_array( (int) $raw[ $key ], array( 0, 1 ), true ) ? (int) $raw[ $key ] : -1;
+			$out[ $key ] = $value;
+			$out[ $key . 'Allowed' ] = -1 === $value ? (bool) CMB_Settings::get( $setting, 0 ) : (bool) $value;
+		}
+		return $out;
+	}
+
 	/** A complete, finite coordinate pair; empty coordinates never mean (0,0). */
 	public static function coordinates( $b ) {
 		if ( ! is_object( $b ) || ! isset( $b->lat, $b->lng ) || '' === trim( (string) $b->lat ) || '' === trim( (string) $b->lng ) || ! is_numeric( $b->lat ) || ! is_numeric( $b->lng ) ) {
@@ -346,6 +383,7 @@ class CMB_Branches {
 		$reason   = '';
 		$bookable = self::bookable( $b, $reason );
 		$photo    = self::photo( isset( $b->photo_id ) ? $b->photo_id : 0 );
+		$identity = self::identity( $b );
 
 		return array(
 			'id'       => (int) $b->id,
@@ -356,7 +394,9 @@ class CMB_Branches {
 			'city'     => isset( $b->city ) ? (string) $b->city : '',
 			'address'  => (string) $b->address,
 			'phone'    => (string) $b->phone,
-			'photo'    => $photo['url'],
+			'photo'    => $photo['url'] ? $photo['url'] : $identity['url'],
+			'photoAuto' => ! $photo['url'],
+			'visualCode' => $identity['code'],
 			'map'      => self::map_url( $b ),
 			'lat'      => $point ? $point[0] : null,
 			'lng'      => $point ? $point[1] : null,
@@ -429,6 +469,7 @@ class CMB_Branches {
 		}
 
 		$photo = self::photo( isset( $b->photo_id ) ? $b->photo_id : 0 );
+		$identity = self::identity( $b );
 		$out   = array(
 			'id'           => (int) $b->id,
 			'slug'         => (string) $b->slug,
@@ -443,7 +484,11 @@ class CMB_Branches {
 			'lat'          => ( isset( $b->lat ) && '' !== (string) $b->lat ) ? (float) $b->lat : null,
 			'lng'          => ( isset( $b->lng ) && '' !== (string) $b->lng ) ? (float) $b->lng : null,
 			'photoId'      => isset( $b->photo_id ) ? (int) $b->photo_id : 0,
-			'photo'        => $photo['url'],
+			'photo'        => $photo['url'] ? $photo['url'] : $identity['url'],
+			'autoPhoto'    => $identity['url'],
+			'photoAuto'    => ! $photo['url'],
+			'visualCode'   => $identity['code'],
+			'servicePolicy' => self::service_policy( (int) $b->id ),
 			'contactName'  => isset( $b->contact_name ) ? (string) $b->contact_name : '',
 			'managerPhones' => (string) $b->manager_phones,
 			'sortOrder'    => isset( $b->sort_order ) ? (int) $b->sort_order : 0,
@@ -711,7 +756,7 @@ class CMB_Branches {
 
 		$b = self::get( $branch_id );
 
-		if ( ! $b ) {
+		if ( ! $b || 'deleted' === self::status( $b ) ) {
 			return new WP_Error( 'cmb_not_found', 'شعبه یافت نشد.', array( 'status' => 404 ) );
 		}
 
@@ -742,7 +787,9 @@ class CMB_Branches {
 		}
 
 		if ( $clean ) {
-			$wpdb->update( cmb_table( 'branches' ), $clean, array( 'id' => (int) $b->id ) );
+			if ( false === $wpdb->update( cmb_table( 'branches' ), $clean, array( 'id' => (int) $b->id ) ) ) {
+				return new WP_Error( 'cmb_db_error', 'ذخیره‌ی اطلاعات شعبه انجام نشد؛ دوباره تلاش کنید.', array( 'status' => 500 ) );
+			}
 		}
 
 		self::flush( (int) $b->id );
@@ -763,61 +810,127 @@ class CMB_Branches {
 	public static function set_status( $branch_id, $status, $by = 0 ) {
 		global $wpdb;
 
-		$b = self::get( $branch_id );
+		if ( (int) $branch_id < 1 ) { return new WP_Error( 'cmb_not_found', 'شعبه یافت نشد.', array( 'status' => 404 ) ); }
+		$lock = CMB_Branch_Wallet::lock( (int) $branch_id );
+		if ( 'busy' === $lock ) { return new WP_Error( 'cmb_busy', 'عملیات دیگری برای این شعبه در حال انجام است؛ دوباره تلاش کنید.', array( 'status' => 503 ) ); }
+		try {
+			$b = CMB_Services::get_branch( (int) $branch_id, true );
 
-		if ( ! $b ) {
-			return new WP_Error( 'cmb_not_found', 'شعبه یافت نشد.', array( 'status' => 404 ) );
-		}
-
-		if ( ! in_array( $status, array( 'active', 'inactive' ), true ) ) {
-			return new WP_Error( 'cmb_bad_status', 'وضعیت معتبر نیست.', array( 'status' => 400 ) );
-		}
-
-		if ( self::is_center( $b ) && 'inactive' === $status ) {
-			return new WP_Error( 'cmb_center_status', 'مرکز اصلی غیرفعال نمی‌شود.', array( 'status' => 409 ) );
-		}
-
-		$first  = 'active' === $status && empty( $b->activated_at );
-		$fields = array(
-			'status'    => $status,
-			'is_active' => 'active' === $status ? 1 : 0,
-		);
-
-		if ( $first ) {
-			$fields['activated_at'] = current_time( 'mysql' );
-		}
-
-		$wpdb->update( cmb_table( 'branches' ), $fields, array( 'id' => (int) $b->id ) );
-
-		self::flush( (int) $b->id );
-
-		$welcome = 0;
-
-		if ( 'active' === $status && self::is_agency( $b ) ) {
-			// شرط واقعی یکتایی uniq_ref است، نه activated_at؛ دوباره فعال کردن اثری ندارد
-			$welcome = CMB_Branch_Wallet::credit_welcome( (int) $b->id, (int) $by );
-
-			if ( is_wp_error( $welcome ) ) {
-				$welcome = 0;
+			if ( ! $b || 'deleted' === self::status( $b ) ) {
+				return new WP_Error( 'cmb_not_found', 'شعبه یافت نشد.', array( 'status' => 404 ) );
 			}
+
+			if ( ! in_array( $status, array( 'active', 'inactive' ), true ) ) {
+				return new WP_Error( 'cmb_bad_status', 'وضعیت معتبر نیست.', array( 'status' => 400 ) );
+			}
+
+			if ( self::is_center( $b ) && 'inactive' === $status ) {
+				return new WP_Error( 'cmb_center_status', 'مرکز اصلی غیرفعال نمی‌شود.', array( 'status' => 409 ) );
+			}
+
+			$first  = 'active' === $status && empty( $b->activated_at );
+			$fields = array(
+				'status'    => $status,
+				'is_active' => 'active' === $status ? 1 : 0,
+			);
 
 			if ( $first ) {
-				$fresh = self::get( (int) $b->id );
-
-				cmb_after_response(
-					function () use ( $fresh ) {
-						CMB_Branch_Notify::activated( $fresh );
-					}
-				);
+				$fields['activated_at'] = current_time( 'mysql' );
 			}
+
+			$sql = 'UPDATE ' . cmb_table( 'branches' ) . ' SET status = %s, is_active = %d';
+			$args = array( $fields['status'], $fields['is_active'] );
+			if ( $first ) { $sql .= ', activated_at = %s'; $args[] = $fields['activated_at']; }
+			$sql .= " WHERE id = %d AND status <> 'deleted'";
+			$args[] = (int) $b->id;
+			if ( false === $wpdb->query( $wpdb->prepare( $sql, $args ) ) ) {
+				return new WP_Error( 'cmb_db_error', 'تغییر وضعیت شعبه ذخیره نشد.', array( 'status' => 500 ) );
+			}
+			$fresh_status = CMB_Services::get_branch( (int) $b->id, true );
+			if ( ! $fresh_status || 'deleted' === self::status( $fresh_status ) ) {
+				return new WP_Error( 'cmb_not_found', 'حساب نمایندگی حذف شده است.', array( 'status' => 404 ) );
+			}
+
+			self::flush( (int) $b->id );
+
+			$welcome = 0;
+
+			if ( 'active' === $status && self::is_agency( $b ) ) {
+				// شرط واقعی یکتایی uniq_ref است، نه activated_at؛ دوباره فعال کردن اثری ندارد
+				$welcome = CMB_Branch_Wallet::credit_welcome( (int) $b->id, (int) $by );
+
+				if ( is_wp_error( $welcome ) ) {
+					$welcome = 0;
+				}
+
+				if ( $first ) {
+					$fresh = self::get( (int) $b->id );
+
+					cmb_after_response(
+						function () use ( $fresh ) {
+							CMB_Branch_Notify::activated( $fresh );
+						}
+					);
+				}
+			}
+
+			cmb_log( 'Branch status', array( 'branch' => (int) $b->id, 'status' => $status, 'by' => (int) $by ) );
+
+			return array(
+				'status'  => $status,
+				'welcome' => (int) $welcome,
+			);
+		} finally { CMB_Branch_Wallet::unlock( (int) $branch_id, $lock ); }
+	}
+
+	/** Delete the agency account, retaining booking and ledger references for the audit trail. */
+	public static function delete( $branch_id, $by = 0 ) {
+		global $wpdb;
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return new WP_Error( 'cmb_branch_forbidden', 'حذف نمایندگی فقط با مدیر کل است.', array( 'status' => 403 ) );
 		}
-
-		cmb_log( 'Branch status', array( 'branch' => (int) $b->id, 'status' => $status, 'by' => (int) $by ) );
-
-		return array(
-			'status'  => $status,
-			'welcome' => (int) $welcome,
-		);
+		$b = self::get( $branch_id );
+		if ( ! $b || ! self::is_agency( $b ) || 'deleted' === self::status( $b ) ) {
+			return new WP_Error( 'cmb_branch_delete', 'فقط نمایندگی موجود را می‌توان حذف کرد؛ مرکز اصلی حذف نمی‌شود.', array( 'status' => 409 ) );
+		}
+		$lock = CMB_Branch_Wallet::lock( (int) $b->id );
+		if ( 'busy' === $lock ) {
+			return new WP_Error( 'cmb_busy', 'عملیات دیگری برای این نمایندگی در حال انجام است؛ دوباره تلاش کنید.', array( 'status' => 503 ) );
+		}
+		try {
+			$pending_topups = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM " . cmb_table( 'payments' ) . " WHERE branch_id = %d AND kind = 'btopup' AND status IN ('created','requested')", (int) $b->id ) ); // phpcs:ignore
+			if ( $pending_topups > 0 ) {
+				return new WP_Error( 'cmb_branch_pending_topup', 'نتیجه شارژ کیف پول این نمایندگی هنوز مشخص نشده است. پس از تعیین نتیجه پرداخت، حذف را انجام دهید.', array( 'status' => 409 ) );
+			}
+			$future = self::future_count( (int) $b->id );
+			$money = CMB_Branch_Wallet::summary( (int) $b->id );
+			if ( $future > 0 || $money['held'] > 0 ) {
+				return new WP_Error( 'cmb_branch_has_obligations', 'این نمایندگی نوبت فعال یا مبلغ بلوکه دارد. ابتدا نوبت‌ها را تعیین تکلیف کنید، سپس حذف را انجام دهید.', array( 'status' => 409, 'count' => $future ) );
+			}
+			if ( 0 !== (int) $money['total'] ) {
+				return new WP_Error( 'cmb_branch_has_balance', 'کیف پول نمایندگی هنوز موجودی دارد. ابتدا از «تغییر موجودی» تسویه و دلیل آن را ثبت کنید، سپس نمایندگی را حذف کنید.', array( 'status' => 409 ) );
+			}
+			if ( false === $wpdb->update( cmb_table( 'branches' ), array( 'status' => 'deleted', 'is_active' => 0 ), array( 'id' => (int) $b->id ) ) ) {
+				return new WP_Error( 'cmb_db_error', 'حذف نمایندگی ذخیره نشد؛ دوباره تلاش کنید.', array( 'status' => 500 ) );
+			}
+			// Query all attached users, including users without the plugin role.
+			foreach ( get_users( array( 'meta_key' => 'cmb_branch_id', 'meta_value' => (string) $b->id ) ) as $user ) {
+				if ( user_can( $user, 'manage_options' ) ) { continue; }
+				$user->remove_role( CMB_Operators_Role::ROLE );
+				$user->remove_cap( CMB_Operators_Role::CAP );
+				if ( ! $user->roles ) { $user->add_role( get_role( 'cmb_customer' ) ? 'cmb_customer' : 'subscriber' ); }
+				update_user_meta( $user->ID, 'cmb_branch_id', 0 );
+				delete_user_meta( $user->ID, 'cmb_branch_role' );
+				if ( class_exists( 'WP_Session_Tokens' ) ) { WP_Session_Tokens::get_instance( $user->ID )->destroy_all(); }
+			}
+			delete_metadata( 'user', 0, 'cmb_panel_branch', (string) $b->id, true );
+			self::flush( (int) $b->id );
+			delete_transient( 'cmb_services_' . (int) $b->id );
+			cmb_log( 'Agency account deleted (history retained)', array( 'branch' => (int) $b->id, 'by' => (int) $by ) );
+			return true;
+		} finally {
+			CMB_Branch_Wallet::unlock( (int) $b->id, $lock );
+		}
 	}
 
 	/** نوبت‌های آینده‌ی فعال (برای هشدار پیش از غیرفعال‌سازی یا تعطیلی). */
@@ -875,7 +988,8 @@ class CMB_Branches {
 
 		$id = (int) $raw;
 
-		return self::get( $id ) ? $id : 0;
+		$b = self::get( $id );
+		return $b && 'deleted' !== self::status( $b ) ? $id : 0;
 	}
 
 	/**
@@ -986,7 +1100,7 @@ class CMB_Branches {
 	public static function add_user( $branch_id, $phone, $name, $role ) {
 		$b = self::get( $branch_id );
 
-		if ( ! $b ) {
+		if ( ! $b || 'deleted' === self::status( $b ) ) {
 			return new WP_Error( 'cmb_not_found', 'شعبه یافت نشد.', array( 'status' => 404 ) );
 		}
 
@@ -1146,7 +1260,8 @@ class CMB_Branches {
 			$user->add_role( get_role( 'cmb_customer' ) ? 'cmb_customer' : 'subscriber' );
 		}
 
-		delete_user_meta( $user->ID, 'cmb_branch_id' );
+		// Explicit zero prevents a removed user inheriting legacy center access.
+		update_user_meta( $user->ID, 'cmb_branch_id', 0 );
 		delete_user_meta( $user->ID, 'cmb_branch_role' );
 
 		return true;
@@ -1223,7 +1338,8 @@ class CMB_Branches {
 			$want = (int) get_user_meta( $uid, 'cmb_panel_branch', true );
 		}
 
-		return ( $want && self::get( $want ) ) ? $want : self::center_id();
+		$b = $want ? self::get( $want ) : null;
+		return $b && 'deleted' !== self::status( $b ) ? $want : self::center_id();
 	}
 
 	/** برای تست‌ها و پیش‌بارگذاری پنل. null یعنی دوباره محاسبه شود. */
@@ -1236,7 +1352,7 @@ class CMB_Branches {
 		if ( null === self::$agency_ids ) {
 			self::$agency_ids = array();
 
-			foreach ( self::ready() ? self::all() : array() as $b ) {
+			foreach ( self::ready() ? self::all( true ) : array() as $b ) {
 				if ( self::is_agency( $b ) ) {
 					self::$agency_ids[] = (int) $b->id;
 				}
@@ -1323,8 +1439,9 @@ class CMB_Branches {
 		$branch = self::panel_branch_id();
 		$admin  = current_user_can( 'manage_options' );
 
-		if ( 'own_services' === $what ) {
-			return (bool) CMB_Settings::get( 'agency_own_services', 0 ) && $branch > 0 && self::is_agency( $branch )
+		if ( in_array( $what, array( 'own_services', 'customize_services' ), true ) ) {
+			$policy = self::service_policy( $branch );
+			return $policy[ 'own_services' === $what ? 'ownAllowed' : 'customizeAllowed' ] && $branch > 0 && self::is_agency( $branch )
 				&& ( $admin || 'manager' === self::user_role( get_current_user_id() ) );
 		}
 
