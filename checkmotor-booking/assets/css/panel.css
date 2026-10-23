@@ -84,9 +84,13 @@ html.cmb-html, body.cmb-body {
   -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
 }
 
-/* ۱.۴۳.۷: کشِ لبه‌ی صفحه (stretch اندروید ۱۲ به بعد و فنرِ آیفون) حس اپ را خراب می‌کرد؛
-   صفحه در لبه‌ها ثابت می‌ماند. «کشیدن برای تازه‌سازی» کروم اندروید هم با آن خاموش می‌شود. */
-html.cmb-html, body.cmb-body { overscroll-behavior: none; }
+/* کشِ لبه‌ی صفحه (stretch اندروید ۱۲ به بعد و فنرِ آیفون) فقط روی دستگاه لمسی خاموش است
+   («کشیدن برای تازه‌سازی» کروم اندروید هم با آن خاموش می‌شود). ۱.۴۳.۸: فقط روی html (ظرف
+   اسکرول واقعی صفحه)، نه body؛ و روی کامپیوتر اصلاً اعمال نمی‌شود تا اسکرول ماوس/تاچ‌پد و
+   حرکت «برگشت» تاچ‌پد همان رفتار قبلی را داشته باشد. */
+@media (hover: none) and (pointer: coarse) {
+  html.cmb-html { overscroll-behavior-y: none; }
+}
 body.cmb-body > *:not(#cmb-panel):not(script):not(style):not(noscript):not(link) { display: none !important; }
 
 #cmb-panel *, #cmb-panel *::before, #cmb-panel *::after { box-sizing: border-box; }
@@ -1355,3 +1359,17 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
 #cmb-panel .pn-del__list li { margin: 2px 0; }
 #cmb-panel .pn-del__ok { align-items: flex-start; font-weight: 600; }
 #cmb-panel .pn-del__ok input { margin-top: 4px; flex: 0 0 auto; }
+
+/* 1.43.8: مشتری‌ها جدا بر اساس شعبه (فقط مدیریت اصلی) */
+.pn-custbr { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.pn-custbr .pn-chip { display:inline-flex; align-items:center; gap:6px; min-height:40px; }
+.pn-custbr .pn-chip small { padding:0 7px; border-radius:999px; background:var(--g6); color:var(--ink-2); font-size:11px; font-weight:700; line-height:1.8; }
+.pn-custbr .pn-chip.is-on small { background:rgba(255,255,255,.22); color:#fff; }
+.pn-custbr__in { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+.pn-custbr__tag { display:inline-flex; align-items:center; gap:4px; padding:1px 8px; border-radius:999px; background:var(--g6); color:var(--ink-2); font-size:11px; font-weight:700; line-height:1.9; }
+
+@media (max-width:760px) {
+  .pn-custbr { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; padding:2px 0 4px; }
+  .pn-custbr::-webkit-scrollbar { display:none; }
+  .pn-custbr .pn-chip { flex:none; white-space:nowrap; }
+}

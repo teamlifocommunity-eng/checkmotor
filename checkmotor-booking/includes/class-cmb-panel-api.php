@@ -1354,9 +1354,40 @@ class CMB_Panel_Api {
 		$per   = 25;
 
 		$branch = CMB_Branches::panel_branch_id();
-		$scope  = CMB_Branches::scope_sql( $branch );
 
-		// تلاش‌های پرداخت‌نشده مشتری حساب نمی‌شوند؛ فقط مشتری‌های همین شعبه (D4)
+		/* مدیریت اصلی (ادمین و کارکنان مرکز) مشتری‌های همه‌ی نمایندگی‌ها را می‌بیند و
+		   بر اساس شعبه جدا می‌کند؛ نمایندگی فقط مشتری‌های خودش (D4). */
+		$by_branch = self::customers_all_access();
+		$sel       = (string) $request->get_param( 'branch' );
+
+		if ( $by_branch ) {
+			if ( '' === $sel ) {
+				$sel = $branch === CMB_Branches::center_id() ? 'all' : (string) $branch;
+			}
+
+			if ( 'all' !== $sel ) {
+				$picked = CMB_Branches::get( (int) $sel );
+
+				if ( ! $picked ) {
+					return new WP_Error( 'cmb_branch_not_found', 'شعبه پیدا نشد.', array( 'status' => 404 ) );
+				}
+
+				$sel = (string) (int) $picked->id;
+			}
+		} elseif ( '' !== $sel && 'all' !== $sel && (int) $sel === $branch ) {
+			$sel = (string) $branch;
+		} elseif ( '' !== $sel ) {
+			return self::role_denied( 'مشتری‌های شعبه‌های دیگر فقط برای مدیریت مرکز اصلی قابل دیدن است.' );
+		} else {
+			$sel = (string) $branch;
+		}
+
+		$scope_for = function ( $col ) use ( $sel ) {
+			return 'all' === $sel ? '1=1' : CMB_Branches::scope_sql( (int) $sel, $col );
+		};
+		$scope     = $scope_for( 'branch_id' );
+
+		// تلاش‌های پرداخت‌نشده مشتری حساب نمی‌شوند
 		$where  = array( $scope, "phone <> ''", "status NOT IN ('pending','expired')" );
 		$params = array();
 
@@ -1440,7 +1471,7 @@ class CMB_Panel_Api {
 					"SELECT DISTINCT b.phone, s.title
 					 FROM {$table} b
 					 LEFT JOIN {$svc_table} s ON s.id = b.service_id
-					 WHERE " . CMB_Branches::scope_sql( $branch, 'b.branch_id' ) . " AND b.phone IN ({$placeholders})",
+					 WHERE " . $scope_for( 'b.branch_id' ) . " AND b.phone IN ({$placeholders})",
 					$phones
 				)
 			);
@@ -1458,6 +1489,32 @@ class CMB_Panel_Api {
 			}
 		}
 
+		/* هر مشتری کدام شعبه‌ها نوبت گرفته (فقط برای مدیریت اصلی)، و آیا نوبتی در شعبه‌ی
+		   جاری پنل دارد تا «نوبت‌هایش» فهرست خالی باز نکند. */
+		$branches_by_phone = array();
+		$titles            = $by_branch ? self::branch_titles() : array();
+
+		if ( $rows ) {
+			$phones       = wp_list_pluck( $rows, 'phone' );
+			$placeholders = implode( ',', array_fill( 0, count( $phones ), '%s' ) );
+			$per_branch   = $wpdb->get_results( // phpcs:ignore
+				$wpdb->prepare(
+					"SELECT phone, branch_id, COUNT(*) AS n FROM {$table} WHERE {$where_sql} AND phone IN ({$placeholders}) GROUP BY phone, branch_id",
+					array_merge( $params, $phones )
+				)
+			);
+
+			foreach ( (array) $per_branch as $pb ) {
+				$bid = self::customer_branch( (int) $pb->branch_id );
+
+				if ( ! isset( $branches_by_phone[ $pb->phone ][ $bid ] ) ) {
+					$branches_by_phone[ $pb->phone ][ $bid ] = 0;
+				}
+
+				$branches_by_phone[ $pb->phone ][ $bid ] += (int) $pb->n;
+			}
+		}
+
 		// موجودی کیف پولِ مشتری‌های همین صفحه، با یک کوئری. کیف پول مشتری مال مرکز است.
 		$show_wallet = CMB_Wallet::ready() && CMB_Branches::can( 'center' );
 		$balances    = ( $rows && $show_wallet ) ? CMB_Wallet::balances( wp_list_pluck( $rows, 'phone' ) ) : array();
@@ -1469,7 +1526,24 @@ class CMB_Panel_Api {
 			$key    = CMB_Wallet::key( $row->phone );
 			$bal    = isset( $balances[ $key ] ) ? (int) $balances[ $key ] : 0;
 
+			$in_panel = false;
+			$list     = array();
+
+			foreach ( isset( $branches_by_phone[ $row->phone ] ) ? $branches_by_phone[ $row->phone ] : array() as $bid => $n ) {
+				$in_panel = $in_panel || CMB_Branches::in_scope( $bid, $branch );
+
+				if ( $by_branch ) {
+					$list[] = array(
+						'id'    => (int) $bid,
+						'title' => isset( $titles[ $bid ] ) ? $titles[ $bid ] : 'شعبه‌ی ' . cmb_fa_num( $bid ),
+						'n'     => (int) $n,
+					);
+				}
+			}
+
 			$items[] = array(
+				'branches'  => $list,
+				'inPanel'   => $in_panel,
 				'phone'     => $row->phone,
 				'phoneFa'   => cmb_fa_num( $row->phone ),
 				'name'      => $recent ? $recent->customer_name : '',
@@ -1500,8 +1574,83 @@ class CMB_Panel_Api {
 				'page'   => $page,
 				'pages'  => (int) ceil( $total / $per ),
 				'wallet' => $show_wallet,
+				'branch' => $sel,
+				'byBranch' => $by_branch,
+				'branches' => $by_branch ? self::customer_branch_counts( $params, $where ) : array(),
 			)
 		);
+	}
+
+	/**
+	 * ادمین و کارکنان مرکز اصلی مشتری‌های همه‌ی شعبه‌ها را می‌بینند؛ نمایندگی نه.
+	 */
+	protected static function customers_all_access() {
+		if ( current_user_can( 'manage_options' ) ) {
+			return true;
+		}
+
+		$uid = get_current_user_id();
+		return $uid > 0 && CMB_Branches::user_branch_id( $uid ) === CMB_Branches::center_id();
+	}
+
+	/** نوبت بی‌شعبه (قدیمی) یا شعبه‌ی غیرنمایندگی، مال مرکز است. */
+	protected static function customer_branch( $branch_id ) {
+		return in_array( (int) $branch_id, CMB_Branches::agency_ids(), true ) ? (int) $branch_id : CMB_Branches::center_id();
+	}
+
+	/** نام شعبه‌ها (نمایندگی حذف‌شده با برچسب؛ مشتری‌هایش همچنان دیده می‌شوند). */
+	protected static function branch_titles() {
+		$out = array();
+
+		foreach ( CMB_Branches::all( true ) as $b ) {
+			$out[ (int) $b->id ] = (string) $b->title . ( 'deleted' === CMB_Branches::status( $b ) ? ' (حذف‌شده)' : '' );
+		}
+
+		return $out;
+	}
+
+	/**
+	 * گزینه‌های جداکننده‌ی شعبه با تعداد مشتری هر کدام (با همان جستجو).
+	 *
+	 * @param array $params پارامترهای جستجو.
+	 * @param array $where  شرط‌ها؛ اولی شرطِ شعبه است و اینجا کنار گذاشته می‌شود.
+	 */
+	protected static function customer_branch_counts( array $params, array $where ) {
+		global $wpdb;
+
+		$table     = cmb_table( 'bookings' );
+		$where_sql = implode( ' AND ', array_slice( $where, 1 ) );
+		$all_sql   = "SELECT COUNT(DISTINCT phone) FROM {$table} WHERE {$where_sql}";
+		$by_sql    = "SELECT branch_id, phone FROM {$table} WHERE {$where_sql} GROUP BY branch_id, phone";
+
+		$all  = (int) ( $params ? $wpdb->get_var( $wpdb->prepare( $all_sql, $params ) ) : $wpdb->get_var( $all_sql ) ); // phpcs:ignore
+		$rows = $params ? $wpdb->get_results( $wpdb->prepare( $by_sql, $params ) ) : $wpdb->get_results( $by_sql ); // phpcs:ignore
+
+		// یک مشتری در مرکز با چند branch_id قدیمی، یک بار شمرده شود
+		$seen = array();
+
+		foreach ( (array) $rows as $r ) {
+			$seen[ self::customer_branch( (int) $r->branch_id ) ][ $r->phone ] = true;
+		}
+
+		$center = CMB_Branches::center_id();
+		$titles = self::branch_titles();
+		$out    = array( array( 'id' => 'all', 'title' => 'همه', 'n' => $all ) );
+		// مرکز اول، بعد نمایندگی‌ها به ترتیب فهرست شعبه‌ها
+		$ids    = array_merge( array( $center ), array_values( array_diff( array_keys( $titles ), array( $center ) ) ) );
+
+		foreach ( $ids as $id ) {
+			$n = isset( $seen[ $id ] ) ? count( $seen[ $id ] ) : 0;
+
+			// نمایندگی حذف‌شده‌ی بی‌مشتری در جداکننده نمی‌آید
+			if ( ! $n && $id !== $center && false !== strpos( $titles[ $id ], '(حذف‌شده)' ) ) {
+				continue;
+			}
+
+			$out[] = array( 'id' => (string) $id, 'title' => $titles[ $id ], 'n' => $n );
+		}
+
+		return $out;
 	}
 
 	/* ------------------------------------------------------------------

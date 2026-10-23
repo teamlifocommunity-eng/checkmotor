@@ -46,7 +46,7 @@ var S = {
   board: null, boardFrom: '',
   list: null, filter: { scope: 'upcoming', status: '', date: '', q: '', page: 1 },
   services: null, svcEdit: null, uploading: false,
-  customers: null, custQ: '', custPage: 1, lastQ: '', exporting: false,
+  customers: null, custQ: '', custPage: 1, custBranch: '', lastQ: '', exporting: false,
   fetching: false,
   sched: null, schedFull: '', health: null, sweeping: false,
   closures: null, closeForm: { date: '', block: '', reason: '' },
@@ -973,6 +973,11 @@ function saveSchedule() {
  * می‌شود. یعنی اینجا فقط کسانی هستند که واقعاً نوبت گرفته‌اند — نه
  * همه‌ی کاربران وردپرس سایت.
  */
+/** شعبه‌های یک مشتری برای خروجی اکسل: «مرکز اصلی (۲)، نمایندگی اهواز (۱)». */
+function custBranches(m) {
+  return (m.branches || []).map(function (b) { return b.title + ' (' + b.n + ')'; }).join('، ');
+}
+
 function viewCustomers() {
   var c = S.customers;
 
@@ -980,6 +985,15 @@ function viewCustomers() {
     (ctx().can.export === false ? '' : '<button class="pn-btn pn-btn--dark" data-cust-export' + (S.exporting ? ' disabled' : '') + '>' +
       (S.exporting ? '<span class="pn-spin"></span> در حال آماده‌سازی…' : I.down + ' خروجی اکسل') + '</button>') +
     '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>');
+
+  /* مدیریت اصلی: مشتری‌ها جدا بر اساس شعبه (همه، مرکز اصلی، هر نمایندگی) */
+  if (c && c.byBranch && c.branches && c.branches.length > 2) {
+    html += '<div class="pn-custbr" role="group" aria-label="مشتری‌های کدام شعبه">' + c.branches.map(function (b) {
+      var on = String(b.id) === String(c.branch);
+      return '<button type="button" class="pn-chip' + (on ? ' is-on' : '') + '" data-cust-branch="' + esc(b.id) + '" aria-pressed="' + on + '">' +
+        esc(b.title) + ' <small class="num">' + fa(b.n) + '</small></button>';
+    }).join('') + '</div>';
+  }
 
   html += '<div class="pn-card">' +
     '<div class="pn-filters">' +
@@ -1007,7 +1021,10 @@ function viewCustomers() {
     html += '<tr>' +
       '<td data-label="مشتری"><div class="pn-table__b">' + esc(m.name || '—') + '</div>' +
         '<div class="pn-table__s num"><a href="tel:' + esc(m.phone) + '">' + fa(esc(m.phoneFa)) + '</a>' +
-        (m.city ? ' · ' + esc(m.city) : '') + '</div></td>' +
+        (m.city ? ' · ' + esc(m.city) : '') + '</div>' +
+        (c.byBranch && m.branches && m.branches.length ? '<div class="pn-custbr__in">' + m.branches.map(function (b) {
+          return '<span class="pn-custbr__tag">' + esc(b.title) + (m.branches.length > 1 ? ' <small class="num">' + fa(b.n) + '</small>' : '') + '</span>';
+        }).join('') + '</div>' : '') + '</td>' +
       '<td data-label="خودرو">' + esc(m.car || '—') + '</td>' +
       '<td data-label="خدمات">' + esc(m.services || '—') + '</td>' +
       '<td data-label="نوبت‌ها" class="num">' + fa(m.total) +
@@ -1017,7 +1034,9 @@ function viewCustomers() {
         '<div class="pn-table__s">از ' + fa(esc(m.firstSeen)) + '</div></td>' +
       (c.wallet ? '<td data-label="کیف پول" class="num">' + (m.wallet ? '<b class="pn-wal__in">' + esc(m.walletFa) + '</b>' : '—') + '</td>' : '') +
       '<td data-label="عملیات">' +
-        '<button class="pn-btn pn-btn--sm pn-btn--soft" data-cust-bookings="' + esc(m.phone) + '">نوبت‌هایش</button>' +
+        // فهرست نوبت‌ها شعبه‌ی جاری پنل را نشان می‌دهد؛ برای مشتری شعبه‌ی دیگر خالی می‌شد
+        (m.inPanel !== false ? '<button class="pn-btn pn-btn--sm pn-btn--soft" data-cust-bookings="' + esc(m.phone) + '">نوبت‌هایش</button>'
+          : '<span class="pn-table__s">نوبت‌ها در پنل همان شعبه</span>') +
         (c.wallet ? ' <button class="pn-btn pn-btn--sm pn-btn--soft" data-wal-open="' + esc(m.phone) + '">' + I.wallet + ' کیف پول</button>' : '') +
       '</td></tr>';
   });
@@ -1061,7 +1080,7 @@ function exportCustomers() {
   S.exporting = true;
   paint();
 
-  get('panel/customers?all=1&q=' + encodeURIComponent(S.custQ)).then(function (r) {
+  get('panel/customers?all=1&q=' + encodeURIComponent(S.custQ) + '&branch=' + encodeURIComponent(S.custBranch)).then(function (r) {
     S.exporting = false;
 
     if (!r || r.success === false || !Array.isArray(r.items)) {
@@ -1071,6 +1090,7 @@ function exportCustomers() {
     }
 
     var head = ['نام', 'موبایل', 'شهر', 'خودرو', 'خدمات', 'کل نوبت‌ها', 'انجام‌شده', 'لغوشده', 'غیبت', 'اولین مراجعه', 'آخرین نوبت', 'حساب کاربری'];
+    if (r.byBranch) { head.push('شعبه'); }
 
     var lines = [head.map(csvCell).join(',')];
 
@@ -1080,7 +1100,7 @@ function exportCustomers() {
         m.total, m.done, m.cancelled, m.noshow,
         m.firstSeen, m.lastDate,
         m.hasUser ? 'دارد' : 'ندارد'
-      ].map(csvCell).join(','));
+      ].concat(r.byBranch ? [custBranches(m)] : []).map(csvCell).join(','));
     });
 
     var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
@@ -1088,7 +1108,7 @@ function exportCustomers() {
     var a = document.createElement('a');
 
     a.href = url;
-    a.download = 'customers-' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.download = 'customers-' + (r.byBranch && r.branch && r.branch !== 'all' ? 'branch' + r.branch + '-' : '') + new Date().toISOString().slice(0, 10) + '.csv';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2721,6 +2741,7 @@ function switchBranch(id, then) {
 
     // همه‌ی داده‌های شعبه‌ی قبلی کنار می‌رود
     S.board = S.list = S.services = S.svcMeta = S.customers = S.closures = S.sched = null;
+    S.custBranch = '';
     S.refunds = S.wallets = S.payReview = S.payReport = S.bwallet = S.profile = null;
     S.health = null;
     S.got = {};
@@ -3636,6 +3657,13 @@ function render() {
 
   shellKey = key;
 
+  /* منو با هر تعویض بخش از نو کشیده می‌شود؛ جای پیمایشش نگه داشته
+     می‌شود تا با زدن گزینه‌های پایین منو به بالا نپرد. */
+  var oldNav = $('.pn-side__nav');
+  var oldSide = $('.pn-side');
+  var navY = oldNav ? oldNav.scrollTop : 0;
+  var sideY = oldSide ? oldSide.scrollTop : 0;
+
   root.innerHTML =
     '<div class="pn' + (S.menu ? ' is-menu' : '') + '">' +
       // پرده‌ی پشت منوی کشویی — فقط روی موبایل دیده می‌شود
@@ -3653,8 +3681,29 @@ function render() {
     '</div>' +
     '<div id="pn-toasts" class="pn-toasts"></div><div id="pn-modal"></div>';
 
+  var navEl = $('.pn-side__nav');
+  var sideEl = $('.pn-side');
+  if (navEl) { navEl.scrollTop = navY; }
+  if (sideEl) { sideEl.scrollTop = sideY; }
+  navIntoView();
+
   paintToasts();
   paintModal();
+}
+
+/** گزینه‌ی فعال منو اگر بیرون از دید است، به وسط منو بیاید. */
+function navIntoView() {
+  var nav = $('.pn-side__nav');
+  var on = $('.pn-side__b.is-on');
+
+  if (!nav || !on || nav.scrollHeight <= nav.clientHeight) { return; }
+
+  var n = nav.getBoundingClientRect();
+  var o = on.getBoundingClientRect();
+
+  if (o.top < n.top || o.bottom > n.bottom) {
+    nav.scrollTop += (o.top - n.top) - (nav.clientHeight - o.height) / 2;
+  }
 }
 
 function paintToasts() {
@@ -3707,8 +3756,8 @@ function jobs() {
     bookings: ['panel/bookings?scope=' + f.scope + '&status=' + encodeURIComponent(f.status) +
                '&date=' + encodeURIComponent(f.date) + '&q=' + encodeURIComponent(f.q) +
                '&page=' + f.page, function (r) { S.list = r; }],
-    customers: ['panel/customers?q=' + encodeURIComponent(S.custQ) + '&page=' + S.custPage,
-                function (r) { S.customers = r; }],
+    customers: ['panel/customers?q=' + encodeURIComponent(S.custQ) + '&page=' + S.custPage + '&branch=' + encodeURIComponent(S.custBranch),
+                function (r) { S.customers = r; if (r && r.branch) { S.custBranch = String(r.branch); } }],
     services: ['panel/services', function (r) {
       S.services = r.items || [];
       S.svcMeta = { catalog: !!r.catalog, center: !!r.center, canEdit: r.canEdit !== false, canAdd: r.canAdd !== false, canCustomize: !!r.canCustomize };
@@ -4729,6 +4778,14 @@ function bind() {
     /* «نوبت‌هایش» مشتری را در فهرست نوبت‌ها باز می‌کند: شماره در
        کادر جستجو و دامنه روی همه‌ی تاریخ‌ها، وگرنه نوبت‌های گذشته‌اش
        دیده نمی‌شد. */
+    if ((el = up('[data-cust-branch]'))) {
+      e.preventDefault();
+      S.custBranch = el.getAttribute('data-cust-branch');
+      S.custPage = 1;
+      load('customers');
+      return;
+    }
+
     if ((el = up('[data-cust-bookings]'))) {
       e.preventDefault();
       S.filter = { scope: 'all', status: '', date: '', q: el.getAttribute('data-cust-bookings'), page: 1 };

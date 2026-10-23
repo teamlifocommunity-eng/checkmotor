@@ -25,7 +25,7 @@ function html(o) {
     ' aria-label="' + esc(o.editable ? 'انتخاب موقعیت مرکز' : 'موقعیت ' + (o.title || 'مرکز')) + '">' +
     '<button type="button" class="cmb-location__toggle" data-cmb-map-open aria-expanded="false" aria-controls="' + id + '">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>' +
-      (o.editable ? 'انتخاب موقعیت روی نقشهٔ نشان' : 'نمایش نقشهٔ نشان') + '</button>' +
+      (o.editable ? 'انتخاب موقعیت روی نقشهٔ نشان' : 'نمایش روی نقشه') + '</button>' +
     '<div class="cmb-location__content" id="' + id + '" hidden><div class="cmb-location__canvas" tabindex="0" role="region" aria-label="نقشهٔ نشان"></div>' +
       '<p class="cmb-location__status" role="status" aria-live="polite"></p>' +
       (o.editable ? '<p class="cmb-location__hint">روی محل مرکز بزنید یا نشانگر را جابه‌جا کنید؛ سپس فرم را ذخیره کنید. ورود دستی مختصات هم امکان‌پذیر است.</p>' : '') +

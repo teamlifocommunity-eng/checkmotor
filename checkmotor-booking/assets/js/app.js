@@ -278,6 +278,8 @@ function pushURL(page) {
 function go(page) {
   S.page = page;
   S.sheet = null;
+  // صفحه‌ی تازه از بالا شروع می‌شود، نه از جای اسکرولِ صفحه‌ی قبلی
+  window.scrollTo(0, 0);
   pushURL(page);
   load(page);
 }
@@ -488,20 +490,35 @@ function viewHome() {
       html += '</div>';
     }
 
-    if (b.address || b.phone) {
-      html += '<div class="cmb-note cmb-note--info cmb-mt4">' + I.pin + '<div>' +
-        (b.address ? esc(b.address) : '') +
-        (b.phone ? '<div class="cmb-note__sub">تلفن: <bdi dir="ltr">' + fa(esc(b.phone)) + '</bdi></div>' : '') +
-        '</div></div>';
-    }
-
-    if (window.CMBLocation) { html += window.CMBLocation.html({lat:b.lat,lng:b.lng,title:b.title}); }
-
-    html += branchActs(b.phone, b.map, 'تماس با شعبه', false, b.title);
+    html += branchInfo(b);
   }
 
   html += '</div>';
   return html;
+}
+
+/* کارت «اطلاعات شعبه» در صفحه‌ی اصلی: نشانی، تلفن، نقشه و دو دکمه در یک قاب
+   (پیش‌تر سه جعبه‌ی جدا با سبک‌های مختلف و تلفن تکراری بود). */
+function branchInfo(b) {
+  if (!b.address && !b.phone && !b.map) { return ''; }
+  var place = [b.city, b.province].filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('، ');
+  var map = window.CMBLocation ? window.CMBLocation.html({lat:b.lat,lng:b.lng,title:b.title}) : '';
+  return '<div class="cmb-sec cmb-mt5"><div class="cmb-sec__t">اطلاعات شعبه</div></div>' +
+    '<section class="cmb-brinfo" aria-label="اطلاعات شعبه">' +
+      '<div class="cmb-brinfo__hd">' +
+        '<span class="cmb-brinfo__ph" aria-hidden="true">' + (b.photo ? '<img src="' + esc(b.photo) + '" alt="" width="96" height="96" loading="lazy">' : I.engine) + '</span>' +
+        '<div class="cmb-brinfo__name"><b>' + esc(b.title || 'چک موتور') + '</b>' + (place ? '<small>' + esc(place) + '</small>' : '') + '</div>' +
+      '</div>' +
+      '<ul class="cmb-brinfo__rows">' +
+        (b.address ? '<li><span class="cmb-brinfo__ic">' + I.pin + '</span><span><small>نشانی</small>' + esc(b.address) + '</span></li>' : '') +
+        (b.phone ? '<li><span class="cmb-brinfo__ic">' + I.phone + '</span><span><small>تلفن</small><bdi dir="ltr">' + fa(esc(b.phone)) + '</bdi></span></li>' : '') +
+      '</ul>' +
+      map +
+      (b.map || b.phone ? '<div class="cmb-brinfo__acts">' +
+        (b.map ? mapLink(b.map, b.title, 'cmb-btn cmb-brinfo__go', I.nav + '<span>مسیریابی</span>') : '') +
+        (b.phone ? '<a class="cmb-btn cmb-brinfo__call" href="tel:' + esc(b.phone) + '" aria-label="تماس با ' + esc(b.title || 'شعبه') + '">' + I.phone + '<span>تماس با شعبه</span></a>' : '') +
+      '</div>' : '') +
+    '</section>';
 }
 
 /* ═══ انتخاب مرکز (US-2.1، ۲.۲) ═══ */
