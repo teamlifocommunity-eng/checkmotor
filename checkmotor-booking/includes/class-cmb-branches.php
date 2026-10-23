@@ -370,6 +370,24 @@ class CMB_Branches {
 	}
 
 	/**
+	 * نام شعبه برای مشتری: «چک موتور - نام و نام خانوادگی مسئول» (۱.۴۳.۹)، برای
+	 * مرکز اصلی و همه‌ی نمایندگی‌ها. «نام مسئول» خالی باشد، همان عنوان شعبه.
+	 *
+	 * @param object|int $branch
+	 */
+	public static function display_name( $branch ) {
+		$b = self::row( $branch );
+
+		if ( ! $b ) {
+			return '';
+		}
+
+		$person = isset( $b->contact_name ) ? trim( preg_replace( '/\s+/u', ' ', (string) $b->contact_name ) ) : '';
+
+		return '' !== $person ? 'چک موتور - ' . $person : (string) $b->title;
+	}
+
+	/**
 	 * کارت شعبه برای مشتری؛ بدون هیچ عدد مالی (US-2.2).
 	 */
 	public static function public_array( $b ) {
@@ -388,7 +406,9 @@ class CMB_Branches {
 		return array(
 			'id'       => (int) $b->id,
 			'slug'     => (string) $b->slug,
-			'title'    => (string) $b->title,
+			'title'    => self::display_name( $b ),
+			// عنوان داخلی شعبه (مثلاً «نمایندگی اهواز») فقط برای جستجو
+			'label'    => (string) $b->title,
 			'type'     => self::is_agency( $b ) ? 'agency' : 'center',
 			'province' => isset( $b->province ) ? (string) $b->province : '',
 			'city'     => isset( $b->city ) ? (string) $b->city : '',
@@ -490,6 +510,7 @@ class CMB_Branches {
 			'visualCode'   => $identity['code'],
 			'servicePolicy' => self::service_policy( (int) $b->id ),
 			'contactName'  => isset( $b->contact_name ) ? (string) $b->contact_name : '',
+			'displayName'  => self::display_name( $b ),
 			'managerPhones' => (string) $b->manager_phones,
 			'sortOrder'    => isset( $b->sort_order ) ? (int) $b->sort_order : 0,
 			'activatedAt'  => ( isset( $b->activated_at ) && $b->activated_at ) ? cmb_jalali_date( substr( (string) $b->activated_at, 0, 10 ), 'full' ) : '',

@@ -444,7 +444,8 @@ function viewHome() {
     '<div class="cmb-hero__row">' +
       '<div class="cmb-hero__logo">' + I.engine + '</div>' +
       '<div><div class="cmb-hero__name">چک موتور</div>' +
-      '<div class="cmb-hero__sub">' + esc(b.title || 'رزرو نوبت آنلاین') + '</div></div>' +
+      // با چند شعبه نام شعبه در نوار زیرین (branchChip) هست؛ اینجا تکرار نمی‌شود
+      '<div class="cmb-hero__sub">' + esc(BR.picker && b.id ? 'رزرو نوبت آنلاین' : (b.title || 'رزرو نوبت آنلاین')) + '</div></div>' +
     '</div>' +
     branchChip(b) +
     '<button class="cmb-hero__cta" data-start' + (S.loading || !S.services.length ? ' disabled' : '') + '>' + I.cal + ' شروع رزرو نوبت</button>' +
@@ -599,7 +600,7 @@ function viewPicker() {
   (BR.groups || []).forEach(function (g) {
     var n = 0;
     (g.branches || []).forEach(function (b) {
-      if (q && branchSearch([b.title, b.city, b.province, b.address, b.visualCode, g.province].join(' ')).indexOf(q) === -1) { return; }
+      if (q && branchSearch([b.title, b.label, b.city, b.province, b.address, b.visualCode, g.province].join(' ')).indexOf(q) === -1) { return; }
       n++; all.push({ b: b, p: g.province });
     });
     provs.push({ name: g.province, n: n });

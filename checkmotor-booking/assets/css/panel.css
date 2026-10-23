@@ -1373,3 +1373,6 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
   .pn-custbr::-webkit-scrollbar { display:none; }
   .pn-custbr .pn-chip { flex:none; white-space:nowrap; }
 }
+/* 1.43.9: نام نمایشی شعبه برای مشتری */
+.pn-agc__dn { flex-basis:100%; font-size:12px; color:var(--ink-3); }
+.pn-agc__dn b { color:var(--flame-600); font-weight:800; }

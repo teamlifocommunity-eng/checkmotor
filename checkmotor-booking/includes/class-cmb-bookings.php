@@ -1356,7 +1356,7 @@ class CMB_Bookings {
 			'code'         => $booking->tracking_code,
 			'service'      => $service ? $service->title : '',
 			'servicePrice' => $service ? cmb_fa_num( number_format( (int) $service->price ) ) . ' تومان' : '',
-			'branch'       => $branch ? $branch->title : '',
+			'branch'       => $branch ? CMB_Branches::display_name( $branch ) : '',
 			'branchPhone'  => $branch ? $branch->phone : '',
 			// آدرس و نقشه‌ی مرکزی که نوبت در آن است (مهم وقتی چند مرکز هست)
 			'branchId'      => (int) $booking->branch_id,
@@ -1638,7 +1638,8 @@ class CMB_Bookings {
 	 */
 	protected static function notify_branch_customer( $booking, $event, $by = 'branch' ) {
 		$b       = CMB_Branches::get( $booking->branch_id );
-		$title   = $b ? (string) $b->title : '';
+		// نام نمایشی خودش «چک موتور - …» است؛ متن‌های ساده دیگر پیشوند جدا نمی‌گیرند
+		$title   = $b ? CMB_Branches::display_name( $b ) : '';
 		$address = $b ? (string) $b->address : '';
 		$phone   = $b ? (string) $b->phone : '';
 		$svc     = self::service_title( $booking );
@@ -1651,21 +1652,21 @@ class CMB_Bookings {
 				array( 'pattern_booking_branch', array( $booking->customer_name, $svc, $date, $block, $booking->tracking_code, $title, $address, $phone ) ),
 				array( 'pattern_booking', array( $booking->customer_name, $svc, $date, $block, $start, $booking->tracking_code ) ),
 			);
-			$text     = sprintf( "چک موتور — %s\nنوبت شما ثبت شد.\nخدمت: %s\nتاریخ: %s\n%s (ساعت %s)\nکد پیگیری: %s\nنشانی: %s\nتلفن: %s", $title, $svc, $date, $block, $start, $booking->tracking_code, $address, $phone );
+			$text     = sprintf( "%s\nنوبت شما ثبت شد.\nخدمت: %s\nتاریخ: %s\n%s (ساعت %s)\nکد پیگیری: %s\nنشانی: %s\nتلفن: %s", $title, $svc, $date, $block, $start, $booking->tracking_code, $address, $phone );
 		} elseif ( 'reminder' === $event ) {
 			$attempts = array(
 				array( 'pattern_reminder_branch', array( $svc, $date, $block, $title, $address ) ),
 				array( 'pattern_reminder', array( $booking->customer_name, $svc, $date, $block, $start ) ),
 			);
-			$text     = sprintf( "یادآوری نوبت چک موتور — %s\n%s عزیز، نوبت شما فردا %s، %s ساعت %s است.\nنشانی: %s", $title, $booking->customer_name, $date, $block, $start, $address );
+			$text     = sprintf( "یادآوری نوبت — %s\n%s عزیز، نوبت شما فردا %s، %s ساعت %s است.\nنشانی: %s", $title, $booking->customer_name, $date, $block, $start, $address );
 		} else {
 			$attempts = array(
 				array( 'pattern_cancel_branch', array( $svc, $date, $title, $phone ) ),
 				array( 'pattern_cancel', array( $booking->customer_name, $svc, $date, $block ) ),
 			);
 			$text     = 'customer' === $by
-				? sprintf( "چک موتور — %s\n%s عزیز، نوبت شما در تاریخ %s (%s) به درخواست خودتان لغو شد.\nکد پیگیری: %s", $title, $booking->customer_name, $date, $block, $booking->tracking_code )
-				: sprintf( "چک موتور — %s\n%s عزیز، نوبت شما در تاریخ %s (%s) لغو شد. لطفاً با %s تماس بگیرید.", $title, $booking->customer_name, $date, $block, $phone );
+				? sprintf( "%s\n%s عزیز، نوبت شما در تاریخ %s (%s) به درخواست خودتان لغو شد.\nکد پیگیری: %s", $title, $booking->customer_name, $date, $block, $booking->tracking_code )
+				: sprintf( "%s\n%s عزیز، نوبت شما در تاریخ %s (%s) لغو شد. لطفاً با %s تماس بگیرید.", $title, $booking->customer_name, $date, $block, $phone );
 		}
 
 		$result = CMB_SMS::send_first( $booking->phone, $attempts, $text );

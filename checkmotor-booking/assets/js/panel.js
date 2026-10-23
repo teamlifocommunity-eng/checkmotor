@@ -2288,6 +2288,7 @@ function viewAgencies() {
     html += '<article class="pn-card pn-agc"><div class="pn-agc__hd">' +
       (b.photo ? '<img class="pn-agc__photo" src="' + esc(b.photo) + '" width="160" height="96" alt="' + esc('نشان ' + b.title) + '" loading="lazy">' : '') +
       '<div class="pn-agc__info"><div class="pn-agc__title"><h3>' + esc(b.title) + '</h3>' + branchBadge(b.status, b.statusLabel) +
+        (b.displayName && b.displayName !== b.title ? '<div class="pn-agc__dn">برای مشتری: <b>' + esc(b.displayName) + '</b></div>' : '') +
         (agency ? '' : '<span class="pn-badge pn-badge--quick">مرکز اصلی</span>') + '</div>' +
         '<p>' + esc([b.province, b.city].filter(Boolean).join(' / ')) + (b.address ? ' · ' + esc(b.address) : '') + '</p>' +
         '<div class="pn-agc__meta"><span>' + fa(b.future) + ' نوبت آینده</span><span>' + fa(b.services) + ' خدمت فعال</span><span>' + fa((b.users || []).length) + ' کاربر پنل</span></div>' +
@@ -2467,7 +2468,8 @@ function agencyModal() {
       agencyPlaceFields(f, fld) +
     '</div>' +
     '<label class="pn-field"><span class="pn-field__l">نشانی</span><textarea class="pn-in" id="ag-address">' + esc(f.address || '') + '</textarea></label>' +
-    fld('ag-contact', 'نام مسئول', f.contactName) +
+    fld('ag-contact', 'نام و نام خانوادگی مسئول', f.contactName, ' autocomplete="off" placeholder="مثلاً علی رضایی"',
+      'مشتری‌ها شعبه را با این نام می‌بینند: <b id="ag-display">' + esc(agencyDisplayName(f.contactName, f.title)) + '</b>') +
     (isNew ? '<div class="pn-grid">' + fld('ag-mphone', 'موبایل مدیر نمایندگی', f.managerPhone, ' dir="ltr" inputmode="tel" placeholder="09…"', 'با همین شماره و کد پیامکی وارد پنل می‌شود.') : '') +
     fld('ag-sms', 'موبایل‌های دریافت پیامک (اختیاری)', f.managerPhones, ' dir="ltr" placeholder="0912…، 0913…"', 'پیامک نوبت جدید و هشدار موجودی؛ مدیر نمایندگی خودکار می‌گیرد.') +
     (isNew ? '</div>' : '') +
@@ -2495,6 +2497,12 @@ function agencyModal() {
         (S.busy ? '<span class="pn-spin"></span> در حال ذخیره…' : (isNew ? 'ساخت پیش‌نویس' : 'ذخیره')) + '</button>' +
       '<button class="pn-btn pn-btn--soft" data-close>انصراف</button>' +
     '</div>';
+}
+
+/** همان قاعده‌ی CMB_Branches::display_name: «چک موتور - نام مسئول»، بی‌نام همان عنوان. */
+function agencyDisplayName(person, title) {
+  person = String(person || '').replace(/\s+/g, ' ').trim();
+  return person ? 'چک موتور - ' + person : (String(title || '').trim() || 'نام شعبه');
 }
 
 /* استان و شهر نمایندگی از بانک iran-places.js؛ شهری که در فهرست نیست با
@@ -4624,6 +4632,7 @@ function bind() {
     if (S.modal && S.modal.agency && /^ag-/.test(id)) {
       var f = {'ag-title':'title','ag-slug':'slug','ag-sort':'sortOrder','ag-prov':'province','ag-city':'city','ag-address':'address','ag-contact':'contactName','ag-mphone':'managerPhone','ag-sms':'managerPhones','ag-lat':'lat','ag-lng':'lng'};
       if (f[id]) { S.modal.agency[f[id]] = e.target.value; }
+      if ((id === 'ag-contact' || id === 'ag-title') && $('#ag-display')) { $('#ag-display').textContent = agencyDisplayName(S.modal.agency.contactName, S.modal.agency.title); }
       if (id === 'ag-policy-own') { S.modal.agency.allowOwnServices = Number(e.target.value); }
       if (id === 'ag-policy-customize') { S.modal.agency.allowCustomizeServices = Number(e.target.value); }
     }
