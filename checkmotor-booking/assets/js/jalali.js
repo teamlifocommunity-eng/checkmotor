@@ -255,7 +255,9 @@ function bind(onChange) {
   });
   document.addEventListener('click', function (e) {
     var t = e.target;
-    var wrap = t.closest ? t.closest('.jd') : null;
+    while (t && t.nodeType !== 1) { t = t.parentNode; }
+    if (!t || !t.closest) { return; }
+    var wrap = t.closest('.jd');
 
     // کلیک بیرون: همه‌ی پاپ‌آپ‌ها بسته شوند
     if (!wrap) { closeAll(); return; }

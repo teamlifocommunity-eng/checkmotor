@@ -22,7 +22,7 @@ function restorePrevious(root) {
       })[0];
     }
   }
-  if (target && !target.closest('[inert]') && visible(target)) { target.focus({preventScroll:true}); }
+  if (target && target.closest && !target.closest('[inert]') && visible(target)) { target.focus({preventScroll:true}); }
 }
 function sync(root) {
   if (!root) { return; }
@@ -70,8 +70,12 @@ function sync(root) {
   active = dialog;
 }
 document.addEventListener('focusin',function (e) {
-  if (e.target.matches('.pn-tabs__b')) { revealTab(e.target); }
-  if (!e.target.closest('.pn-modal,.cmb-sheet,.cmb-lightbox,.pn.is-menu .pn-side')) { previous = e.target; }
+  // هدف رویداد در بعضی مرورگرهای گوشی گره‌ی متنی یا document است؛ نزدیک‌ترین عنصر واقعی را می‌گیریم
+  var t = e.target;
+  while (t && t.nodeType !== 1) { t = t.parentNode; }
+  if (!t || !t.closest) { return; }
+  if (t.matches('.pn-tabs__b')) { revealTab(t); }
+  if (!t.closest('.pn-modal,.cmb-sheet,.cmb-lightbox,.pn.is-menu .pn-side')) { previous = t; }
 });
 document.addEventListener('keydown',function (e) {
   if (e.key !== 'Tab' || !active || !document.documentElement.contains(active)) { return; }

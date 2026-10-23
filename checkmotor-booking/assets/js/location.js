@@ -177,7 +177,9 @@ function open(host) {
   });
 }
 document.addEventListener('click', function (e) {
-  var button = e.target.closest && e.target.closest('[data-cmb-map-open]');
+  var t = e.target;
+  while (t && t.nodeType !== 1) { t = t.parentNode; }
+  var button = t && t.closest && t.closest('[data-cmb-map-open]');
   if (button) { e.preventDefault(); open(button.closest('[data-cmb-location]')); }
 });
 document.addEventListener('change', function (e) {

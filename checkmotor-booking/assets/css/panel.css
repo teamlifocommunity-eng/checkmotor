@@ -83,6 +83,10 @@ html.cmb-html, body.cmb-body {
   /* سافاری آیفون در حالت افقی متن را خودسرانه درشت می‌کرد */
   -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
 }
+
+/* ۱.۴۳.۷: کشِ لبه‌ی صفحه (stretch اندروید ۱۲ به بعد و فنرِ آیفون) حس اپ را خراب می‌کرد؛
+   صفحه در لبه‌ها ثابت می‌ماند. «کشیدن برای تازه‌سازی» کروم اندروید هم با آن خاموش می‌شود. */
+html.cmb-html, body.cmb-body { overscroll-behavior: none; }
 body.cmb-body > *:not(#cmb-panel):not(script):not(style):not(noscript):not(link) { display: none !important; }
 
 #cmb-panel *, #cmb-panel *::before, #cmb-panel *::after { box-sizing: border-box; }

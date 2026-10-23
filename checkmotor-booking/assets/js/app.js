@@ -355,7 +355,7 @@ function branchActs(phone, map, label, compact, title) {
   var cls = 'cmb-btn cmb-btn--soft cmb-btn--sm';
   return '<div class="cmb-bracts' + (compact ? ' cmb-bracts--in' : ' cmb-mt3') + '">' +
     (phone ? '<a class="' + cls + '" href="tel:' + esc(phone) + '">' + I.phone + '<span>' + esc(label) + '</span></a>' : '') +
-    (map ? mapLink(map, title, cls, I.nav + '<span>مسیریابی</span>') : '') +
+    (map ? mapLink(map, title, cls, I.pin + '<span>مسیریابی</span>') : '') +
     '</div>';
 }
 
@@ -539,33 +539,37 @@ function kmText(km) {
   return fa(km < 10 ? km.toFixed(1).replace('.', '٫') : Math.round(km)) + ' کیلومتر';
 }
 
-/* ردیف فشرده‌ی شعبه: کل ردیف دکمه‌ی انتخاب است؛ تماس و مسیریابی کنارش. */
+/* کارت شعبه: دکمه‌ی واقعی «نوبت بگیرید» (آزمون با کاربر: ردیف بی‌دکمه کلیک‌پذیر دیده نمی‌شد)
+   و دکمه‌های «مسیریابی» و «تماس» با برچسب (آیکون تنها نامفهوم بود). */
 function branchCard(b, nearest) {
   var off = !b.bookable, km = branchKm(b);
   var selected = S.branchChosen && S.branch && Number(S.branch.id) === Number(b.id);
   var place = [b.city, b.province].filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('، ');
   return '<li class="cmb-branch' + (off ? ' is-off' : '') + (selected ? ' is-selected' : '') + (nearest ? ' is-nearest' : '') + '">' +
-    '<button type="button" class="cmb-branch__select" data-branch="' + Number(b.id) + '"' + (off ? ' aria-disabled="true"' : '') +
-      ' aria-label="' + esc(b.title + (nearest ? '، نزدیک‌ترین شعبه به شما' : '') + (place ? '، ' + place : '') + (b.address ? '، ' + b.address : '') + (off ? '، فعلاً نوبت نمی‌گیرد' : '، انتخاب و دیدن خدمات')) + '">' +
+    // بخش اطلاعات هم با کلیک انتخاب می‌کند؛ برای صفحه‌خوان همان دکمه‌ی پایین کافی است
+    '<div class="cmb-branch__info" data-branch="' + Number(b.id) + '">' +
       '<span class="cmb-branch__ph" aria-hidden="true">' + (b.photo ? '<img src="' + esc(b.photo) + '" alt="" width="112" height="112" loading="lazy">' : I.engine) +
         (nearest ? '<em class="cmb-branch__near">نزدیک‌ترین</em>' : '') + '</span>' +
-      '<span class="cmb-branch__body">' +
-        '<span class="cmb-branch__t">' + esc(b.title) + '</span>' +
-        '<span class="cmb-branch__row"><span class="cmb-branch__tags">' +
+      '<div class="cmb-branch__body">' +
+        '<h3 class="cmb-branch__t">' + esc(b.title) + '</h3>' +
+        '<div class="cmb-branch__tags">' +
           (selected ? '<em class="cmb-branch__tag cmb-branch__tag--sel">' + I.check + 'انتخاب فعلی</em>' : '') +
           '<em class="cmb-branch__tag' + (b.type === 'agency' ? '' : ' cmb-branch__tag--hq') + '">' + (b.type === 'agency' ? 'تأییدشده توسط چک موتور' : 'مرکز اصلی چک موتور') + '</em>' +
-        '</span>' +
-        // نشانه‌ی دیداری که ردیف دکمه‌ی رزرو است؛ خود ردیف کلیک می‌خورد
-        (off ? '' : '<span class="cmb-branch__go" aria-hidden="true">رزرو' + I.chevL + '</span>') + '</span>' +
-        '<span class="cmb-branch__meta">' + esc(place || 'موقعیت ثبت نشده') + (km !== null ? ' · <b>' + kmText(km) + '</b>' : '') + '</span>' +
-        (off ? '<span class="cmb-branch__off">' + esc(b.unavailable || 'فعلاً نوبت نمی‌گیرد') + '</span>'
-             : (b.address ? '<span class="cmb-branch__s">' + esc(b.address) + '</span>' : '')) +
-      '</span>' +
-    '</button>' +
-    (b.phone || b.map ? '<span class="cmb-branch__acts">' +
-      (b.phone ? '<a href="tel:' + esc(b.phone) + '" aria-label="تماس با ' + esc(b.title) + '" title="تماس">' + I.phone + '</a>' : '') +
-      (b.map ? mapLink(b.map, b.title, '', I.nav).replace('<a ', '<a aria-label="مسیریابی تا ' + esc(b.title) + '" title="مسیریابی" ') : '') +
-    '</span>' : '') +
+        '</div>' +
+        '<p class="cmb-branch__meta">' + I.pin + '<span>' + esc(place || 'موقعیت ثبت نشده') + (km !== null ? ' · <b>' + kmText(km) + '</b>' : '') + '</span></p>' +
+        (b.address ? '<p class="cmb-branch__s">' + esc(b.address) + '</p>' : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="cmb-branch__acts">' +
+      (off ? '<span class="cmb-branch__off" role="status">' + esc(b.unavailable || 'فعلاً نوبت نمی‌گیرد') + '</span>'
+           : '<button type="button" class="cmb-btn cmb-btn--pri cmb-branch__select" data-branch="' + Number(b.id) + '" aria-label="' + esc((selected ? 'ادامه با ' : 'نوبت گرفتن از ') + b.title) + '">' +
+               '<span>' + (selected ? 'ادامه با این شعبه' : 'نوبت بگیرید') + '</span>' + I.chevL + '</button>') +
+      // مسیریابی و تماس در یک قاب یکدست؛ نارنجی فقط برای دکمه‌ی اصلی
+      (b.map || b.phone ? '<div class="cmb-branch__tools">' +
+        (b.map ? mapLink(b.map, b.title, 'cmb-branch__sub', I.pin + '<span>مسیریابی</span>') : '') +
+        (b.phone ? '<a class="cmb-branch__sub" href="tel:' + esc(b.phone) + '" aria-label="تماس با ' + esc(b.title) + '">' + I.phone + '<span>تماس</span></a>' : '') +
+      '</div>' : '') +
+    '</div>' +
   '</li>';
 }
 
@@ -2701,6 +2705,9 @@ function bind() {
 
   document.addEventListener('click', function (e) {
     var t = e.target;
+    // هدف رویداد در بعضی مرورگرهای گوشی گره‌ی متنی یا document است؛ نزدیک‌ترین عنصر واقعی را می‌گیریم
+    while (t && t.nodeType !== 1) { t = t.parentNode; }
+    if (!t) { return; }
 
     function up(sel) { return t.closest ? t.closest(sel) : null; }
 
@@ -3158,7 +3165,9 @@ function paintDbg() {
 }
 
 function dbgClick(e) {
-  var b = e.target.closest ? e.target.closest('[data-dbgx]') : null;
+  var t = e.target;
+  while (t && t.nodeType !== 1) { t = t.parentNode; }
+  var b = t && t.closest ? t.closest('[data-dbgx]') : null;
   if (!b) { return; }
 
   var a = b.getAttribute('data-dbgx');

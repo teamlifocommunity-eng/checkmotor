@@ -4598,6 +4598,9 @@ function bind() {
 
   document.addEventListener('click', function (e) {
     var t = e.target;
+    // هدف رویداد در بعضی مرورگرهای گوشی گره‌ی متنی یا document است؛ نزدیک‌ترین عنصر واقعی را می‌گیریم
+    while (t && t.nodeType !== 1) { t = t.parentNode; }
+    if (!t) { return; }
     function up(s) { return t.closest ? t.closest(s) : null; }
     var el;
 
