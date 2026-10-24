@@ -254,13 +254,13 @@ class CMB_Rest {
 
 	/** داده‌ی مرحله‌ی انتخاب مرکز — هم REST، هم تزریق در صفحه. */
 	public static function branches_payload() {
-		$count = CMB_Branches::active_count();
+		// فقط شعبه‌هایی که واقعاً نوبت می‌گیرند؛ با یکی، انتخاب شعبه کلاً نمایش داده نمی‌شود (US-2.1)
+		$count = CMB_Branches::open_count();
 
 		return array(
 			'groups' => $count > 1 ? CMB_Branches::public_groups() : array(),
 			'count'  => $count,
 			'center' => CMB_Branches::center_id(),
-			// با یک شعبه‌ی فعال، مرحله‌ی انتخاب کلاً نمایش داده نمی‌شود (US-2.1)
 			'picker' => $count > 1,
 		);
 	}

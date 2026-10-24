@@ -3253,6 +3253,10 @@ function boot() {
     var pre = Number(BR.preselect || 0) || storedBranch();
     var known = pre && findBranch(pre);
 
+    /* انتخاب قبلی‌ای که فعلاً نوبت نمی‌گیرد مشتری را به صفحه‌ی بی‌خدمت نمی‌برد؛
+       فهرست شعبه‌ها نشان داده می‌شود (آن شعبه کم‌رنگ و ته فهرست است). */
+    if (known && known.bookable === false) { known = null; }
+
     if (known) {
       chooseBranch(pre, true);
     } else if (S.page === 'home') {

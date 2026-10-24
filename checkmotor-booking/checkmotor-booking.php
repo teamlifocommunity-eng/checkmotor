@@ -3,7 +3,7 @@
  * Plugin Name: چک موتور — سیستم رزرو نوبت
  * Plugin URI:  https://checkmotor.ir
  * Description: سیستم رزرو نوبت آنلاین چک موتور (MVP) — ورود با کد تایید پیامکی ملی‌پیامک، تقویم ۷ روزه، شیفت صبح/بعدازظهر، پنل مدیریت نوبت‌ها.
- * Version:     1.43.9
+ * Version:     1.44.0
  * Author:      رضا امام‌حسنی
  * Text Domain: checkmotor-booking
  * Domain Path: /languages
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMB_VERSION', '1.43.9' );
+define( 'CMB_VERSION', '1.44.0' );
 define( 'CMB_FILE', __FILE__ );
 define( 'CMB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMB_URL', plugin_dir_url( __FILE__ ) );
@@ -675,7 +675,8 @@ function cmb_enqueue_app() {
 	if ( $branches['picker'] && isset( $_GET['branch'] ) ) {
 		$picked = CMB_Branches::by_slug( sanitize_title( wp_unslash( (string) $_GET['branch'] ) ) );
 
-		if ( $picked && 'active' === CMB_Branches::status( $picked ) ) {
+		// لینک نمایندگی‌ای که فعلاً نوبت نمی‌گیرد، مشتری را به صفحه‌ی بی‌خدمت نمی‌برد
+		if ( $picked && CMB_Branches::bookable( $picked ) ) {
 			$want = (int) $picked->id;
 		}
 	}

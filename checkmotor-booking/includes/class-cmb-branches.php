@@ -479,6 +479,30 @@ class CMB_Branches {
 	}
 
 	/**
+	 * شعبه‌هایی که همین حالا واقعاً نوبت می‌گیرند (مرکز اصلی همیشه حساب است).
+	 *
+	 * ۱.۴۴.۰: نمایندگیِ فعال ولی بی‌خدمت یا بی‌موجودی دیگر به‌تنهایی صفحه‌ی انتخاب
+	 * شعبه را برای مشتری باز نمی‌کند؛ تا وقتی فقط مرکز نوبت می‌گیرد، اپ همان ظاهر
+	 * پیش‌فرض (صفحه‌ی خدمات مرکز) را دارد.
+	 */
+	public static function open_count() {
+		if ( ! self::ready() ) {
+			return 1;
+		}
+
+		$center = self::center_id();
+		$count  = 0;
+
+		foreach ( self::active() as $b ) {
+			if ( (int) $b->id === $center || self::bookable( $b ) ) {
+				$count++;
+			}
+		}
+
+		return max( 1, $count );
+	}
+
+	/**
 	 * داده‌ی کامل شعبه برای پنل (نمایندگی خودش یا مدیر سایت).
 	 */
 	public static function panel_array( $b, $with_money = true ) {
