@@ -39,6 +39,7 @@ class CMB_OTP {
 		if ( $last ) {
 			$elapsed = strtotime( $now ) - strtotime( $last );
 			if ( $elapsed < $resend_after ) {
+				self::log( $phone, $purpose, 'throttled', 'info', sprintf( '%s ثانیه پس از کد قبلی', cmb_fa_num( $elapsed ) ) );
 				return new WP_Error(
 					'cmb_otp_throttled',
 					sprintf( 'برای ارسال مجدد کد، %s ثانیه دیگر صبر کنید.', cmb_fa_num( $resend_after - $elapsed ) ),
@@ -53,6 +54,7 @@ class CMB_OTP {
 		$limit_error = self::check_rate_limits( $phone );
 
 		if ( is_wp_error( $limit_error ) ) {
+			self::log( $phone, $purpose, 'cmb_otp_limit_ip' === $limit_error->get_error_code() ? 'limit_ip' : 'limit_phone', 'fail', $limit_error->get_error_message() );
 			return $limit_error;
 		}
 
@@ -83,6 +85,11 @@ class CMB_OTP {
 		}
 
 		$otp_id = (int) $wpdb->insert_id;
+
+		// لاگ پیامک: نوع «کد تایید»، و خود کد هرگز ذخیره نمی‌شود
+		if ( class_exists( 'CMB_SMS_Log' ) ) {
+			CMB_SMS_Log::next( array( 'kind' => 'otp', 'label' => CMB_SMS_Log::otp_label( $purpose ), 'secret' => $code ) );
+		}
 
 		$sent = CMB_SMS::send_event(
 			$phone,
@@ -185,11 +192,13 @@ class CMB_OTP {
 		);
 
 		if ( ! $row ) {
+			self::log( $phone, $purpose, 'missing', 'fail' );
 			return new WP_Error( 'cmb_otp_missing', 'کد تاییدی برای این شماره ثبت نشده است. دوباره درخواست کد بدهید.', array( 'status' => 400 ) );
 		}
 
 		if ( strtotime( $row->expires_at ) < strtotime( $now ) ) {
 			$wpdb->update( $table, array( 'is_used' => 1 ), array( 'id' => $row->id ) );
+			self::log( $phone, $purpose, 'expired', 'fail' );
 			return new WP_Error( 'cmb_otp_expired', 'کد تایید منقضی شده است. کد جدید درخواست کنید.', array( 'status' => 400 ) );
 		}
 
@@ -199,6 +208,7 @@ class CMB_OTP {
 
 		if ( (int) $row->attempts >= $max_attempts ) {
 			$wpdb->update( $table, array( 'is_used' => 1 ), array( 'id' => $row->id ) );
+			self::log( $phone, $purpose, 'attempts', 'fail' );
 			return new WP_Error( 'cmb_otp_attempts', 'تعداد تلاش‌های ناموفق زیاد بود. کد جدید درخواست کنید.', array( 'status' => 429 ) );
 		}
 
@@ -206,6 +216,7 @@ class CMB_OTP {
 			$wpdb->update( $table, array( 'attempts' => (int) $row->attempts + 1 ), array( 'id' => $row->id ) );
 
 			$left = $max_attempts - ( (int) $row->attempts + 1 );
+			self::log( $phone, $purpose, 'wrong', 'fail', $left > 0 ? sprintf( '%s تلاش دیگر مانده', cmb_fa_num( $left ) ) : 'تلاشی نمانده' );
 
 			return new WP_Error(
 				'cmb_otp_wrong',
@@ -217,8 +228,16 @@ class CMB_OTP {
 		}
 
 		$wpdb->update( $table, array( 'is_used' => 1 ), array( 'id' => $row->id ) );
+		self::log( $phone, $purpose, 'verified', 'ok' );
 
 		return true;
+	}
+
+	/** رویداد کد تایید در لاگ پیامک (۱.۴۵.۰). */
+	protected static function log( $phone, $purpose, $event, $status, $note = '' ) {
+		if ( class_exists( 'CMB_SMS_Log' ) ) {
+			CMB_SMS_Log::otp( $phone, $purpose, $event, $status, $note );
+		}
 	}
 
 	/**

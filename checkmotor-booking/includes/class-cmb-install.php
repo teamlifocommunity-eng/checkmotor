@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CMB_Install {
 
-	const DB_VERSION = '1.10.0';
+	const DB_VERSION = '1.11.0';
 
 	public static function activate() {
 		global $wpdb;
@@ -287,6 +287,7 @@ class CMB_Install {
 		$wallet   = cmb_table( 'wallet' );
 		$ledger   = cmb_table( 'branch_ledger' );
 		$log      = cmb_table( 'log' );
+		$sms_log  = cmb_table( 'sms_log' );
 
 		$sql = array();
 
@@ -540,6 +541,28 @@ class CMB_Install {
 			KEY ref (ref),
 			KEY created_at (created_at),
 			KEY level_created (level,created_at)
+		) {$charset};";
+
+		/* 1.11.0: لاگ پیامک‌ها و کد تایید؛ ۷ روز نگه داشته می‌شود (CMB_SMS_Log::prune).
+		   خودِ کد تایید ذخیره نمی‌شود. */
+		$sql[] = "CREATE TABLE {$sms_log} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			kind VARCHAR(10) DEFAULT 'sms' NOT NULL,
+			event VARCHAR(20) DEFAULT '' NOT NULL,
+			label VARCHAR(60) DEFAULT '' NOT NULL,
+			phone VARCHAR(20) DEFAULT '' NOT NULL,
+			channel VARCHAR(10) DEFAULT '' NOT NULL,
+			body_id VARCHAR(20) DEFAULT '' NOT NULL,
+			text VARCHAR(500) DEFAULT '' NOT NULL,
+			status VARCHAR(8) DEFAULT 'ok' NOT NULL,
+			error VARCHAR(255) DEFAULT '' NOT NULL,
+			rec_id VARCHAR(40) DEFAULT '' NOT NULL,
+			ip VARCHAR(45) DEFAULT '' NOT NULL,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			KEY created_at (created_at),
+			KEY phone (phone),
+			KEY kind_created (kind,created_at)
 		) {$charset};";
 
 		foreach ( $sql as $statement ) {

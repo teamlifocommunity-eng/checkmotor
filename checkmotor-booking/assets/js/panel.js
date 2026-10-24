@@ -11,7 +11,7 @@ var NONCE = C.nonce || '';
 var NURL  = C.nonceUrl || '/wp-admin/admin-ajax.php?action=cmb_nonce';
 
 var VIEWS = ['summary', 'board', 'bookings', 'customers', 'services', 'closures', 'settings', 'refunds',
-             'bwallet', 'profile', 'agencies', 'report', 'debug'];
+             'bwallet', 'profile', 'agencies', 'report', 'smslog', 'debug'];
 var PAY = C.pay || { on: false, used: false, canRefund: false, shopPct: 100, setup: null };
 
 /* برگشت‌ها به کیف پول مشتری می‌رود، نه کارت: بخش «بیعانه و کیف پول» */
@@ -47,6 +47,7 @@ var S = {
   list: null, filter: { scope: 'upcoming', status: '', date: '', q: '', page: 1 },
   services: null, svcEdit: null, uploading: false,
   customers: null, custQ: '', custPage: 1, custBranch: '', lastQ: '', exporting: false,
+  smslog: null, slKind: '', slStatus: '', slQ: '', slPage: 1,
   fetching: false,
   sched: null, schedFull: '', health: null, sweeping: false,
   closures: null, closeForm: { date: '', block: '', reason: '' },
@@ -316,6 +317,7 @@ function nav() {
     list.push({ k: 'report', t: 'گزارش نمایندگی‌ها', ic: I.gauge });
   }
 
+  if (c.isAdmin) { list.push({ k: 'smslog', t: 'پیامک و کد تایید', ic: I.chat }); }
   if (c.isAdmin) { list.push({ k: 'debug', t: 'آزمون و عیب‌یابی', ic: I.bug }); }
 
   return list;
@@ -3067,6 +3069,89 @@ function dbgItem(i) {
     (i.fix ? '<div class="pn-hl__fix">راه‌حل: ' + esc(i.fix) + '</div>' : '') + '</div></div>';
 }
 
+/* ═══ لاگ پیامک و کد تایید (۱.۴۵.۰) ═══ */
+
+/** متن لاگ: متغیرهای پترن با « · » (نه «;»)، ارقام فارسی؛ نشانی‌های وب دست‌نخورده. */
+function slText(r) {
+  var t = r.channel === 'simple' ? r.text : r.text.split(';').join(' · ');
+  return t.split(/(https?:\/\/\S+)/).map(function (part, i) { return i % 2 ? '<bdi dir="ltr">' + esc(part) + '</bdi>' : esc(fa(part)); }).join('');
+}
+
+function viewSmsLog() {
+  var d = S.smslog;
+  var html = head('پیامک و کد تایید', 'هر پیامک و هر رویداد کد تایید؛ ' + fa(d && d.keep ? d.keep : 7) + ' روز نگه داشته و بعد خودکار پاک می‌شود',
+    '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>');
+
+  if (!d) { return html + skel(4); }
+
+  if (d.ready === false) {
+    return html + note('warn', I.alert, 'جدول لاگ هنوز ساخته نشده است. یک بار پیشخوان وردپرس را باز کنید تا به‌روزرسانی افزونه انجام شود.');
+  }
+
+  if (d.smsOn === false) {
+    html += note('warn', I.alert, 'پیامک در تنظیمات خاموش است؛ هیچ پیامکی واقعاً فرستاده نمی‌شود و در لاگ «ارسال نشد (پیامک خاموش)» ثبت می‌شود.');
+  }
+
+  var s = d.summary || {};
+  html += '<div class="pn-sl__cap">آمار ' + fa(d.keep || 7) + ' روز گذشته</div>' +
+    '<div class="pn-stats pn-stats--sl">' +
+      stat('پیامک ارسال‌شده', s.smsOk, I.chat, 'ok') +
+      stat('پیامک ارسال‌نشده', s.smsFail, I.alert, s.smsFail ? 'bad' : '') +
+      stat('کد تایید ارسال‌شده', s.otpSent, I.lock, '') +
+      stat('ورود موفق با کد', s.otpVerified, I.ok, 'ok') +
+      stat('کد اشتباه یا منقضی', s.otpFailed, I.x, s.otpFailed ? 'bad' : '') +
+    '</div>';
+
+  var kinds = [['', 'همه'], ['sms', 'پیامک‌ها'], ['otp', 'کد تایید']];
+  html += '<div class="pn-card">' +
+    '<div class="pn-filters">' +
+      '<div class="pn-tabs" role="group" aria-label="نوع">' + kinds.map(function (k) {
+        return '<button class="pn-tabs__b' + (S.slKind === k[0] ? ' is-on' : '') + '" data-sl-kind="' + k[0] + '">' + k[1] + '</button>';
+      }).join('') + '</div>' +
+      '<label class="pn-field"><span class="pn-field__l">نتیجه</span><select class="pn-in" id="sl-status">' +
+        [['', 'همه'], ['ok', 'موفق'], ['fail', 'ناموفق']].map(function (o) {
+          return '<option value="' + o[0] + '"' + (S.slStatus === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+        }).join('') + '</select></label>' +
+      '<label class="pn-field" style="flex:1;min-width:180px"><span class="pn-field__l">شماره موبایل</span>' +
+        '<input class="pn-in num" id="sl-q" type="search" inputmode="numeric" dir="ltr" placeholder="0912…" value="' + esc(S.slQ) + '"></label>' +
+      '<button class="pn-btn pn-btn--dark" data-sl-search>جستجو</button>' +
+      (S.slQ || S.slStatus || S.slKind ? '<button class="pn-btn pn-btn--soft" data-sl-clear>پاک کردن</button>' : '') +
+    '</div>';
+
+  if (!d.items.length) {
+    return html + empty('چیزی ثبت نشده است', S.slQ || S.slStatus || S.slKind ? 'با این فیلتر موردی در ' + fa(d.keep || 7) + ' روز گذشته نیست.' : 'از این به بعد هر پیامک و هر کد تایید اینجا دیده می‌شود.') + '</div>';
+  }
+
+  html += '<div class="pn-tablewrap' + (S.fetching ? ' is-fetching' : '') + '"><table class="pn-table pn-sl"><thead><tr>' +
+    '<th>زمان</th><th>شماره</th><th>نوع</th><th>متن / جزئیات</th><th>نتیجه</th></tr></thead><tbody>';
+
+  d.items.forEach(function (r) {
+    var badge = r.status === 'ok' ? 'confirmed' : (r.status === 'fail' ? 'cancelled' : 'expired');
+    var how = r.channel === 'pattern' ? 'پترن ' + fa(r.bodyId) : (r.channel === 'simple' ? 'متن ساده' : '');
+    html += '<tr class="pn-sl__r pn-sl__r--' + esc(r.status) + '">' +
+      '<td data-label="زمان" class="num">' + esc(r.atFa) + '</td>' +
+      '<td data-label="شماره" class="num">' + (r.phone ? '<a href="tel:' + esc(r.phone) + '" dir="ltr">' + esc(r.phoneFa) + '</a>' : '—') + '</td>' +
+      '<td data-label="نوع"><div class="pn-table__b">' + (r.kind === 'otp' ? I.lock : I.chat) + esc(r.label) + '</div>' +
+        (how ? '<div class="pn-table__s">' + esc(how) + '</div>' : '') + '</td>' +
+      '<td data-label="متن / جزئیات"><div class="pn-sl__txt">' + (r.text ? slText(r) : '—') + '</div></td>' +
+      '<td data-label="نتیجه"><span class="pn-badge pn-badge--' + badge + '">' + esc(r.eventFa) + '</span>' +
+        (r.error ? '<div class="pn-sl__err">' + esc(r.error) + '</div>' : '') + '</td>' +
+      '</tr>';
+  });
+
+  html += '</tbody></table></div>';
+
+  if (d.pages > 1) {
+    html += '<div class="pn-head__act" style="margin-top:16px;justify-content:center">' +
+      '<button class="pn-btn pn-btn--soft" data-sl-page="' + (d.page - 1) + '"' + (d.page <= 1 ? ' disabled' : '') + '>' + I.chevR + ' قبلی</button>' +
+      '<span style="align-self:center;font-size:13px;color:var(--ink-3)" class="num">صفحه ' + fa(d.page) + ' از ' + fa(d.pages) + ' — ' + fa(d.total) + ' مورد</span>' +
+      '<button class="pn-btn pn-btn--soft" data-sl-page="' + (d.page + 1) + '"' + (d.page >= d.pages ? ' disabled' : '') + '>بعدی ' + I.chevL + '</button>' +
+      '</div>';
+  }
+
+  return html + '</div>';
+}
+
 function viewDebug() {
   var D = S.dbg;
   var html = head('آزمون و عیب‌یابی', 'برای پیدا کردن دلیل هر مشکل رزرو. هیچ‌کدام از این بخش‌ها چیزی را روی سایت تغییر نمی‌دهند.',
@@ -3638,6 +3723,7 @@ function render() {
     case 'profile':  body = viewProfile(); break;
     case 'agencies': body = viewAgencies(); break;
     case 'report':   body = viewReport(); break;
+    case 'smslog':   body = viewSmsLog(); break;
     case 'debug':    body = viewDebug(); break;
     default:         body = viewSummary();
   }
@@ -3776,6 +3862,8 @@ function jobs() {
                function (r) { S.bwallet = r; S.btPay = null; }],
     profile:  ['panel/branch', function (r) { S.profile = r; }],
     agencies: ['panel/admin/branches', function (r) { S.agencies = r; }],
+    smslog:   ['panel/smslog?kind=' + S.slKind + '&status=' + S.slStatus + '&q=' + encodeURIComponent(S.slQ) + '&page=' + S.slPage,
+               function (r) { S.smslog = r; }],
     report:   ['panel/admin/report?from=' + encodeURIComponent(S.agFrom) + '&to=' + encodeURIComponent(S.agTo),
                function (r) { S.agReport = r; }],
     closures: ['panel/closures', function (r) { S.closures = r; }],
@@ -3886,6 +3974,7 @@ function looksValid(view, r) {
     case 'profile':  return !!r.id;
     case 'agencies': return Array.isArray(r.items);
     case 'report':   return Array.isArray(r.items);
+    case 'smslog':   return Array.isArray(r.items);
     case 'debug':    return true;
     default:         return true;
   }
@@ -4787,6 +4876,11 @@ function bind() {
     /* «نوبت‌هایش» مشتری را در فهرست نوبت‌ها باز می‌کند: شماره در
        کادر جستجو و دامنه روی همه‌ی تاریخ‌ها، وگرنه نوبت‌های گذشته‌اش
        دیده نمی‌شد. */
+    if ((el = up('[data-sl-kind]'))) { e.preventDefault(); S.slKind = el.getAttribute('data-sl-kind'); S.slPage = 1; load('smslog'); return; }
+    if (up('[data-sl-search]')) { e.preventDefault(); S.slQ = val('#sl-q').trim(); S.slPage = 1; load('smslog'); return; }
+    if (up('[data-sl-clear]')) { e.preventDefault(); S.slQ = ''; S.slStatus = ''; S.slKind = ''; S.slPage = 1; load('smslog'); return; }
+    if ((el = up('[data-sl-page]'))) { e.preventDefault(); S.slPage = Number(el.getAttribute('data-sl-page')) || 1; load('smslog'); return; }
+
     if ((el = up('[data-cust-branch]'))) {
       e.preventDefault();
       S.custBranch = el.getAttribute('data-cust-branch');
@@ -5386,6 +5480,8 @@ function bind() {
       if (db) { db.disabled = !agDeleteReady(); }
     }
 
+    if (e.target && e.target.id === 'sl-status') { S.slStatus = e.target.value; S.slPage = 1; load('smslog'); }
+
     // مدیر سایت: نمایش پنل یک شعبه‌ی دیگر
     if (e.target && e.target.id === 'pn-branch') {
       S.menu = false;
@@ -5449,6 +5545,13 @@ function bind() {
     }
 
     if (e.key === 'Enter' && $('#lg-pass')) { e.preventDefault(); doLogin(); return; }
+
+    if (e.key === 'Enter' && e.target && e.target.id === 'sl-q') {
+      e.preventDefault();
+      S.slQ = e.target.value.trim(); S.slPage = 1;
+      load('smslog');
+      return;
+    }
 
     if (e.key === 'Enter' && e.target && e.target.id === 'dbg-q') {
       e.preventDefault();

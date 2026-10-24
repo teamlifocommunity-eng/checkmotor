@@ -16,7 +16,7 @@ if ( ! defined( 'CMB_REMOVE_ALL_DATA' ) || ! CMB_REMOVE_ALL_DATA ) {
 
 global $wpdb;
 
-$cmb_tables = array( 'bookings', 'closures', 'services', 'branches', 'otp', 'payments', 'wallet', 'branch_ledger', 'log' );
+$cmb_tables = array( 'bookings', 'closures', 'services', 'branches', 'otp', 'payments', 'wallet', 'branch_ledger', 'log', 'sms_log' );
 
 foreach ( $cmb_tables as $cmb_table ) {
 	$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}cmb_{$cmb_table}" ); // phpcs:ignore

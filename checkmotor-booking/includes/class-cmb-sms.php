@@ -20,6 +20,12 @@ class CMB_SMS {
 	const ENDPOINT_SIMPLE  = 'https://rest.payamak-panel.com/api/SendSMS/SendSMS';
 	const ENDPOINT_CREDIT  = 'https://rest.payamak-panel.com/api/SendSMS/GetCredit';
 
+	/** کلید پترنِ پیامکی که همین حالا فرستاده می‌شود (برای برچسب لاگ). */
+	protected static $key = '';
+
+	/** شناسه‌ی آخرین ارسال موفق در سامانه‌ی پیامک (recId). */
+	protected static $rec = '';
+
 	/**
 	 * ارسال پیامک با پترن.
 	 *
@@ -30,25 +36,24 @@ class CMB_SMS {
 	 * @return true|WP_Error
 	 */
 	public static function send_pattern( $phone, $body_id, array $args ) {
-		$phone = cmb_normalize_phone( $phone );
+		$raw     = $phone;
+		$phone   = cmb_normalize_phone( $phone );
+		$body_id = trim( (string) $body_id );
+		// مقادیر پترن با «;» جدا می‌شوند؛ خود مقادیر نباید حاوی ; باشند.
+		$text = implode( ';', array_map( array( __CLASS__, 'clean_param' ), $args ) );
 
 		if ( ! $phone ) {
-			return new WP_Error( 'cmb_sms_phone', 'شماره‌ی گیرنده معتبر نیست.' );
+			return self::logged( $raw, 'pattern', $body_id, $text, new WP_Error( 'cmb_sms_phone', 'شماره‌ی گیرنده معتبر نیست.' ) );
 		}
 
 		if ( ! self::is_enabled() ) {
 			cmb_log( 'SMS disabled; skipping pattern send', compact( 'phone', 'body_id', 'args' ) );
-			return true;
+			return self::logged( $phone, 'pattern', $body_id, $text, new WP_Error( 'cmb_sms_off', 'پیامک در تنظیمات خاموش است.' ), true );
 		}
-
-		$body_id = trim( (string) $body_id );
 
 		if ( '' === $body_id ) {
-			return new WP_Error( 'cmb_sms_pattern', 'شناسه‌ی پترن تنظیم نشده است.' );
+			return self::logged( $phone, 'pattern', $body_id, $text, new WP_Error( 'cmb_sms_pattern', 'شناسه‌ی پترن تنظیم نشده است.' ) );
 		}
-
-		// مقادیر پترن با «;» جدا می‌شوند؛ خود مقادیر نباید حاوی ; باشند.
-		$text = implode( ';', array_map( array( __CLASS__, 'clean_param' ), $args ) );
 
 		$response = self::request(
 			self::ENDPOINT_PATTERN,
@@ -61,7 +66,7 @@ class CMB_SMS {
 			)
 		);
 
-		return self::handle_response( $response, 'pattern' );
+		return self::logged( $phone, 'pattern', $body_id, $text, self::handle_response( $response, 'pattern' ) );
 	}
 
 	/**
@@ -70,21 +75,22 @@ class CMB_SMS {
 	 * @return true|WP_Error
 	 */
 	public static function send_text( $phone, $message ) {
+		$raw   = $phone;
 		$phone = cmb_normalize_phone( $phone );
 
 		if ( ! $phone ) {
-			return new WP_Error( 'cmb_sms_phone', 'شماره‌ی گیرنده معتبر نیست.' );
+			return self::logged( $raw, 'simple', '', $message, new WP_Error( 'cmb_sms_phone', 'شماره‌ی گیرنده معتبر نیست.' ) );
 		}
 
 		if ( ! self::is_enabled() ) {
 			cmb_log( 'SMS disabled; skipping text send', compact( 'phone', 'message' ) );
-			return true;
+			return self::logged( $phone, 'simple', '', $message, new WP_Error( 'cmb_sms_off', 'پیامک در تنظیمات خاموش است.' ), true );
 		}
 
 		$from = (string) CMB_Settings::get( 'sms_from', '' );
 
 		if ( '' === $from ) {
-			return new WP_Error( 'cmb_sms_from', 'شماره‌ی فرستنده (خط اختصاصی) تنظیم نشده است.' );
+			return self::logged( $phone, 'simple', '', $message, new WP_Error( 'cmb_sms_from', 'شماره‌ی فرستنده (خط اختصاصی) تنظیم نشده است.' ) );
 		}
 
 		$response = self::request(
@@ -99,7 +105,23 @@ class CMB_SMS {
 			)
 		);
 
-		return self::handle_response( $response, 'simple' );
+		return self::logged( $phone, 'simple', '', $message, self::handle_response( $response, 'simple' ) );
+	}
+
+	/**
+	 * ثبت ارسال در لاگ پیامک و برگرداندن همان نتیجه.
+	 *
+	 * @param bool $off پیامک در تنظیمات خاموش است: در لاگ «ارسال نشد» ولی برای
+	 *                  صدازننده موفق (رفتار قبلی؛ سیستم بی‌پیامک هم کار می‌کند).
+	 */
+	protected static function logged( $phone, $channel, $body_id, $text, $result, $off = false ) {
+		if ( class_exists( 'CMB_SMS_Log' ) ) {
+			CMB_SMS_Log::sms( $phone, self::$key, $channel, $body_id, $text, $result, true === $result ? self::$rec : '', $off ? 'info' : '' );
+		}
+
+		self::$rec = '';
+
+		return $off ? true : $result;
 	}
 
 	/**
@@ -113,17 +135,21 @@ class CMB_SMS {
 	 * @return true|WP_Error
 	 */
 	public static function send_event( $phone, $pattern_key, array $args, $fallback = '' ) {
-		$body_id = trim( (string) CMB_Settings::get( $pattern_key, '' ) );
+		$body_id   = trim( (string) CMB_Settings::get( $pattern_key, '' ) );
+		self::$key = $pattern_key;
 
 		if ( '' !== $body_id ) {
-			return self::send_pattern( $phone, $body_id, $args );
+			$result = self::send_pattern( $phone, $body_id, $args );
+		} elseif ( '' !== $fallback && 'simple' === CMB_Settings::get( 'sms_api_mode', 'pattern' ) ) {
+			$result = self::send_text( $phone, $fallback );
+		} else {
+			// پیامکی که به‌خاطر نبودِ پترن اصلاً نرفت هم در لاگ دیده شود
+			$result = self::logged( $phone, '-', '', implode( ';', array_map( array( __CLASS__, 'clean_param' ), $args ) ), new WP_Error( 'cmb_sms_no_pattern', sprintf( 'پترن «%s» در تنظیمات پیامک وارد نشده است.', class_exists( 'CMB_SMS_Log' ) ? CMB_SMS_Log::label( $pattern_key ) : $pattern_key ) ) );
 		}
 
-		if ( '' !== $fallback && 'simple' === CMB_Settings::get( 'sms_api_mode', 'pattern' ) ) {
-			return self::send_text( $phone, $fallback );
-		}
+		self::$key = '';
 
-		return new WP_Error( 'cmb_sms_no_pattern', sprintf( 'پترن «%s» تنظیم نشده است.', $pattern_key ) );
+		return $result;
 	}
 
 	/**
@@ -142,15 +168,24 @@ class CMB_SMS {
 			$body_id = trim( (string) CMB_Settings::get( $try[0], '' ) );
 
 			if ( '' !== $body_id ) {
-				return self::send_pattern( $phone, $body_id, (array) $try[1] );
+				self::$key = $try[0];
+				$result    = self::send_pattern( $phone, $body_id, (array) $try[1] );
+				self::$key = '';
+				return $result;
 			}
 		}
 
+		self::$key = $attempts ? (string) $attempts[0][0] : '';
+
 		if ( '' !== $fallback && 'simple' === CMB_Settings::get( 'sms_api_mode', 'pattern' ) ) {
-			return self::send_text( $phone, $fallback );
+			$result = self::send_text( $phone, $fallback );
+		} else {
+			$result = self::logged( $phone, '-', '', $fallback, new WP_Error( 'cmb_sms_no_pattern', 'هیچ‌کدام از پترن‌های این پیامک تنظیم نشده است.' ) );
 		}
 
-		return new WP_Error( 'cmb_sms_no_pattern', 'هیچ‌کدام از پترن‌های این پیامک تنظیم نشده است.' );
+		self::$key = '';
+
+		return $result;
 	}
 
 	/**
@@ -238,6 +273,7 @@ class CMB_SMS {
 		// در ارسال موفق، Value شناسه‌ی رکورد ارسال است و بزرگ‌تر از ۱۵ رقم/۰ است.
 		if ( 1 === $status && '' !== $value && '0' !== $value ) {
 			cmb_log( 'SMS sent (' . $context . ')', array( 'recId' => $value ) );
+			self::$rec = $value;
 			return true;
 		}
 

@@ -193,6 +193,11 @@ class CMB_Cron {
 		if ( class_exists( 'CMB_Debug' ) ) {
 			CMB_Debug::prune();
 		}
+
+		// لاگ پیامک و کد تایید: ۷ روز
+		if ( class_exists( 'CMB_SMS_Log' ) ) {
+			CMB_SMS_Log::prune();
+		}
 	}
 
 	/**
