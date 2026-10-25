@@ -1628,7 +1628,7 @@ class CMB_Wallet {
 	}
 
 	public static function sms_text( array $args ) {
-		return sprintf( "چک موتور\n%s عزیز، %s تومان %s.\nموجودی کیف پول شما: %s تومان", $args[0], $args[1], $args[3], $args[2] );
+		return sprintf( "%s تومان %s.\nموجودی کیف پول: %s تومان\nچک موتور", $args[1], $args[3], $args[2] );
 	}
 
 	/** متن پیشنهادی پترن «تغییر کیف پول» برای پنل ملی‌پیامک. */

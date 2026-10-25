@@ -41,6 +41,8 @@ class CMB_Settings {
 			'pattern_booking'       => '',
 			'pattern_reminder'      => '',
 			'pattern_admin'         => '',
+			// ۱.۴۶.۰ نوبت جدید با شهر و خودرو (مرکز و نمایندگی): {0} نام مشتری، {1} موبایل، {2} شهر، {3} خودرو، {4} موتور، {5} خدمت، {6} تاریخ، {7} شیفت
+			'pattern_new_booking'   => '',
 			'pattern_cancel'        => '',
 			'pattern_admin_cancel'  => '',
 

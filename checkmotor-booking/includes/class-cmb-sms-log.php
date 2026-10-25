@@ -44,6 +44,7 @@ class CMB_SMS_Log {
 			'pattern_cancel'          => 'لغو نوبت',
 			'pattern_cancel_branch'   => 'لغو نوبت (نمایندگی)',
 			'pattern_admin'           => 'خبر نوبت تازه به مدیر',
+			'pattern_new_booking'     => 'نوبت جدید (با شهر و خودرو)',
 			'pattern_admin_cancel'    => 'خبر لغو نوبت به مدیر',
 			'pattern_wallet'          => 'کیف پول مشتری',
 			'pattern_refund'          => 'بازگشت وجه',

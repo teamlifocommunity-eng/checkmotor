@@ -95,7 +95,7 @@ class CMB_OTP {
 			$phone,
 			'pattern_otp',
 			array( $code ),
-			sprintf( 'panel' === $purpose ? 'کد ورود به پنل مدیریت چک موتور: %s' : 'کد ورود شما به چک موتور: %s', $code )
+			sprintf( 'panel' === $purpose ? 'کد ورود پنل چک موتور: %s' : 'کد ورود چک موتور: %s', $code )
 		);
 
 		if ( is_wp_error( $sent ) ) {

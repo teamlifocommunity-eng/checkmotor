@@ -52,10 +52,12 @@ class CMB_Branch_Notify {
 		return self::send_all(
 			$b,
 			array(
+				// ۱.۴۶.۰: اول پترن تازه با شهر، خودرو و موتور مشتری
+				array( 'pattern_new_booking', CMB_Bookings::new_booking_args( $booking ) ),
 				array( 'pattern_agency_new', array( $booking->customer_name, $booking->phone, $svc, $date, $block ) ),
 				array( 'pattern_admin', array( $svc, $date, $block, $booking->customer_name, $booking->phone ) ),
 			),
-			sprintf( "نوبت جدید چک موتور — %s\n%s\n%s - %s\nمشتری: %s\n%s\nکد: %s", $b->title, $svc, $date, $block, $booking->customer_name, $booking->phone, $booking->tracking_code )
+			CMB_Bookings::new_booking_text( $booking )
 		);
 	}
 
@@ -77,7 +79,7 @@ class CMB_Branch_Notify {
 				array( 'pattern_agency_cancel', array( $booking->customer_name, $svc, $date ) ),
 				array( 'pattern_admin_cancel', array( $svc, $date, $block, $booking->customer_name, $booking->phone ) ),
 			),
-			sprintf( "لغو نوبت چک موتور — %s\nمشتری نوبتش را لغو کرد.\n%s\n%s - %s\nمشتری: %s\nکد: %s", $b->title, $svc, $date, $block, $booking->customer_name, $booking->tracking_code )
+			sprintf( "لغو توسط مشتری\n%s %s\n%s\n%s %s", $booking->customer_name, $booking->phone, $svc, $date, $block )
 		);
 	}
 
@@ -97,8 +99,8 @@ class CMB_Branch_Notify {
 				array( 'pattern_agency_low', array( $free_fa, (int) $capacity ) ),
 			),
 			$capacity > 0
-				? sprintf( "چک موتور — %s\nموجودی آزاد کیف پول شما %s تومان است (برای %s نوبت دیگر). برای ادامه‌ی دریافت نوبت، کیف پول را از پنل شارژ کنید.", $b->title, $free_fa, (int) $capacity )
-				: sprintf( "چک موتور — %s\nموجودی کیف پول شما برای نوبت تازه کافی نیست و فعلاً نوبت آنلاین نمی‌گیرید. از پنل کیف پول را شارژ کنید.", $b->title )
+				? sprintf( "موجودی کیف پول: %s تومان (%s نوبت). از پنل شارژ کنید.\nچک موتور", $free_fa, (int) $capacity )
+				: "موجودی کیف پول تمام شد؛ نوبت آنلاین متوقف است. از پنل شارژ کنید.\nچک موتور"
 		);
 	}
 
@@ -115,7 +117,7 @@ class CMB_Branch_Notify {
 			array(
 				array( 'pattern_agency_topup', array( number_format( (int) $amount ), number_format( max( 0, (int) $free ) ) ) ),
 			),
-			sprintf( "چک موتور — %s\nکیف پول شما %s تومان شارژ شد.\nموجودی آزاد: %s تومان", $b->title, number_format( (int) $amount ), number_format( max( 0, (int) $free ) ) )
+			sprintf( "شارژ کیف پول: %s تومان\nموجودی: %s تومان\nچک موتور", number_format( (int) $amount ), number_format( max( 0, (int) $free ) ) )
 		);
 	}
 
@@ -135,7 +137,7 @@ class CMB_Branch_Notify {
 			array(
 				array( 'pattern_agency_active', array( $b->title, $credit, $link ) ),
 			),
-			sprintf( "چک موتور\nپنل نمایندگی «%s» فعال شد و %s تومان اعتبار اولیه دارد.\nورود به پنل: %s", $b->title, $credit, $link )
+			sprintf( "پنل «%s» فعال شد. اعتبار: %s تومان\n%s", $b->title, $credit, $link )
 		);
 	}
 }

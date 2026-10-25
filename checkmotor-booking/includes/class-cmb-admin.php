@@ -878,6 +878,18 @@ class CMB_Admin {
 						</td>
 					</tr>
 					<tr>
+						<th><label>نوبت جدید با شهر و خودرو (مرکز و نمایندگی‌ها)</label></th>
+						<td>
+							<input type="text" name="pattern_new_booking" class="regular-text" value="<?php echo esc_attr( $s['pattern_new_booking'] ); ?>" />
+							<p class="description">
+								اگر پر باشد، خبر نوبت تازه به مدیر مرکز و به نمایندگی‌ها با همین پترن می‌رود (به‌جای «اطلاع به مدیر» و «نوبت جدید به نمایندگی»)؛ خالی بماند، همان پترن‌های قبلی.
+								متغیرها: <code>{0}</code> نام مشتری، <code>{1}</code> موبایل، <code>{2}</code> شهر، <code>{3}</code> خودرو، <code>{4}</code> موتور، <code>{5}</code> خدمت، <code>{6}</code> تاریخ، <code>{7}</code> شیفت
+							</p>
+							<p class="description">متن پیشنهادی برای ثبت در پنل ملی‌پیامک:</p>
+							<pre style="direction:rtl;white-space:pre-wrap;margin:4px 0 0;padding:8px;background:#f6f7f7;border-radius:4px"><?php echo esc_html( CMB_Bookings::new_booking_hint() ); ?></pre>
+						</td>
+					</tr>
+					<tr>
 						<th><label>یادآوری یک روز قبل</label></th>
 						<td>
 							<input type="text" name="pattern_reminder" class="regular-text" value="<?php echo esc_attr( $s['pattern_reminder'] ); ?>" />
@@ -1461,6 +1473,7 @@ class CMB_Admin {
 			'pattern_booking',
 			'pattern_reminder',
 			'pattern_admin',
+			'pattern_new_booking',
 			'pattern_cancel',
 			'pattern_admin_cancel',
 			'pattern_wallet',

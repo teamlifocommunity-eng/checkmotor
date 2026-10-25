@@ -633,7 +633,7 @@ function viewBookings() {
   ];
 
   html += '<div class="pn-card">' +
-    '<div class="pn-filters">' +
+    '<div class="pn-filters pn-filters--bk">' +
       '<div class="pn-tabs">' +
         scopes.map(function (s) {
           /* با تاریخِ انتخاب‌شده، دامنه بی‌اثر است — کم‌رنگ نشان
@@ -644,19 +644,19 @@ function viewBookings() {
             '" data-scope="' + s.k + '">' + s.t + '</button>';
         }).join('') +
       '</div>' +
-      '<label class="pn-field"><span class="pn-field__l">وضعیت</span>' +
+      '<label class="pn-field pn-f-status"><span class="pn-field__l">وضعیت</span>' +
         '<select class="pn-in" id="pn-status">' +
           '<option value="">همه</option>' +
           Object.keys(STATUSES).map(function (k) {
             return '<option value="' + k + '"' + (f.status === k ? ' selected' : '') + '>' + esc(STATUSES[k]) + '</option>';
           }).join('') +
         '</select></label>' +
-      '<label class="pn-field"><span class="pn-field__l">تاریخ</span>' +
+      '<label class="pn-field pn-f-date"><span class="pn-field__l">تاریخ</span>' +
         J.fieldHTML('pn-date', f.date, { placeholder: 'همه‌ی تاریخ‌ها' }) + '</label>' +
-      '<label class="pn-field" style="flex:1;min-width:180px"><span class="pn-field__l">جستجو</span>' +
+      '<label class="pn-field pn-f-q" style="flex:1;min-width:180px"><span class="pn-field__l">جستجو</span>' +
         '<input class="pn-in" id="pn-q" type="search" placeholder="نام، موبایل، کد پیگیری یا خودرو" value="' + esc(f.q) + '"></label>' +
-      '<button class="pn-btn pn-btn--dark" data-apply>اعمال</button>' +
-      '<button class="pn-btn pn-btn--soft" data-clear>پاک کردن</button>' +
+      '<button class="pn-btn pn-btn--dark pn-f-apply" data-apply>اعمال</button>' +
+      '<button class="pn-btn pn-btn--soft pn-f-clear' + (f.status || f.date || f.q ? '' : ' is-idle') + '" data-clear>پاک کردن</button>' +
     '</div>';
 
   // نشان دادن فیلترهای فعال، تا معلوم باشد چرا فهرست این شکلی است
@@ -737,6 +737,20 @@ function viewBookings() {
   });
 
   html += '</tbody></table></div>';
+
+  /* گوشی: کارت فشرده‌ی هر نوبت (به‌جای جدولی که هر ستونش یک ردیف می‌شد و هر
+     نوبت ~۴۷۰ پیکسل بود). کل کارت جزئیات را باز می‌کند؛ شماره‌ی مشتری تماس می‌گیرد. */
+  html += '<div class="pn-bkl' + (S.fetching ? ' is-fetching' : '') + '">' + S.list.items.map(function (b) {
+    var car = [b.carBrand, b.carModel ? 'موتور ' + b.carModel : ''].filter(Boolean).join(' · ');
+    return '<div class="pn-bkc pn-bkc--' + esc(b.status) + '" data-open="' + b.id + '" role="button" tabindex="0" aria-label="' + esc('جزئیات نوبت ' + b.name + ' ' + b.dateFa) + '">' +
+      '<div class="pn-bkc__top"><span class="num"><b>' + fa(esc(b.dateFa)) + '</b> · ' + esc(String(b.blockLabel || '').replace(/^شیفت\s+/, '')) + ' ' + fa(esc(b.blockStart)) + '</span>' + badge(b.status, b.statusLabel) + '</div>' +
+      '<div class="pn-bkc__who"><b>' + esc(b.name) + '</b><a class="num" href="tel:' + esc(b.phone) + '">' + fa(esc(b.phone)) + '</a></div>' +
+      '<div class="pn-bkc__meta">' + esc([car, b.service].filter(Boolean).join(' · ')) + '</div>' +
+      '<div class="pn-bkc__foot"><span class="pn-code">' + esc(b.code) + '</span>' +
+        (b.city || b.province ? '<span>' + esc([b.city, b.province].filter(Boolean)[0]) + '</span>' : '') +
+        '<span class="pn-bkc__go">جزئیات' + I.chevL + '</span></div>' +
+    '</div>';
+  }).join('') + '</div>';
 
   if (S.list.pages > 1) {
     html += '<div class="pn-head__act" style="margin-top:16px;justify-content:center">' +
@@ -4804,7 +4818,8 @@ function bind() {
       return;
     }
 
-    if ((el = up('[data-open]'))) {
+    // شماره‌ی تلفن داخل کارت نوبت تماس می‌گیرد، نه باز کردن جزئیات
+    if ((el = up('[data-open]')) && !up('a[href]')) {
       e.preventDefault();
       var id = Number(el.getAttribute('data-open'));
       var item = findBooking(id);
@@ -5545,6 +5560,13 @@ function bind() {
     }
 
     if (e.key === 'Enter' && $('#lg-pass')) { e.preventDefault(); doLogin(); return; }
+
+    // کارت نوبت (گوشی) با صفحه‌کلید هم باز می‌شود
+    if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.classList && e.target.classList.contains('pn-bkc')) {
+      e.preventDefault();
+      e.target.click();
+      return;
+    }
 
     if (e.key === 'Enter' && e.target && e.target.id === 'sl-q') {
       e.preventDefault();

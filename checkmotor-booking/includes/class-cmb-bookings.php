@@ -1428,8 +1428,9 @@ class CMB_Bookings {
 			$booking->tracking_code,
 		);
 
+		// متن ساده (فقط حالت ارسال ساده) تا حد ممکن کوتاه: هر ۷۰ نویسه‌ی فارسی یک پیامک حساب می‌شود
 		$fallback = sprintf(
-			"چک موتور\nنوبت شما ثبت شد.\nخدمت: %s\nتاریخ: %s\n%s (ساعت %s)\nکد پیگیری: %s",
+			"نوبت شما ثبت شد\n%s\n%s %s ساعت %s\nکد: %s\nچک موتور",
 			$args[1],
 			$args[2],
 			$args[3],
@@ -1466,29 +1467,14 @@ class CMB_Bookings {
 			return;
 		}
 
-		$args = array(
-			self::service_title( $booking ),
-			cmb_jalali_date( $booking->booking_date, 'numeric' ),
-			cmb_block_label( $booking->block_key ),
-			$booking->customer_name,
-			$booking->phone,
-		);
-
-		$fallback = sprintf(
-			"نوبت جدید چک موتور\n%s\n%s - %s\nمشتری: %s%s\n%s\nخودرو: %s · موتور: %s · %s",
-			$args[0],
-			$args[1],
-			$args[2],
-			$args[3],
-			! empty( $booking->city ) ? ' (' . $booking->city . ')' : '',
-			$args[4],
-			$booking->car_brand,
-			$booking->car_model,
-			$booking->car_year
+		// اول پترن تازه (با شهر و خودرو)، تا تأیید نشده همان پترن قبلی
+		$attempts = array(
+			array( 'pattern_new_booking', self::new_booking_args( $booking ) ),
+			array( 'pattern_admin', array( self::service_title( $booking ), cmb_jalali_date( $booking->booking_date, 'numeric' ), cmb_block_label( $booking->block_key ), $booking->customer_name, $booking->phone ) ),
 		);
 
 		foreach ( $phones as $phone ) {
-			$result = CMB_SMS::send_event( $phone, 'pattern_admin', $args, $fallback );
+			$result = CMB_SMS::send_first( $phone, $attempts, self::new_booking_text( $booking ) );
 
 			if ( is_wp_error( $result ) ) {
 				cmb_log( 'Admin SMS failed: ' . $result->get_error_message(), array( 'phone' => $phone ) );
@@ -1519,8 +1505,7 @@ class CMB_Bookings {
 		);
 
 		$fallback = sprintf(
-			"یادآوری نوبت چک موتور\n%s عزیز، نوبت شما فردا %s، %s ساعت %s است.",
-			$args[0],
+			"یادآوری: نوبت فردا %s %s ساعت %s\nچک موتور",
 			$args[2],
 			$args[3],
 			$args[4]
@@ -1560,15 +1545,12 @@ class CMB_Bookings {
 		   وقتی خود مشتری لغو کرده، «با شعبه تماس بگیرید» گیج‌کننده است. */
 		$fallback = 'customer' === $by
 			? sprintf(
-				"چک موتور\n%s عزیز، نوبت شما در تاریخ %s (%s) به درخواست خودتان لغو شد.\nکد پیگیری: %s",
-				$args[0],
+				"نوبت %s %s لغو شد.\nچک موتور",
 				$args[2],
-				$args[3],
-				$booking->tracking_code
+				$args[3]
 			)
 			: sprintf(
-				"چک موتور\n%s عزیز، نوبت شما در تاریخ %s (%s) لغو شد. لطفاً با شعبه تماس بگیرید.",
-				$args[0],
+				"نوبت %s %s لغو شد؛ با شعبه تماس بگیرید.\nچک موتور",
 				$args[2],
 				$args[3]
 			);
@@ -1608,13 +1590,12 @@ class CMB_Bookings {
 		);
 
 		$fallback = sprintf(
-			"لغو نوبت چک موتور\nمشتری نوبتش را لغو کرد.\n%s\n%s - %s\nمشتری: %s\n%s\nکد: %s",
-			$args[0],
-			$args[1],
-			$args[2],
+			"لغو توسط مشتری\n%s %s\n%s\n%s %s",
 			$args[3],
 			$args[4],
-			$booking->tracking_code
+			$args[0],
+			$args[1],
+			$args[2]
 		);
 
 		foreach ( $phones as $phone ) {
@@ -1652,21 +1633,21 @@ class CMB_Bookings {
 				array( 'pattern_booking_branch', array( $booking->customer_name, $svc, $date, $block, $booking->tracking_code, $title, $address, $phone ) ),
 				array( 'pattern_booking', array( $booking->customer_name, $svc, $date, $block, $start, $booking->tracking_code ) ),
 			);
-			$text     = sprintf( "%s\nنوبت شما ثبت شد.\nخدمت: %s\nتاریخ: %s\n%s (ساعت %s)\nکد پیگیری: %s\nنشانی: %s\nتلفن: %s", $title, $svc, $date, $block, $start, $booking->tracking_code, $address, $phone );
+			$text     = sprintf( "نوبت شما ثبت شد\n%s\n%s %s ساعت %s\nکد: %s\n%s\n%s\n%s", $svc, $date, $block, $start, $booking->tracking_code, $title, $address, $phone );
 		} elseif ( 'reminder' === $event ) {
 			$attempts = array(
 				array( 'pattern_reminder_branch', array( $svc, $date, $block, $title, $address ) ),
 				array( 'pattern_reminder', array( $booking->customer_name, $svc, $date, $block, $start ) ),
 			);
-			$text     = sprintf( "یادآوری نوبت — %s\n%s عزیز، نوبت شما فردا %s، %s ساعت %s است.\nنشانی: %s", $title, $booking->customer_name, $date, $block, $start, $address );
+			$text     = sprintf( "یادآوری: نوبت فردا %s %s ساعت %s\n%s\n%s", $date, $block, $start, $title, $address );
 		} else {
 			$attempts = array(
 				array( 'pattern_cancel_branch', array( $svc, $date, $title, $phone ) ),
 				array( 'pattern_cancel', array( $booking->customer_name, $svc, $date, $block ) ),
 			);
 			$text     = 'customer' === $by
-				? sprintf( "%s\n%s عزیز، نوبت شما در تاریخ %s (%s) به درخواست خودتان لغو شد.\nکد پیگیری: %s", $title, $booking->customer_name, $date, $block, $booking->tracking_code )
-				: sprintf( "%s\n%s عزیز، نوبت شما در تاریخ %s (%s) لغو شد. لطفاً با %s تماس بگیرید.", $title, $booking->customer_name, $date, $block, $phone );
+				? sprintf( "نوبت %s %s لغو شد.\n%s", $date, $block, $title )
+				: sprintf( "نوبت %s %s لغو شد؛ تماس: %s\n%s", $date, $block, $phone, $title );
 		}
 
 		$result = CMB_SMS::send_first( $booking->phone, $attempts, $text );
@@ -1677,6 +1658,47 @@ class CMB_Bookings {
 		}
 
 		return true;
+	}
+
+	/**
+	 * متغیرهای پترن «نوبت جدید با شهر و خودرو» (مرکز و نمایندگی):
+	 * {0} نام مشتری، {1} موبایل، {2} شهر، {3} خودرو، {4} موتور، {5} خدمت، {6} تاریخ، {7} شیفت
+	 */
+	public static function new_booking_args( $booking ) {
+		return array(
+			(string) $booking->customer_name,
+			(string) $booking->phone,
+			isset( $booking->city ) && '' !== trim( (string) $booking->city ) ? (string) $booking->city : '-',
+			'' !== trim( (string) $booking->car_brand ) ? (string) $booking->car_brand : '-',
+			'' !== trim( (string) $booking->car_model ) ? (string) $booking->car_model : '-',
+			self::service_title( $booking ),
+			cmb_jalali_date( $booking->booking_date, 'numeric' ),
+			cmb_block_label( $booking->block_key ),
+		);
+	}
+
+	/** متن ساده‌ی کوتاه «نوبت جدید» برای مدیر مرکز و نمایندگی. */
+	public static function new_booking_text( $booking ) {
+		$a   = self::new_booking_args( $booking );
+		$car = trim( implode( ' ', array_filter( array( $a[3], $a[4] ), function ( $v ) { return '-' !== $v; } ) ) );
+
+		return implode(
+			"\n",
+			array_filter(
+				array(
+					'نوبت جدید',
+					$a[0] . ' ' . $a[1],
+					implode( '، ', array_filter( array( '-' !== $a[2] ? $a[2] : '', $car ) ) ),
+					$a[5],
+					$a[6] . ' ' . $a[7],
+				)
+			)
+		);
+	}
+
+	/** متن پیشنهادی پترن «نوبت جدید با شهر و خودرو» برای پنل ملی‌پیامک. */
+	public static function new_booking_hint() {
+		return "نوبت جدید\n{0} {1}\n{2}، {3} {4}\n{5}\n{6} {7}";
 	}
 
 	protected static function service_title( $booking ) {

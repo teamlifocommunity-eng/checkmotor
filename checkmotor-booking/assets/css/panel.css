@@ -1397,3 +1397,55 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
 }
 .pn-sl td a { color:inherit; text-decoration:none; }
 
+/* 1.46.0: نوبت‌ها روی گوشی — کارت فشرده و فیلترهای جمع‌وجور */
+.pn-bkl { display:none; }
+@media (max-width:760px) {
+  #cmb-panel .pn-card:has(.pn-bkl) .pn-tablewrap { display:none; }
+  .pn-bkl { display:flex; flex-direction:column; gap:10px; }
+  .pn-bkl.is-fetching { opacity:.55; }
+  .pn-bkc { display:flex; flex-direction:column; gap:4px; padding:12px 14px; border:1px solid var(--g4); border-radius:14px; background:var(--card); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .pn-bkc:active { background:var(--g6); }
+  .pn-bkc:focus-visible { outline:3px solid var(--steel-600); outline-offset:2px; }
+  .pn-bkc--confirmed { box-shadow:inset -3px 0 0 var(--ok); }
+  .pn-bkc--cancelled, .pn-bkc--no_show { opacity:.75; }
+  .pn-bkc__top { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:13px; color:var(--ink-2); }
+  .pn-bkc__top > span { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pn-bkc__top b { color:var(--ink); font-weight:800; }
+  .pn-bkc__top .pn-badge { flex:none; }
+  .pn-bkc__who { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .pn-bkc__who b { font-size:15px; font-weight:800; color:var(--ink); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pn-bkc__who a { flex:none; font-size:13px; color:var(--steel-700); text-decoration:none; padding:6px 0 6px 6px; margin:-6px 0; }
+  .pn-bkc__meta { font-size:13px; color:var(--ink-2); line-height:1.8; }
+  .pn-bkc__foot { display:flex; align-items:center; gap:10px; margin-top:2px; font-size:12px; color:var(--ink-3); }
+  .pn-bkc__foot .pn-code { font-size:12px; }
+  .pn-bkc__go { margin-inline-start:auto; display:inline-flex; align-items:center; gap:2px; font-weight:700; color:var(--flame-600); }
+  #cmb-panel .pn-bkc__go svg { width:14px; height:14px; }
+
+  /* فیلترها: وضعیت و تاریخ کنار هم، جستجو و «اعمال» در یک ردیف، «پاک کردن» پیوند کوچک */
+  #cmb-panel .pn-filters--bk { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:10px; align-items:end; }
+  #cmb-panel .pn-filters--bk .pn-tabs { grid-column:1 / -1; }
+  #cmb-panel .pn-filters--bk .pn-f-status { grid-column:1; }
+  #cmb-panel .pn-filters--bk .pn-f-date { grid-column:2 / -1; }
+  #cmb-panel .pn-filters--bk .pn-f-q { grid-column:1 / 3; min-width:0 !important; }
+  #cmb-panel .pn-filters--bk .pn-f-apply { grid-column:3; width:auto; padding-inline:16px; }
+  #cmb-panel .pn-filters--bk .pn-f-clear { grid-column:1 / -1; justify-self:start; width:auto; min-height:36px; padding:0 4px; border:0; background:none; box-shadow:none; color:var(--flame-600); font-size:13px; }
+  #cmb-panel .pn-filters--bk .pn-f-clear.is-idle { display:none; }
+  #cmb-panel .pn-filters--bk .pn-field__l { font-size:12px; }
+}
+
+
+/* 1.46.0: جدول‌های کارتی روی گوشی — برچسب و مقدار در یک خط به‌جای دو خط،
+   تا هر رکورد نصف ارتفاع قبل شود. ستون اول «مشتری/نمایندگی» عنوان کارت است. */
+@media (max-width:560px) {
+  #cmb-panel .pn-table:not(.pn-table--ledger) tr { padding:12px 14px; margin-bottom:10px; }
+  #cmb-panel .pn-table:not(.pn-table--ledger) td { display:grid; grid-template-columns:84px minmax(0,1fr); column-gap:10px; align-items:baseline; padding:5px 0; text-align:right; }
+  #cmb-panel .pn-table:not(.pn-table--ledger) td::before { display:block; margin:0; font-size:12px; font-weight:600; }
+  #cmb-panel .pn-table:not(.pn-table--ledger) td > div { text-align:right; }
+  #cmb-panel .pn-table:not(.pn-table--ledger) td > * { grid-column:2; justify-self:start; }
+  #cmb-panel .pn-table:not(.pn-table--ledger) td:first-child:is([data-label="مشتری"],[data-label="نمایندگی"]) { display:block; padding:0 0 8px; }
+  #cmb-panel .pn-table:not(.pn-table--ledger) td:first-child:is([data-label="مشتری"],[data-label="نمایندگی"])::before { content:none; }
+  #cmb-panel .pn-table:not(.pn-table--ledger) td:is([data-label=""],[data-label="عملیات"]) { display:block; padding-top:10px; }
+  #cmb-panel .pn-table:not(.pn-table--ledger) td[data-label="عملیات"]::before { content:none; }
+  #cmb-panel .pn-table:not(.pn-table--ledger) td:is([data-label=""],[data-label="عملیات"]) .pn-acts { display:flex; flex-wrap:wrap; gap:8px; width:100%; }
+  #cmb-panel .pn-table:not(.pn-table--ledger) td:is([data-label=""],[data-label="عملیات"]) .pn-acts > .pn-btn { flex:1 1 0; width:auto; min-width:0; }
+}
