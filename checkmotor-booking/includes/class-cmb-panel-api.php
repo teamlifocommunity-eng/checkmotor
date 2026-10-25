@@ -939,7 +939,7 @@ class CMB_Panel_Api {
 
 		if ( 'delete' === $status ) {
 			if ( ! CMB_Branches::can( 'delete' ) ) {
-				return self::role_denied( 'حذف نوبت فقط با مدیر شعبه است؛ اپراتور می‌تواند نوبت را لغو کند.' );
+				return self::role_denied( 'حذف نوبت با نقش شما مجاز نیست؛ نوبت را لغو کنید.' );
 			}
 
 			$deleted = CMB_Bookings::delete( $id );

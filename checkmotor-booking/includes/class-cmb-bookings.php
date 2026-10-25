@@ -1282,14 +1282,12 @@ class CMB_Bookings {
 			}
 		}
 
-		/* نوبت نمایندگی که هزینه‌اش قطعی کسر شده، سابقه‌ی مالی کیف پول
-		   نمایندگی است؛ حذفش فقط برای مدیر سایت (ردیف دفتر می‌ماند). */
+		/* ۱.۴۶.۱: نوبت کارمزددار نمایندگی را فقط مدیر سایت حذف می‌کند، در هر
+		   وضعیتی. قبلاً نوبتِ هنوز بلوکه حذف‌شدنی بود و کارمزدش آزاد می‌شد:
+		   نمایندگی سرویس می‌داد و پیش از تکمیل خودکار نوبت را پاک می‌کرد، بی
+		   هیچ ردی در گزارش. نمایندگی به‌جای حذف «لغو» می‌کند (کسر قطعی). */
 		if ( ! empty( $booking->branch_fee ) && ! current_user_can( 'manage_options' ) ) {
-			$fee_row = CMB_Branch_Wallet::fee_row( $booking->id );
-
-			if ( $fee_row && 'done' === $fee_row->status ) {
-				return new WP_Error( 'cmb_fee_captured', 'هزینه‌ی این نوبت از کیف پول نمایندگی قطعی کسر شده و حذفش فقط برای مدیر سایت ممکن است. به‌جای حذف، وضعیتش را تعیین کنید.', array( 'status' => 409 ) );
-			}
+			return new WP_Error( 'cmb_fee_booking', 'نوبت آنلاین نمایندگی حذف نمی‌شود و سابقه‌اش باید بماند. اگر انجام نمی‌شود، «لغو نوبت» را بزنید (هزینه‌ی رزرو کسر می‌شود). حذف فقط با مدیر کل است.', array( 'status' => 409 ) );
 		}
 
 		// بیعانه‌ای که با کیف پول پرداخت شده هم ردیف پرداخت ندارد ولی سابقه دارد
@@ -1326,9 +1324,25 @@ class CMB_Bookings {
 
 		$wpdb->delete( cmb_table( 'bookings' ), array( 'id' => (int) $booking_id ) );
 
-		if ( $fee_row && 'held' === $fee_row->status ) {
-			$wpdb->update( cmb_table( 'branch_ledger' ), array( 'status' => 'void', 'updated_at' => current_time( 'mysql' ) ), array( 'id' => (int) $fee_row->id, 'status' => 'held' ) );
+		if ( $fee_row ) {
+			// ردیف دفتر نمایندگی می‌گوید کدام نوبت را چه کسی پاک کرد
+			$who  = wp_get_current_user();
+			$note = sprintf(
+				'نوبت %s (%s) حذف شد — %s',
+				$booking->tracking_code,
+				$booking->customer_name,
+				( $who && $who->ID ) ? $who->display_name : 'سیستم'
+			);
+			$set  = array( 'note' => cmb_substr( $note, 0, 190 ), 'updated_at' => current_time( 'mysql' ) );
+
+			if ( 'held' === $fee_row->status ) {
+				$set['status'] = 'void';
+			}
+
+			$wpdb->update( cmb_table( 'branch_ledger' ), $set, array( 'id' => (int) $fee_row->id, 'status' => $fee_row->status ) );
 			CMB_Branch_Wallet::check_notice( (int) $fee_row->branch_id );
+
+			cmb_log( 'Agency booking deleted', array( 'booking' => (int) $booking_id, 'code' => (string) $booking->tracking_code, 'branch' => (int) $fee_row->branch_id, 'fee' => (string) $fee_row->status, 'user' => (int) get_current_user_id() ) );
 		}
 
 		if ( CMB_Payments::schema_ready() ) {
