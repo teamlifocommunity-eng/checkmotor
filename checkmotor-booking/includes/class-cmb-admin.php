@@ -820,117 +820,45 @@ class CMB_Admin {
 				</table>
 
 				<h2 class="title">شناسه‌ی پترن‌ها (bodyId)</h2>
-				<p class="description">هر پترن را در پنل ملی‌پیامک بسازید و شناسه‌ی آن را اینجا وارد کنید. ترتیب متغیرها باید دقیقاً مطابق توضیح هر ردیف باشد.</p>
+				<p class="description" style="max-width:760px">
+					کل سیستم ۸ پترن دارد و مرکز و نمایندگی‌ها هر کدام از همین ۸ تا استفاده می‌کنند. متن خاکستری هر ردیف را عیناً در پنل
+					ملی‌پیامک ثبت کنید (ترتیب <code>{0}</code>، <code>{1}</code> … مهم است) و بعد از تأیید، شناسه‌اش را در همان ردیف بگذارید.
+					ردیفی که خالی بماند، آن پیامک در حالت پترن ارسال نمی‌شود. ملی‌پیامک معمولاً پترن لینک‌دار یا تبلیغاتی را رد می‌کند.
+				</p>
 
-				<details style="margin:12px 0;max-width:840px;background:#fff;border:1px solid #dcdcde;border-radius:6px;padding:10px 14px">
-					<summary style="cursor:pointer;font-weight:600">متن آماده‌ی پترن‌ها — برای ثبت در ملی‌پیامک</summary>
-
-					<p class="description" style="margin-top:10px">
-						این متن‌ها را در پنل ملی‌پیامک ثبت کنید. ترتیب <code>{0}</code>، <code>{1}</code> …
-						باید دقیقاً همین باشد، وگرنه مقادیر جابه‌جا در پیامک می‌نشینند.
-						هر پترن که تایید شد، شناسه‌اش را در ردیف مربوطه‌ی پایین بگذارید.
-					</p>
-
-					<?php
-					$cmb_pattern_texts = array(
-						'کد تایید ورود' => "کد ورود شما به چک موتور:\n{0}\nاین کد را در اختیار کسی قرار ندهید.",
-						'تاییدیه‌ی رزرو (مشتری)' => "{0} عزیز، نوبت شما در چک موتور ثبت شد.\nخدمت: {1}\nتاریخ: {2}\n{3} - ساعت {4}\nکد پیگیری: {5}",
-						'اطلاع به مدیر' => "نوبت جدید چک موتور\nخدمت: {0}\nتاریخ: {1} - {2}\nمشتری: {3}\nموبایل: {4}",
-						'یادآوری یک روز قبل' => "{0} عزیز، یادآوری نوبت فردای شما در چک موتور.\nخدمت: {1}\nتاریخ: {2}\n{3} - ساعت {4}",
-						'لغو نوبت' => "{0} عزیز، نوبت شما در چک موتور لغو شد.\nخدمت: {1}\nتاریخ: {2} - {3}\nبرای هماهنگی مجدد تماس بگیرید.",
-					);
-
-					foreach ( $cmb_pattern_texts as $cmb_label => $cmb_text ) :
-						?>
-						<p style="margin:14px 0 4px"><b><?php echo esc_html( $cmb_label ); ?></b></p>
-						<textarea readonly rows="<?php echo (int) ( substr_count( $cmb_text, "\n" ) + 1 ); ?>"
-							onclick="this.select()"
-							style="width:100%;max-width:640px;font-family:inherit;direction:rtl;background:#f6f7f7"
-						><?php echo esc_textarea( $cmb_text ); ?></textarea>
-					<?php endforeach; ?>
-
-					<p class="description" style="margin-top:12px">
-						نکته: ملی‌پیامک معمولاً پترن‌های حاوی لینک یا کلمات تبلیغاتی را رد می‌کند.
-						اگر پترنی تایید نشد، جمله را ساده‌تر کنید و دوباره بفرستید.
-					</p>
-				</details>
 
 				<table class="form-table">
-					<tr>
-						<th><label>کد تایید ورود</label></th>
-						<td>
-							<input type="text" name="pattern_otp" class="regular-text" value="<?php echo esc_attr( $s['pattern_otp'] ); ?>" />
-							<p class="description">متغیرها: <code>{0}</code> کد تایید</p>
-						</td>
-					</tr>
-					<tr>
-						<th><label>تاییدیه‌ی رزرو (مشتری)</label></th>
-						<td>
-							<input type="text" name="pattern_booking" class="regular-text" value="<?php echo esc_attr( $s['pattern_booking'] ); ?>" />
-							<p class="description">متغیرها: <code>{0}</code> نام، <code>{1}</code> خدمت، <code>{2}</code> تاریخ، <code>{3}</code> شیفت، <code>{4}</code> ساعت، <code>{5}</code> کد پیگیری</p>
-						</td>
-					</tr>
-					<tr>
-						<th><label>اطلاع به مدیر</label></th>
-						<td>
-							<input type="text" name="pattern_admin" class="regular-text" value="<?php echo esc_attr( $s['pattern_admin'] ); ?>" />
-							<p class="description">متغیرها: <code>{0}</code> خدمت، <code>{1}</code> تاریخ، <code>{2}</code> شیفت، <code>{3}</code> نام مشتری، <code>{4}</code> موبایل مشتری</p>
-						</td>
-					</tr>
-					<tr>
-						<th><label>نوبت جدید با شهر و خودرو (مرکز و نمایندگی‌ها)</label></th>
-						<td>
-							<input type="text" name="pattern_new_booking" class="regular-text" value="<?php echo esc_attr( $s['pattern_new_booking'] ); ?>" />
-							<p class="description">
-								اگر پر باشد، خبر نوبت تازه به مدیر مرکز و به نمایندگی‌ها با همین پترن می‌رود (به‌جای «اطلاع به مدیر» و «نوبت جدید به نمایندگی»)؛ خالی بماند، همان پترن‌های قبلی.
-								متغیرها: <code>{0}</code> نام مشتری، <code>{1}</code> موبایل، <code>{2}</code> شهر، <code>{3}</code> خودرو، <code>{4}</code> موتور، <code>{5}</code> خدمت، <code>{6}</code> تاریخ، <code>{7}</code> شیفت
-							</p>
-							<p class="description">متن پیشنهادی برای ثبت در پنل ملی‌پیامک:</p>
-							<pre style="direction:rtl;white-space:pre-wrap;margin:4px 0 0;padding:8px;background:#f6f7f7;border-radius:4px"><?php echo esc_html( CMB_Bookings::new_booking_hint() ); ?></pre>
-						</td>
-					</tr>
-					<tr>
-						<th><label>یادآوری یک روز قبل</label></th>
-						<td>
-							<input type="text" name="pattern_reminder" class="regular-text" value="<?php echo esc_attr( $s['pattern_reminder'] ); ?>" />
-							<p class="description">متغیرها: <code>{0}</code> نام، <code>{1}</code> خدمت، <code>{2}</code> تاریخ، <code>{3}</code> شیفت، <code>{4}</code> ساعت</p>
-						</td>
-					</tr>
-					<tr>
-						<th><label>لغو نوبت</label></th>
-						<td>
-							<input type="text" name="pattern_cancel" class="regular-text" value="<?php echo esc_attr( $s['pattern_cancel'] ); ?>" />
-							<p class="description">متغیرها: <code>{0}</code> نام، <code>{1}</code> خدمت، <code>{2}</code> تاریخ، <code>{3}</code> شیفت</p>
-						</td>
-					</tr>
-					<tr>
-						<th><label>اطلاع لغو به مدیر</label></th>
-						<td>
-							<input type="text" name="pattern_admin_cancel" class="regular-text" value="<?php echo esc_attr( $s['pattern_admin_cancel'] ); ?>" />
-							<p class="description">
-								وقتی مشتری خودش نوبت را لغو می‌کند به شماره‌های مدیر ارسال می‌شود.
-								متغیرها: <code>{0}</code> خدمت، <code>{1}</code> تاریخ، <code>{2}</code> شیفت، <code>{3}</code> نام مشتری، <code>{4}</code> موبایل مشتری
-							</p>
-						</td>
-					</tr>
-					<tr>
-						<th><label>پترن تغییر کیف پول</label></th>
-						<td>
-							<input type="text" name="pattern_wallet" class="regular-text" value="<?php echo esc_attr( $s['pattern_wallet'] ); ?>" />
-							<p class="description">
-								هر بار که پولی به کیف پول مشتری برمی‌گردد (لغو، پرداخت تکراری یا دیر)، شارژ می‌شود یا دستی تغییر می‌کند.
-								متغیرها: <code>{0}</code> نام، <code>{1}</code> مبلغ (تومان)، <code>{2}</code> موجودی بعد از تغییر، <code>{3}</code> شرح
-								(مثلاً «بابت لغو نوبت CM… به کیف پول شما برگشت»). متن پیشنهادی:
-								<code><?php echo esc_html( str_replace( "\n", ' ⏎ ', CMB_Wallet::pattern_hint() ) ); ?></code>
-							</p>
-						</td>
-					</tr>
+					<?php foreach ( CMB_SMS::catalog() as $cmb_p ) : ?>
+						<tr>
+							<th><label for="cmb-<?php echo esc_attr( $cmb_p['key'] ); ?>"><?php echo esc_html( $cmb_p['label'] ); ?></label>
+								<br><span style="font-weight:400;color:#646970">به <?php echo esc_html( $cmb_p['to'] ); ?></span></th>
+							<td>
+								<input id="cmb-<?php echo esc_attr( $cmb_p['key'] ); ?>" type="text" name="<?php echo esc_attr( $cmb_p['key'] ); ?>" class="regular-text" dir="ltr" value="<?php echo esc_attr( $s[ $cmb_p['key'] ] ); ?>" placeholder="شناسه‌ی پترن" />
+								<p class="description"><?php echo esc_html( $cmb_p['when'] ); ?>. متغیرها:
+									<?php
+									$cmb_vars = array();
+									foreach ( $cmb_p['vars'] as $cmb_i => $cmb_v ) {
+										$cmb_vars[] = '<code>{' . (int) $cmb_i . '}</code> ' . esc_html( $cmb_v );
+									}
+									echo wp_kses( implode( '، ', $cmb_vars ), array( 'code' => array() ) );
+									?>
+								</p>
+								<textarea readonly dir="rtl" onclick="this.select()" title="با یک کلیک همه انتخاب می‌شود؛ کپی کنید و در ملی‌پیامک بگذارید"
+									rows="<?php echo (int) ( substr_count( $cmb_p['text'], "\n" ) + 1 ); ?>"
+									style="display:block;width:100%;max-width:520px;margin-top:4px;font-family:inherit;line-height:1.7;background:#f6f7f7;resize:none"
+								><?php echo esc_textarea( $cmb_p['text'] ); ?></textarea>
+								<?php if ( ! empty( $cmb_p['note'] ) ) : ?>
+									<p class="description"><?php echo esc_html( $cmb_p['note'] ); ?></p>
+								<?php endif; ?>
+							</td>
+						</tr>
+					<?php endforeach; ?>
 				</table>
 
 				<h2 class="title">نمایندگی‌ها</h2>
 				<p class="description">
 					مبلغ‌ها به تومان. مبلغ هر رزرو روی خود نوبت ثبت می‌شود، پس تغییرش فقط روی رزروهای بعدی اثر دارد.
-					پترن‌های نمایندگی اختیاری‌اند: اگر خالی بمانند، همان پترن‌های مرکز (بالا) فرستاده می‌شوند.
+					پیامک‌های نمایندگی همان پترن‌های بالا هستند؛ پترن جداگانه‌ای برای نمایندگی لازم نیست.
 				</p>
 				<table class="form-table">
 					<?php
@@ -991,29 +919,49 @@ class CMB_Admin {
 							</td>
 						</tr>
 					<?php endforeach; ?>
-					<?php
-					$agency_patterns = array(
-						'pattern_booking_branch'  => array( 'تاییدیه‌ی رزرو نمایندگی (مشتری)', '<code>{0}</code> نام، <code>{1}</code> خدمت، <code>{2}</code> تاریخ، <code>{3}</code> شیفت، <code>{4}</code> کد پیگیری، <code>{5}</code> نام مرکز، <code>{6}</code> آدرس، <code>{7}</code> تلفن' ),
-						'pattern_reminder_branch' => array( 'یادآوری نوبت نمایندگی (مشتری)', '<code>{0}</code> خدمت، <code>{1}</code> تاریخ، <code>{2}</code> شیفت، <code>{3}</code> نام مرکز، <code>{4}</code> آدرس' ),
-						'pattern_cancel_branch'   => array( 'لغو نوبت نمایندگی (مشتری)', '<code>{0}</code> خدمت، <code>{1}</code> تاریخ، <code>{2}</code> نام مرکز، <code>{3}</code> تلفن' ),
-						'pattern_agency_new'      => array( 'نوبت جدید (به نمایندگی)', '<code>{0}</code> نام مشتری، <code>{1}</code> موبایل، <code>{2}</code> خدمت، <code>{3}</code> تاریخ، <code>{4}</code> شیفت' ),
-						'pattern_agency_cancel'   => array( 'لغو توسط مشتری (به نمایندگی)', '<code>{0}</code> نام مشتری، <code>{1}</code> خدمت، <code>{2}</code> تاریخ' ),
-						'pattern_agency_low'      => array( 'هشدار موجودی کم (به نمایندگی)', '<code>{0}</code> موجودی آزاد، <code>{1}</code> تعداد نوبت قابل پذیرش' ),
-						'pattern_agency_topup'    => array( 'شارژ موفق (به نمایندگی)', '<code>{0}</code> مبلغ شارژ، <code>{1}</code> موجودی جدید' ),
-						'pattern_agency_active'   => array( 'فعال شدن پنل (به نمایندگی)', '<code>{0}</code> نام نمایندگی، <code>{1}</code> اعتبار اولیه، <code>{2}</code> لینک پنل' ),
-					);
-
-					foreach ( $agency_patterns as $key => $label ) :
-						?>
-						<tr>
-							<th><label><?php echo esc_html( $label[0] ); ?></label></th>
-							<td>
-								<input type="text" name="<?php echo esc_attr( $key ); ?>" class="regular-text" value="<?php echo esc_attr( $s[ $key ] ); ?>" />
-								<p class="description">متغیرها: <?php echo wp_kses( $label[1], array( 'code' => array() ) ); ?></p>
-							</td>
-						</tr>
-					<?php endforeach; ?>
 				</table>
+
+				<?php
+				/* پترن‌های قدیمیِ خبر نوبت و لغو، که حالا یکی شده‌اند. فقط اگر از قبل
+				   پر باشند دیده می‌شوند؛ تا «نوبت جدید» یا «لغو توسط مشتری» خالی است
+				   همین‌ها می‌روند تا پیامکی قطع نشود. */
+				$legacy = array(
+					'pattern_admin'           => array( 'اطلاع به مدیر', 'جایش «نوبت جدید» آمده. <code>{0}</code> خدمت، <code>{1}</code> تاریخ، <code>{2}</code> شیفت، <code>{3}</code> نام، <code>{4}</code> موبایل' ),
+					'pattern_agency_new'      => array( 'نوبت جدید به نمایندگی', 'جایش «نوبت جدید» آمده. <code>{0}</code> نام، <code>{1}</code> موبایل، <code>{2}</code> خدمت، <code>{3}</code> تاریخ، <code>{4}</code> شیفت' ),
+					'pattern_agency_cancel'   => array( 'لغو توسط مشتری به نمایندگی', 'جایش «لغو توسط مشتری» آمده. <code>{0}</code> نام، <code>{1}</code> خدمت، <code>{2}</code> تاریخ' ),
+					'pattern_booking_branch'  => array( 'تأیید نوبت نمایندگی', 'اگر پر باشد، مشتری نمایندگی به‌جای «تأیید نوبت» این را می‌گیرد. <code>{0}</code> نام، <code>{1}</code> خدمت، <code>{2}</code> تاریخ، <code>{3}</code> شیفت، <code>{4}</code> کد، <code>{5}</code> مرکز، <code>{6}</code> آدرس، <code>{7}</code> تلفن' ),
+					'pattern_reminder_branch' => array( 'یادآوری نوبت نمایندگی', 'اگر پر باشد، به‌جای «یادآوری». <code>{0}</code> خدمت، <code>{1}</code> تاریخ، <code>{2}</code> شیفت، <code>{3}</code> مرکز، <code>{4}</code> آدرس' ),
+					'pattern_cancel_branch'   => array( 'لغو نوبت نمایندگی', 'اگر پر باشد، به‌جای «لغو نوبت». <code>{0}</code> خدمت، <code>{1}</code> تاریخ، <code>{2}</code> مرکز، <code>{3}</code> تلفن' ),
+					'pattern_agency_low'      => array( 'هشدار موجودی کم', 'جایش «کیف پول نمایندگی» آمده. <code>{0}</code> موجودی، <code>{1}</code> تعداد نوبت' ),
+					'pattern_agency_topup'    => array( 'شارژ موفق', 'جایش «کیف پول نمایندگی» آمده. <code>{0}</code> مبلغ، <code>{1}</code> موجودی' ),
+					'pattern_agency_active'   => array( 'فعال شدن پنل', 'جایش «کیف پول نمایندگی» آمده. <code>{0}</code> نام، <code>{1}</code> اعتبار، <code>{2}</code> لینک' ),
+				);
+				$legacy = array_filter(
+					$legacy,
+					function ( $key ) use ( $s ) {
+						return '' !== trim( (string) $s[ $key ] );
+					},
+					ARRAY_FILTER_USE_KEY
+				);
+				?>
+				<?php if ( $legacy ) : ?>
+					<h2 class="title">پترن‌های قدیمی</h2>
+					<p class="description">
+						این پترن‌ها حالا لازم نیستند و فقط چون پر هستند این‌جا دیده می‌شوند. تا پترن جایگزینشان (بالا) را وارد نکرده‌اید،
+						به‌عنوان پشتیبان ارسال می‌شوند تا پیامکی قطع نشود. بعد از وارد کردن پترن تازه، خانه‌ی قدیمی را خالی کنید تا این بخش پنهان شود.
+					</p>
+					<table class="form-table">
+						<?php foreach ( $legacy as $key => $label ) : ?>
+							<tr>
+								<th><label><?php echo esc_html( $label[0] ); ?></label></th>
+								<td>
+									<input type="text" name="<?php echo esc_attr( $key ); ?>" class="regular-text" value="<?php echo esc_attr( $s[ $key ] ); ?>" />
+									<p class="description"><?php echo wp_kses( $label[1], array( 'code' => array() ) ); ?></p>
+								</td>
+							</tr>
+						<?php endforeach; ?>
+					</table>
+				<?php endif; ?>
 
 				<h2 class="title">کد تایید (OTP)</h2>
 				<table class="form-table">
@@ -1477,6 +1425,7 @@ class CMB_Admin {
 			'pattern_cancel',
 			'pattern_admin_cancel',
 			'pattern_wallet',
+			'pattern_agency_wallet',
 			'admin_phones',
 			'confirm_note',
 			'ecu_note',
@@ -1513,6 +1462,11 @@ class CMB_Admin {
 		$values = array();
 
 		foreach ( $text_keys as $key ) {
+			// پترن قدیمی «اطلاع به مدیر» فقط وقتی پر است در فرم هست؛ نبودنش یعنی دست نزن
+			if ( 'pattern_admin' === $key && ! isset( $_POST[ $key ] ) ) {
+				continue;
+			}
+
 			$values[ $key ] = sanitize_text_field( wp_unslash( $_POST[ $key ] ?? '' ) );
 		}
 
