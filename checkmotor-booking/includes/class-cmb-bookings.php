@@ -533,7 +533,7 @@ class CMB_Bookings {
 			? "( status = 'confirmed' OR ( status = 'pending' AND hold_until_gmt > '" . esc_sql( cmb_now_gmt() ) . "' ) )"
 			: "status = 'confirmed'";
 
-		$sql  = "SELECT * FROM {$table} WHERE user_id = %d AND id <> %d AND {$active} AND booking_date >= %s ORDER BY booking_date ASC, block_key ASC";
+		$sql  = "SELECT * FROM {$table} WHERE user_id = %d AND id <> %d AND {$active} AND booking_date >= %s ORDER BY booking_date ASC, " . cmb_block_order_sql();
 		$rows = (array) $wpdb->get_results( $wpdb->prepare( $sql, $user_id, (int) $exclude_id, $today ) ); // phpcs:ignore
 
 		/* نوبتِ امروز فقط تا شروع شیفتش فعال است. ساعت شروع شیفت هر شعبه

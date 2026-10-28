@@ -693,7 +693,7 @@ class CMB_Panel_Api {
 			$wpdb->prepare(
 				"SELECT * FROM {$table}
 				 WHERE branch_id = %d AND booking_date BETWEEN %s AND %s AND status NOT IN ('cancelled','expired')
-				 ORDER BY booking_date ASC, block_key ASC, id ASC", // phpcs:ignore
+				 ORDER BY booking_date ASC, " . cmb_block_order_sql() . ", id ASC", // phpcs:ignore
 				(int) $branch_id,
 				$from,
 				$until
@@ -801,7 +801,7 @@ class CMB_Panel_Api {
 			? $wpdb->get_var( $wpdb->prepare( $count_sql, $params ) ) // phpcs:ignore
 			: $wpdb->get_var( $count_sql ) ); // phpcs:ignore
 
-		$sql  = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY booking_date {$order}, block_key ASC, id ASC LIMIT %d OFFSET %d";
+		$sql  = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY booking_date {$order}, " . cmb_block_order_sql() . ", id ASC LIMIT %d OFFSET %d";
 		$args = array_merge( $params, array( $per, ( $page - 1 ) * $per ) );
 		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore
 

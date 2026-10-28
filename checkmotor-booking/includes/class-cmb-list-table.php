@@ -166,7 +166,7 @@ class CMB_Bookings_List_Table extends WP_List_Table {
 		$count_sql = "SELECT COUNT(*) FROM {$table} WHERE {$where_sql}";
 		$total     = (int) ( $params ? $wpdb->get_var( $wpdb->prepare( $count_sql, $params ) ) : $wpdb->get_var( $count_sql ) ); // phpcs:ignore
 
-		$sql          = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY {$orderby} {$order}, block_key ASC LIMIT %d OFFSET %d";
+		$sql          = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY {$orderby} {$order}, " . cmb_block_order_sql() . " LIMIT %d OFFSET %d";
 		$query_params = array_merge( $params, array( $per_page, ( $page - 1 ) * $per_page ) );
 
 		$this->items = $wpdb->get_results( $wpdb->prepare( $sql, $query_params ) ); // phpcs:ignore

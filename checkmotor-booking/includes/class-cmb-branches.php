@@ -946,7 +946,7 @@ class CMB_Branches {
 		$id     = (int) $b->id;
 		$bt     = cmb_table( 'bookings' );
 		$busy   = cmb_occupying_sql();
-		$rows   = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$bt} WHERE branch_id = %d AND {$busy} AND booking_date >= %s ORDER BY booking_date ASC, id ASC", $id, cmb_today() ) ); // phpcs:ignore
+		$rows   = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$bt} WHERE branch_id = %d AND {$busy} AND booking_date >= %s ORDER BY booking_date ASC, " . cmb_block_order_sql() . ", id ASC", $id, cmb_today() ) ); // phpcs:ignore
 		$future = array();
 
 		foreach ( (array) $rows as $r ) {

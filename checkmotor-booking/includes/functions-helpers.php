@@ -319,6 +319,21 @@ function cmb_block_start( $key, $branch_id = 0 ) {
 }
 
 /**
+ * ترتیب شیفت‌ها در SQL: صبح پیش از عصر. «block_key ASC» الفبایی است و
+ * afternoon را جلوی morning می‌گذاشت. هر دو موتور (MySQL و SQLite) CASE را می‌فهمند.
+ */
+function cmb_block_order_sql( $column = 'block_key' ) {
+	$parts = array();
+	$i     = 0;
+
+	foreach ( array_keys( cmb_blocks() ) as $key ) {
+		$parts[] = "WHEN '" . esc_sql( $key ) . "' THEN " . $i++;
+	}
+
+	return 'CASE ' . $column . ' ' . implode( ' ', $parts ) . ' ELSE ' . $i . ' END';
+}
+
+/**
  * وضعیت‌های نوبت.
  */
 function cmb_statuses() {
