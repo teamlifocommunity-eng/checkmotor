@@ -719,29 +719,56 @@ class CMB_Panel_Api {
 		$table = cmb_table( 'bookings' );
 		$today = cmb_today();
 
-		$scope  = sanitize_key( (string) $request->get_param( 'scope' ) );
-		$status = sanitize_key( (string) $request->get_param( 'status' ) );
-		$date   = sanitize_text_field( (string) $request->get_param( 'date' ) );
-		$q      = sanitize_text_field( (string) $request->get_param( 'q' ) );
-		$page   = max( 1, (int) $request->get_param( 'page' ) );
-		$per    = 25;
+		$scope   = sanitize_key( (string) $request->get_param( 'scope' ) );
+		$status  = sanitize_key( (string) $request->get_param( 'status' ) );
+		$block   = sanitize_key( (string) $request->get_param( 'block' ) );
+		$service = (int) $request->get_param( 'service' );
+		$q       = sanitize_text_field( (string) $request->get_param( 'q' ) );
+		$page    = max( 1, (int) $request->get_param( 'page' ) );
+		$per     = 25;
+
+		$is_day = function ( $v ) {
+			return (bool) preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $v );
+		};
+
+		// بازه‌ی تاریخ (۱.۴۷.۰)؛ «date» قدیمی یعنی همان یک روز
+		$from = sanitize_text_field( (string) $request->get_param( 'from' ) );
+		$to   = sanitize_text_field( (string) $request->get_param( 'to' ) );
+		$date = sanitize_text_field( (string) $request->get_param( 'date' ) );
+
+		if ( $is_day( $date ) && ! $is_day( $from ) && ! $is_day( $to ) ) {
+			$from = $to = $date;
+		}
+
+		$from = $is_day( $from ) ? $from : '';
+		$to   = $is_day( $to ) ? $to : '';
+
+		if ( $from && $to && $from > $to ) {
+			list( $from, $to ) = array( $to, $from );
+		}
 
 		// فقط نوبت‌های شعبه‌ی جاری پنل (D4)
 		$where  = array( CMB_Branches::scope_sql( CMB_Branches::panel_branch_id() ) );
 		$params = array();
 
-		$has_date = (bool) preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date );
+		$has_date = '' !== $from || '' !== $to;
 
-		/* تاریخ مشخص از تب دامنه مهم‌تر است.
+		/* بازه‌ی تاریخ از تب دامنه مهم‌تر است.
 
 		   پیش از این هر دو با AND کنار هم می‌نشستند، پس «تب پیش‌رو +
 		   تاریخِ گذشته» یا «تب فردا + هر تاریخ دیگری» همیشه فهرست خالی
-		   می‌داد — بدون اینکه معلوم باشد چرا. وقتی کاربر یک روز مشخص
-		   را انتخاب می‌کند منظورش همان روز است، در هر بازه‌ای که
-		   باشد. */
+		   می‌داد — بدون اینکه معلوم باشد چرا. وقتی کاربر تاریخ مشخص
+		   می‌دهد منظورش همان است، در هر بازه‌ای که باشد. */
 		if ( $has_date ) {
-			$where[]  = 'booking_date = %s';
-			$params[] = $date;
+			if ( $from ) {
+				$where[]  = 'booking_date >= %s';
+				$params[] = $from;
+			}
+
+			if ( $to ) {
+				$where[]  = 'booking_date <= %s';
+				$params[] = $to;
+			}
 		} else {
 			switch ( $scope ) {
 				case 'today':
@@ -751,6 +778,13 @@ class CMB_Panel_Api {
 				case 'tomorrow':
 					$where[]  = 'booking_date = %s';
 					$params[] = self::day_after( $today );
+					break;
+				case 'week':
+				case 'month':
+					$range    = 'week' === $scope ? self::jalali_week( $today ) : self::jalali_month( $today );
+					$where[]  = 'booking_date BETWEEN %s AND %s';
+					$params[] = $range[0];
+					$params[] = $range[1];
 					break;
 				case 'past':
 					$where[]  = 'booking_date < %s';
@@ -771,6 +805,16 @@ class CMB_Panel_Api {
 		} else {
 			// «پرداخت نشد» فقط با فیلتر خودش؛ وگرنه فهرست پر از تلاش‌های نیمه‌کاره می‌شد
 			$where[] = "status <> 'expired'";
+		}
+
+		if ( array_key_exists( $block, cmb_blocks() ) ) {
+			$where[]  = 'block_key = %s';
+			$params[] = $block;
+		}
+
+		if ( $service > 0 ) {
+			$where[]  = 'service_id = %d';
+			$params[] = $service;
 		}
 
 		if ( '' !== $q ) {
@@ -811,6 +855,27 @@ class CMB_Panel_Api {
 			$items[] = self::row_to_array( $row );
 		}
 
+		// شمار هر شیفت با همین فیلترها، برای خط خلاصه‌ی بالای فهرست
+		$by_sql   = "SELECT block_key, COUNT(*) AS n FROM {$table} WHERE {$where_sql} GROUP BY block_key";
+		$by_rows  = $params ? $wpdb->get_results( $wpdb->prepare( $by_sql, $params ) ) : $wpdb->get_results( $by_sql ); // phpcs:ignore
+		$by_block = array();
+
+		foreach ( cmb_blocks( CMB_Branches::panel_branch_id() ) as $key => $b ) {
+			$by_block[ $key ] = array( 'label' => $b['label'], 'count' => 0 );
+		}
+
+		foreach ( (array) $by_rows as $r ) {
+			if ( isset( $by_block[ $r->block_key ] ) ) {
+				$by_block[ $r->block_key ]['count'] = (int) $r->n;
+			}
+		}
+
+		$services = array();
+
+		foreach ( CMB_Services::get_services( CMB_Branches::panel_branch_id(), false ) as $sv ) {
+			$services[] = array( 'id' => (int) $sv->id, 'title' => (string) $sv->title );
+		}
+
 		return rest_ensure_response(
 			array(
 				'items'    => $items,
@@ -818,6 +883,9 @@ class CMB_Panel_Api {
 				'page'     => $page,
 				'pages'    => (int) ceil( $total / $per ),
 				'statuses' => cmb_statuses(),
+				'byBlock'  => $by_block,
+				'services' => $services,
+				'range'    => $has_date ? array( 'from' => $from, 'to' => $to ) : ( in_array( $scope, array( 'week', 'month' ), true ) ? array_combine( array( 'from', 'to' ), 'week' === $scope ? self::jalali_week( $today ) : self::jalali_month( $today ) ) : null ),
 			)
 		);
 	}
@@ -2596,5 +2664,26 @@ class CMB_Panel_Api {
 
 	protected static function day_after( $date ) {
 		return gmdate( 'Y-m-d', strtotime( $date ) + DAY_IN_SECONDS );
+	}
+
+	/** هفته‌ی شمسیِ یک روز: شنبه تا جمعه. */
+	protected static function jalali_week( $date ) {
+		$t     = strtotime( $date . ' 12:00:00 UTC' );
+		$since = ( (int) gmdate( 'w', $t ) + 1 ) % 7; // شنبه = ۰
+
+		return array( gmdate( 'Y-m-d', $t - $since * DAY_IN_SECONDS ), gmdate( 'Y-m-d', $t + ( 6 - $since ) * DAY_IN_SECONDS ) );
+	}
+
+	/** ماه شمسیِ یک روز: اول تا آخر همان ماه. */
+	protected static function jalali_month( $date ) {
+		list( $gy, $gm, $gd ) = array_map( 'intval', explode( '-', $date ) );
+		list( $jy, $jm )      = cmb_gregorian_to_jalali( $gy, $gm, $gd );
+
+		$first = cmb_jalali_to_gregorian( $jy, $jm, 1 );
+		$next  = 12 === $jm ? cmb_jalali_to_gregorian( $jy + 1, 1, 1 ) : cmb_jalali_to_gregorian( $jy, $jm + 1, 1 );
+		$start = sprintf( '%04d-%02d-%02d', $first[0], $first[1], $first[2] );
+		$end   = gmdate( 'Y-m-d', strtotime( sprintf( '%04d-%02d-%02d 12:00:00 UTC', $next[0], $next[1], $next[2] ) ) - DAY_IN_SECONDS );
+
+		return array( $start, $end );
 	}
 }

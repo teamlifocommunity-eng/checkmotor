@@ -44,7 +44,7 @@ var S = {
 
   summary: (C.boot || null),
   board: null, boardFrom: '',
-  list: null, filter: { scope: 'upcoming', status: '', date: '', q: '', page: 1 },
+  list: null, filter: newFilter(),
   services: null, svcEdit: null, uploading: false,
   customers: null, custQ: '', custPage: 1, custBranch: '', lastQ: '', exporting: false,
   smslog: null, slKind: '', slStatus: '', slQ: '', slPage: 1,
@@ -617,8 +617,15 @@ function viewBoard() {
 /* ═══ فهرست نوبت‌ها ═══ */
 
 function scopeLabel(k) {
-  var m = { upcoming: 'پیش‌رو', today: 'امروز', tomorrow: 'فردا', past: 'گذشته', all: 'همه' };
+  var m = { upcoming: 'پیش‌رو', today: 'امروز', tomorrow: 'فردا', week: 'این هفته', month: 'این ماه', past: 'گذشته', all: 'همه' };
   return m[k] || k;
+}
+
+/** فیلتر خالیِ «نوبت‌ها»؛ هر جا فیلتر از نو ساخته می‌شود از همین. */
+function newFilter(over) {
+  var f = { scope: 'upcoming', status: '', block: '', service: '', from: '', to: '', q: '', page: 1 };
+  Object.keys(over || {}).forEach(function (k) { f[k] = over[k]; });
+  return f;
 }
 
 function viewBookings() {
@@ -628,9 +635,15 @@ function viewBookings() {
     '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>');
 
   var scopes = [
-    { k: 'upcoming', t: 'پیش‌رو' }, { k: 'today', t: 'امروز' },
-    { k: 'tomorrow', t: 'فردا' }, { k: 'past', t: 'گذشته' }, { k: 'all', t: 'همه' }
+    { k: 'upcoming', t: 'پیش‌رو' }, { k: 'today', t: 'امروز' }, { k: 'tomorrow', t: 'فردا' },
+    { k: 'week', t: 'این هفته' }, { k: 'month', t: 'این ماه' }, { k: 'past', t: 'گذشته' }, { k: 'all', t: 'همه' }
   ];
+  var ranged = !!(f.from || f.to);
+  var blocks = [{ k: 'morning', t: 'شیفت صبح' }, { k: 'afternoon', t: 'شیفت عصر' }];
+  if (S.list && S.list.byBlock) {
+    blocks = Object.keys(S.list.byBlock).map(function (k) { return { k: k, t: S.list.byBlock[k].label }; });
+  }
+  var svcs = (S.list && S.list.services) || [];
 
   html += '<div class="pn-card">' +
     '<div class="pn-filters pn-filters--bk">' +
@@ -640,7 +653,7 @@ function viewBookings() {
              داده می‌شود تا کاربر دنبال دلیل نگردد. */
           return '<button class="pn-tabs__b' +
             (f.scope === s.k ? ' is-on' : '') +
-            (f.date ? ' is-muted' : '') +
+            (ranged ? ' is-muted' : '') +
             '" data-scope="' + s.k + '">' + s.t + '</button>';
         }).join('') +
       '</div>' +
@@ -651,19 +664,47 @@ function viewBookings() {
             return '<option value="' + k + '"' + (f.status === k ? ' selected' : '') + '>' + esc(STATUSES[k]) + '</option>';
           }).join('') +
         '</select></label>' +
-      '<label class="pn-field pn-f-date"><span class="pn-field__l">تاریخ</span>' +
-        J.fieldHTML('pn-date', f.date, { placeholder: 'همه‌ی تاریخ‌ها' }) + '</label>' +
+      '<label class="pn-field pn-f-block"><span class="pn-field__l">شیفت</span>' +
+        '<select class="pn-in" id="pn-block"><option value="">همه‌ی شیفت‌ها</option>' +
+          blocks.map(function (b) {
+            return '<option value="' + esc(b.k) + '"' + (f.block === b.k ? ' selected' : '') + '>' + esc(b.t) + '</option>';
+          }).join('') +
+        '</select></label>' +
+      '<label class="pn-field pn-f-from"><span class="pn-field__l">از تاریخ</span>' +
+        J.fieldHTML('pn-from', f.from, { placeholder: 'از اول' }) + '</label>' +
+      '<label class="pn-field pn-f-to"><span class="pn-field__l">تا تاریخ</span>' +
+        J.fieldHTML('pn-to', f.to, { placeholder: 'تا آخر' }) + '</label>' +
+      (svcs.length > 1
+        ? '<label class="pn-field pn-f-svc"><span class="pn-field__l">خدمت</span>' +
+          '<select class="pn-in" id="pn-svc"><option value="">همه‌ی خدمات</option>' +
+            svcs.map(function (x) {
+              return '<option value="' + x.id + '"' + (String(f.service) === String(x.id) ? ' selected' : '') + '>' + esc(x.title) + '</option>';
+            }).join('') +
+          '</select></label>'
+        : '') +
       '<label class="pn-field pn-f-q" style="flex:1;min-width:180px"><span class="pn-field__l">جستجو</span>' +
         '<input class="pn-in" id="pn-q" type="search" placeholder="نام، موبایل، کد پیگیری یا خودرو" value="' + esc(f.q) + '"></label>' +
       '<button class="pn-btn pn-btn--dark pn-f-apply" data-apply>اعمال</button>' +
-      '<button class="pn-btn pn-btn--soft pn-f-clear' + (f.status || f.date || f.q ? '' : ' is-idle') + '" data-clear>پاک کردن</button>' +
+      '<button class="pn-btn pn-btn--soft pn-f-clear' + (f.status || f.block || f.service || ranged || f.q ? '' : ' is-idle') + '" data-clear>پاک کردن همه</button>' +
     '</div>';
 
   // نشان دادن فیلترهای فعال، تا معلوم باشد چرا فهرست این شکلی است
   var chips = [];
 
   if (f.status) { chips.push({ k: 'status', t: 'وضعیت: ' + (STATUSES[f.status] || f.status) }); }
-  if (f.date) { chips.push({ k: 'date', t: 'تاریخ: ' + J.format(f.date, 'long') }); }
+  if (f.block) {
+    var bl = blocks.filter(function (b) { return b.k === f.block; })[0];
+    chips.push({ k: 'block', t: bl ? bl.t : f.block });
+  }
+  if (f.service) {
+    var sv = svcs.filter(function (x) { return String(x.id) === String(f.service); })[0];
+    chips.push({ k: 'service', t: 'خدمت: ' + (sv ? sv.title : f.service) });
+  }
+  if (ranged) {
+    chips.push({ k: 'range', t: f.from && f.to
+      ? (f.from === f.to ? 'تاریخ: ' + J.format(f.from, 'long') : 'از ' + J.format(f.from, 'long') + ' تا ' + J.format(f.to, 'long'))
+      : (f.from ? 'از ' + J.format(f.from, 'long') : 'تا ' + J.format(f.to, 'long')) });
+  }
   if (f.q) { chips.push({ k: 'q', t: 'جستجو: ' + f.q }); }
 
   if (chips.length) {
@@ -677,10 +718,20 @@ function viewBookings() {
   /* پیش از این تاریخ و تب دامنه با AND کنار هم می‌نشستند و هر
      ترکیب ناسازگاری فهرست خالی می‌داد. حالا تاریخ برنده است؛ فقط
      باید معلوم باشد که تب کنار گذاشته شده. */
-  if (f.date) {
+  if (ranged) {
     html += note('info', I.info,
-      'فیلتر تاریخ روی همه‌ی نوبت‌های آن روز اعمال می‌شود و تب «' +
-      esc(scopeLabel(f.scope)) + '» را نادیده می‌گیرد.');
+      'بازه‌ی تاریخ انتخاب‌شده جای تب «' + esc(scopeLabel(f.scope)) + '» را می‌گیرد؛ با زدن هر تب، بازه پاک می‌شود.');
+  }
+
+  // خط خلاصه: جمع و شمار هر شیفت با همین فیلترها؛ هر شمار خودش فیلتر شیفت است
+  if (S.list && S.list.byBlock) {
+    var bb = S.list.byBlock;
+    var rg = S.list.range && !ranged ? '<span class="pn-bksum__rg">' + esc(J.format(S.list.range.from, 'long')) + ' تا ' + esc(J.format(S.list.range.to, 'long')) + '</span>' : '';
+    html += '<div class="pn-bksum"><b class="pn-bksum__t">' + fa(S.list.total) + ' نوبت</b>' + rg +
+      '<span class="pn-bksum__bs">' + Object.keys(bb).map(function (k) {
+        return '<button type="button" class="pn-bksum__b' + (f.block === k ? ' is-on' : '') + '" data-bkblock="' + esc(k) + '" aria-pressed="' + (f.block === k) + '">' +
+          esc(bb[k].label) + ' <b>' + fa(bb[k].count) + '</b></button>';
+      }).join('') + '</span></div>';
   }
 
   if (!S.list) {
@@ -692,7 +743,7 @@ function viewBookings() {
     /* جستجو داخل دامنه‌ی جاری انجام می‌شود، پس جستجوی کد پیگیریِ یک
        نوبت گذشته در تب «پیش‌رو» نتیجه‌ای ندارد. به‌جای بن‌بست، راه
        خروج یک‌کلیکی می‌دهیم. */
-    var wide = f.q && !f.date && f.scope !== 'all';
+    var wide = f.q && !ranged && f.scope !== 'all';
 
     html += empty(
       'نوبتی پیدا نشد',
@@ -2769,7 +2820,7 @@ function switchBranch(id, then) {
     S.refunds = S.wallets = S.payReview = S.payReport = S.bwallet = S.profile = null;
     S.health = null;
     S.got = {};
-    S.filter = { scope: 'upcoming', status: '', date: '', q: '', page: 1 };
+    S.filter = newFilter();
     S.summary = r;
     S.got[jobs().summary[0]] = Date.now();
     shellKey = '';
@@ -3863,7 +3914,8 @@ function jobs() {
     summary:  ['panel/summary', function (r) { S.summary = r; }],
     board:    ['panel/board?days=7' + (S.boardFrom ? '&from=' + S.boardFrom : ''), function (r) { S.board = r; }],
     bookings: ['panel/bookings?scope=' + f.scope + '&status=' + encodeURIComponent(f.status) +
-               '&date=' + encodeURIComponent(f.date) + '&q=' + encodeURIComponent(f.q) +
+               '&block=' + encodeURIComponent(f.block) + '&service=' + encodeURIComponent(f.service) +
+               '&from=' + encodeURIComponent(f.from) + '&to=' + encodeURIComponent(f.to) + '&q=' + encodeURIComponent(f.q) +
                '&page=' + f.page, function (r) { S.list = r; }],
     customers: ['panel/customers?q=' + encodeURIComponent(S.custQ) + '&page=' + S.custPage + '&branch=' + encodeURIComponent(S.custBranch),
                 function (r) { S.customers = r; if (r && r.branch) { S.custBranch = String(r.branch); } }],
@@ -4033,7 +4085,10 @@ function readRoute() {
  */
 function grabFilters() {
   if ($('#pn-status')) { S.filter.status = val('#pn-status'); }
-  if ($('#pn-date')) { S.filter.date = val('#pn-date'); }
+  if ($('#pn-block')) { S.filter.block = val('#pn-block'); }
+  if ($('#pn-svc')) { S.filter.service = val('#pn-svc'); }
+  if ($('#pn-from')) { S.filter.from = val('#pn-from'); }
+  if ($('#pn-to')) { S.filter.to = val('#pn-to'); }
   if ($('#pn-q')) { S.filter.q = val('#pn-q').trim(); }
 }
 
@@ -4750,8 +4805,8 @@ function bind() {
     /* تاریخ مثل تب‌های دامنه بلافاصله اعمال می‌شود. پیش از این فقط
        در state می‌نشست و تا زدن «اعمال» هیچ نشانه‌ای در صفحه دیده
        نمی‌شد — نه چیپ فیلتر فعال، نه تغییری در فهرست. */
-    if (id === 'pn-date') {
-      S.filter.date = g;
+    if (id === 'pn-from' || id === 'pn-to') {
+      S.filter[id === 'pn-from' ? 'from' : 'to'] = g;
       S.filter.page = 1;
       S.list = null;
       load('bookings');
@@ -4907,7 +4962,7 @@ function bind() {
 
     if ((el = up('[data-cust-bookings]'))) {
       e.preventDefault();
-      S.filter = { scope: 'all', status: '', date: '', q: el.getAttribute('data-cust-bookings'), page: 1 };
+      S.filter = newFilter({ scope: 'all', q: el.getAttribute('data-cust-bookings') });
       S.list = null;
       go('bookings');
       return;
@@ -4921,7 +4976,7 @@ function bind() {
          تاریخ برنده است. اگر با انتخاب دامنه پاک نشود، کلیک روی
          تب‌ها هیچ اثری ندارد و کاربر در فیلتر تاریخ گیر می‌افتد.
          آخرین کلیک تعیین‌کننده است. */
-      S.filter.date = '';
+      S.filter.from = S.filter.to = '';
       S.filter.scope = el.getAttribute('data-scope');
       S.filter.page = 1;
       S.list = null;
@@ -4932,7 +4987,8 @@ function bind() {
     if ((el = up('[data-unfilter]'))) {
       e.preventDefault();
       grabFilters();
-      S.filter[el.getAttribute('data-unfilter')] = '';
+      if (el.getAttribute('data-unfilter') === 'range') { S.filter.from = S.filter.to = ''; }
+      else { S.filter[el.getAttribute('data-unfilter')] = ''; }
       S.filter.page = 1;
       S.list = null;
       load('bookings');
@@ -4941,9 +4997,20 @@ function bind() {
 
     if (up('[data-apply]')) { e.preventDefault(); grabFilters(); S.filter.page = 1; S.list = null; load('bookings'); return; }
 
+    // شمار شیفت‌ها در خط خلاصه هم فیلتر است: یک کلیک همان شیفت، کلیک دوباره همه
+    if ((el = up('[data-bkblock]'))) {
+      e.preventDefault();
+      grabFilters();
+      S.filter.block = S.filter.block === el.getAttribute('data-bkblock') ? '' : el.getAttribute('data-bkblock');
+      S.filter.page = 1;
+      S.list = null;
+      load('bookings');
+      return;
+    }
+
     if (up('[data-clear]')) {
       e.preventDefault();
-      S.filter = { scope: 'upcoming', status: '', date: '', q: '', page: 1 };
+      S.filter = newFilter();
       S.list = null;
       load('bookings');
       return;
@@ -5507,7 +5574,7 @@ function bind() {
     /* وضعیت هم بلافاصله اعمال می‌شود تا سه فیلترِ تک‌انتخابی
        (دامنه، وضعیت، تاریخ) رفتار یکسانی داشته باشند. «اعمال» برای
        کادر جستجو می‌ماند که تایپی است. */
-    if (e.target && e.target.id === 'pn-status') {
+    if (e.target && (e.target.id === 'pn-status' || e.target.id === 'pn-block' || e.target.id === 'pn-svc')) {
       grabFilters();
       S.filter.page = 1;
       S.list = null;
