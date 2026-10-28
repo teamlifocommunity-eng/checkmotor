@@ -370,21 +370,16 @@ class CMB_Branches {
 	}
 
 	/**
-	 * نام شعبه برای مشتری: «چک موتور - نام و نام خانوادگی مسئول» (۱.۴۳.۹)، برای
-	 * مرکز اصلی و همه‌ی نمایندگی‌ها. «نام مسئول» خالی باشد، همان عنوان شعبه.
+	 * نام شعبه برای مشتری: دقیقاً همان «نام نمایندگی» که مدیر کل وارد کرده
+	 * (۱.۴۶.۴). سیستم چیزی جلویش نمی‌گذارد؛ اگر «چک موتور - …» می‌خواهید، در خود
+	 * نام بنویسید. «نام مسئول» فقط برای مدیریت است و به مشتری نشان داده نمی‌شود.
 	 *
 	 * @param object|int $branch
 	 */
 	public static function display_name( $branch ) {
 		$b = self::row( $branch );
 
-		if ( ! $b ) {
-			return '';
-		}
-
-		$person = isset( $b->contact_name ) ? trim( preg_replace( '/\s+/u', ' ', (string) $b->contact_name ) ) : '';
-
-		return '' !== $person ? 'چک موتور - ' . $person : (string) $b->title;
+		return $b ? trim( preg_replace( '/\s+/u', ' ', (string) $b->title ) ) : '';
 	}
 
 	/**
