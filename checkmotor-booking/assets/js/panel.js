@@ -465,6 +465,8 @@ function viewSummary() {
     stat('لغو شده (۳۰ روز)', c.cancelled, I.x, 'bad') +
     '</div>';
 
+  html += freeDays(s.free);
+
   if (s.byService && s.byService.length) {
     var max = Math.max.apply(null, s.byService.map(function (x) { return x.total; })) || 1;
 
@@ -493,6 +495,44 @@ function viewSummary() {
     '</div></div>';
 
   return html;
+}
+
+/**
+ * جای خالی ۷ روز آینده (۱.۴۸.۰): هر روز یک ردیف، هر شیفت یک خانه. سبز یعنی
+ * جای خالی دارد، قرمز پر، خاکستری بسته یا تعطیل. زدن هر خانه، نوبت‌های همان
+ * روز و شیفت را در «نوبت‌ها» باز می‌کند.
+ */
+function freeDays(f) {
+  if (!f || !f.days || !f.days.length) { return ''; }
+
+  var cols = f.days[0].blocks.length;
+  var html = '<div class="pn-card pn-free">' +
+    '<div class="pn-free__hd"><div class="pn-card__t">' + I.cal + ' نوبت‌های خالی ۷ روز آینده</div>' +
+    '<span class="pn-free__sum"><b>' + fa(f.free) + '</b> جای خالی از ' + fa(f.capacity) + '</span></div>' +
+    '<div class="pn-free__list">';
+
+  f.days.forEach(function (d) {
+    html += '<div class="pn-free__row' + (d.isToday ? ' is-today' : '') + (d.off ? ' is-off' : '') + '" style="grid-template-columns:minmax(86px,140px) repeat(' + cols + ',minmax(0,1fr))">' +
+      '<div class="pn-free__day"><b>' + esc(d.weekday) + (d.isToday ? ' <em>امروز</em>' : '') + '</b><small>' + esc(fa(d.jalali)) + '</small></div>';
+
+    if (d.off) {
+      html += '<div class="pn-free__c is-closed" style="grid-column:span ' + cols + '">تعطیل</div>';
+    } else {
+      d.blocks.forEach(function (b) {
+        var name = String(b.label || '').replace(/^شیفت\s+/, '');
+        var state = b.closed ? 'is-closed' : (b.free > 0 ? 'is-ok' : 'is-full');
+        var val = b.closed ? 'بسته' : (b.free > 0 ? fa(b.free) + ' خالی' : 'پر');
+        html += '<button type="button" class="pn-free__c ' + state + '" data-free-date="' + esc(d.date) + '" data-free-block="' + esc(b.key) + '"' +
+          ' aria-label="' + esc(d.weekday + ' ' + d.jalali + '، ' + name + ': ' + (b.closed ? 'بسته' : fa(b.free) + ' جای خالی از ' + fa(b.capacity))) + '">' +
+          '<span class="pn-free__k">' + esc(name) + '</span><b>' + val + '</b>' +
+          (b.closed ? '' : '<small>' + fa(b.booked) + ' از ' + fa(b.capacity) + ' رزرو</small>') + '</button>';
+      });
+    }
+
+    html += '</div>';
+  });
+
+  return html + '</div><p class="pn-hint">با زدن هر خانه، نوبت‌های همان روز و شیفت باز می‌شود.</p></div>';
 }
 
 /**
@@ -4957,6 +4997,16 @@ function bind() {
       S.custBranch = el.getAttribute('data-cust-branch');
       S.custPage = 1;
       load('customers');
+      return;
+    }
+
+    // خلاصه ← جای خالی: نوبت‌های همان روز و شیفت
+    if ((el = up('[data-free-date]'))) {
+      e.preventDefault();
+      var fd = el.getAttribute('data-free-date');
+      S.filter = newFilter({ scope: 'all', from: fd, to: fd, block: el.getAttribute('data-free-block') || '' });
+      S.list = null;
+      go('bookings');
       return;
     }
 

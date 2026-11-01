@@ -460,6 +460,7 @@ class CMB_Panel_Api {
 		return array(
 			'counts'    => $counts,
 			'byService' => $by_service,
+			'free'      => self::free_days( $branch, $today, 7 ),
 			'branch'    => $branch_row ? array(
 				'id'    => (int) $branch_row->id,
 				'title' => $branch_row->title,
@@ -677,6 +678,75 @@ class CMB_Panel_Api {
 		}
 
 		return rest_ensure_response( array( 'days' => $out, 'from' => $from ) );
+	}
+
+	/**
+	 * جای خالی هر شیفت در چند روز آینده (۱.۴۸.۰)، برای خلاصه‌ی پنل.
+	 *
+	 * همان حسابِ تخته‌ی روزها: ظرفیت شیفت منهای نوبت‌هایی که جا گرفته‌اند
+	 * (تأییدشده، انجام‌شده و در انتظار پرداخت). روز یا شیفت بسته‌شده «بسته» و
+	 * روزی که هیچ خدمت فعالی در آن ارائه نمی‌شود «تعطیل» است و جای خالی ندارد.
+	 *
+	 * @return array { days: [...], free: int, capacity: int }
+	 */
+	public static function free_days( $branch, $from, $days = 7 ) {
+		$blocks = cmb_blocks( $branch );
+
+		// روزهای هفته‌ای که دست‌کم یک خدمت فعال دارند
+		$open_wd = array();
+
+		foreach ( CMB_Services::get_services( $branch, true ) as $svc ) {
+			foreach ( CMB_Services::allowed_weekdays( $svc ) as $wd ) {
+				$open_wd[ (int) $wd ] = true;
+			}
+		}
+
+		$out   = array();
+		$free  = 0;
+		$total = 0;
+
+		for ( $i = 0; $i < $days; $i++ ) {
+			$date   = gmdate( 'Y-m-d', strtotime( $from . ' 12:00:00 UTC' ) + $i * DAY_IN_SECONDS );
+			$wd     = (int) gmdate( 'w', strtotime( $date . ' 12:00:00 UTC' ) );
+			$off    = empty( $open_wd[ $wd ] );
+			$whole  = CMB_Availability::is_closed( $branch, $date, '' );
+			$counts = CMB_Availability::get_booked_counts( $branch, $date );
+			$list   = array();
+
+			foreach ( $blocks as $key => $block ) {
+				$cap    = max( 0, (int) $block['capacity'] );
+				$booked = isset( $counts[ $key ] ) ? (int) $counts[ $key ] : 0;
+				$closed = $whole || CMB_Availability::is_closed( $branch, $date, $key );
+				$left   = ( $off || $closed ) ? 0 : max( 0, $cap - $booked );
+
+				if ( ! $off && ! $closed ) {
+					$free  += $left;
+					$total += $cap;
+				}
+
+				$list[] = array(
+					'key'      => $key,
+					'label'    => $block['label'],
+					'start'    => $block['start'],
+					'capacity' => $cap,
+					'booked'   => $booked,
+					'free'     => $left,
+					'closed'   => $closed,
+				);
+			}
+
+			$out[] = array(
+				'date'    => $date,
+				'jalali'  => cmb_jalali_date( $date, 'short' ),
+				'weekday' => cmb_weekday_name( $date ),
+				'isToday' => $date === cmb_today(),
+				'off'     => $off,
+				'closed'  => $whole,
+				'blocks'  => $list,
+			);
+		}
+
+		return array( 'days' => $out, 'free' => $free, 'capacity' => $total );
 	}
 
 	/**
