@@ -465,7 +465,7 @@ function viewSummary() {
     stat('لغو شده (۳۰ روز)', c.cancelled, I.x, 'bad') +
     '</div>';
 
-  html += freeDays(s.free);
+  html += freeDays(s.free, s.branch);
 
   if (s.byService && s.byService.length) {
     var max = Math.max.apply(null, s.byService.map(function (x) { return x.total; })) || 1;
@@ -502,37 +502,53 @@ function viewSummary() {
  * جای خالی دارد، قرمز پر، خاکستری بسته یا تعطیل. زدن هر خانه، نوبت‌های همان
  * روز و شیفت را در «نوبت‌ها» باز می‌کند.
  */
-function freeDays(f) {
+function freeDays(f, branch) {
   if (!f || !f.days || !f.days.length) { return ''; }
 
-  var cols = f.days[0].blocks.length;
+  var booked = Math.max(0, (f.capacity || 0) - (f.free || 0));
+  var pct = f.capacity ? Math.round(booked / f.capacity * 100) : 0;
   var html = '<div class="pn-card pn-free">' +
-    '<div class="pn-free__hd"><div class="pn-card__t">' + I.cal + ' نوبت‌های خالی ۷ روز آینده</div>' +
-    '<span class="pn-free__sum"><b>' + fa(f.free) + '</b> جای خالی از ' + fa(f.capacity) + '</span></div>' +
-    '<div class="pn-free__list">';
+    '<div class="pn-free__hd">' +
+      '<div class="pn-free__ttl"><div class="pn-card__t">' + I.cal + ' نوبت‌های خالی</div>' +
+        '<small>۷ روز آینده' + (branch && branch.title ? ' · ' + esc(branch.title) : '') + '</small></div>' +
+      '<div class="pn-free__big"><b>' + fa(f.free || 0) + '</b><span>جای خالی<br>از ' + fa(f.capacity || 0) + '</span></div>' +
+    '</div>' +
+    '<div class="pn-free__meter" role="img" aria-label="' + fa(pct) + ' درصد ظرفیت هفته رزرو شده">' +
+      '<div class="pn-free__track"><i style="width:' + pct + '%"></i></div>' +
+      '<span>' + fa(pct) + '٪ ظرفیت هفته رزرو شده</span></div>' +
+    '<ul class="pn-free__list">';
 
   f.days.forEach(function (d) {
-    html += '<div class="pn-free__row' + (d.isToday ? ' is-today' : '') + (d.off ? ' is-off' : '') + '" style="grid-template-columns:minmax(86px,140px) repeat(' + cols + ',minmax(0,1fr))">' +
-      '<div class="pn-free__day"><b>' + esc(d.weekday) + (d.isToday ? ' <em>امروز</em>' : '') + '</b><small>' + esc(fa(d.jalali)) + '</small></div>';
+    html += '<li class="pn-free__row' + (d.isToday ? ' is-today' : '') + (d.off || d.closed ? ' is-off' : '') + '">' +
+      '<div class="pn-free__day"><b>' + esc(d.weekday) + '</b><small>' + esc(fa(d.jalali)) + '</small>' +
+        (d.isToday ? '<em>امروز</em>' : '') + '</div>';
 
-    if (d.off) {
-      html += '<div class="pn-free__c is-closed" style="grid-column:span ' + cols + '">تعطیل</div>';
+    if (d.off || d.closed) {
+      html += '<div class="pn-free__none">' + (d.off ? 'تعطیل؛ خدمتی ارائه نمی‌شود' : 'روز بسته شده') + '</div>';
     } else {
+      html += '<div class="pn-free__slots">';
       d.blocks.forEach(function (b) {
         var name = String(b.label || '').replace(/^شیفت\s+/, '');
-        var state = b.closed ? 'is-closed' : (b.free > 0 ? 'is-ok' : 'is-full');
+        var used = b.capacity ? Math.min(100, Math.round(b.booked / b.capacity * 100)) : 100;
+        var state = b.closed ? 'is-closed' : (b.free > 0 ? (b.free === b.capacity ? 'is-empty' : 'is-ok') : 'is-full');
         var val = b.closed ? 'بسته' : (b.free > 0 ? fa(b.free) + ' خالی' : 'پر');
-        html += '<button type="button" class="pn-free__c ' + state + '" data-free-date="' + esc(d.date) + '" data-free-block="' + esc(b.key) + '"' +
+        html += '<button type="button" class="pn-slot ' + state + '" data-free-date="' + esc(d.date) + '" data-free-block="' + esc(b.key) + '"' +
           ' aria-label="' + esc(d.weekday + ' ' + d.jalali + '، ' + name + ': ' + (b.closed ? 'بسته' : fa(b.free) + ' جای خالی از ' + fa(b.capacity))) + '">' +
-          '<span class="pn-free__k">' + esc(name) + '</span><b>' + val + '</b>' +
-          (b.closed ? '' : '<small>' + fa(b.booked) + ' از ' + fa(b.capacity) + ' رزرو</small>') + '</button>';
+          '<span class="pn-slot__k">' + esc(name) + (b.start ? ' <i class="num">' + esc(fa(b.start)) + '</i>' : '') + '</span>' +
+          '<b class="pn-slot__v">' + val + '</b>' +
+          (b.closed ? '<span class="pn-slot__bar is-closed"></span>'
+                    : '<span class="pn-slot__bar"><i style="width:' + used + '%"></i></span><span class="pn-slot__n num">' + fa(b.booked) + '/' + fa(b.capacity) + '</span>') +
+          '</button>';
       });
+      html += '</div>';
     }
 
-    html += '</div>';
+    html += '</li>';
   });
 
-  return html + '</div><p class="pn-hint">با زدن هر خانه، نوبت‌های همان روز و شیفت باز می‌شود.</p></div>';
+  return html + '</ul>' +
+    '<div class="pn-free__ft"><span class="pn-free__lg"><i class="is-ok"></i>جای خالی</span><span class="pn-free__lg"><i class="is-full"></i>پر</span>' +
+    '<span class="pn-free__lg"><i class="is-closed"></i>بسته</span><span class="pn-free__hint">روی هر شیفت بزنید تا نوبت‌هایش باز شود.</span></div></div>';
 }
 
 /**
