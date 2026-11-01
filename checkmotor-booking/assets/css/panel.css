@@ -1541,3 +1541,8 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
   #cmb-panel .pn-free__hint { margin-inline-start:0; width:100%; }
 }
 @media (prefers-reduced-motion:reduce) { #cmb-panel .pn-slot { transition:none; } #cmb-panel .pn-slot:active { transform:none; } }
+
+/* 1.49.0: دکمه‌ی «نوبت‌های خالی» در دسترسی سریع، با شمار جای خالی */
+#cmb-panel .pn-qfree__n { display:inline-block; margin-inline-start:4px; padding:0 8px; border-radius:999px; background:var(--ok-bg); color:var(--ok); font-size:12px; font-weight:800; line-height:1.8; font-variant-numeric:tabular-nums; }
+#cmb-panel .pn-qfree__n { white-space:nowrap; }
+#cmb-panel .pn-quickacts .pn-qfree { grid-column:1 / -1; white-space:nowrap; }

@@ -188,6 +188,7 @@ class CMB_Panel_Api {
 		$routes = array(
 			'panel/summary'   => array( 'GET', 'summary', $guard ),
 			'panel/board'     => array( 'GET', 'board', $guard ),
+			'panel/free'      => array( 'GET', 'free', $guard ),
 			'panel/bookings'  => array( 'GET', 'bookings', $guard ),
 			'panel/booking'   => array( 'POST', 'update_booking', $guard ),
 			'panel/services'  => array( 'GET', 'services', $guard ),
@@ -678,6 +679,17 @@ class CMB_Panel_Api {
 		}
 
 		return rest_ensure_response( array( 'days' => $out, 'from' => $from ) );
+	}
+
+	/** صفحه‌ی «نوبت‌های خالی» پنل (۱.۴۹.۰): ۷ روز آینده‌ی شعبه‌ی جاری. */
+	public function free( WP_REST_Request $request ) {
+		$branch = CMB_Branches::panel_branch_id();
+		$row    = CMB_Services::get_branch( $branch );
+		$out    = self::free_days( $branch, cmb_today(), 7 );
+
+		$out['branch'] = $row ? array( 'id' => (int) $row->id, 'title' => (string) $row->title ) : null;
+
+		return rest_ensure_response( $out );
 	}
 
 	/**

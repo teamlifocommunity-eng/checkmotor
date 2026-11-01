@@ -11,7 +11,7 @@ var NONCE = C.nonce || '';
 var NURL  = C.nonceUrl || '/wp-admin/admin-ajax.php?action=cmb_nonce';
 
 var VIEWS = ['summary', 'board', 'bookings', 'customers', 'services', 'closures', 'settings', 'refunds',
-             'bwallet', 'profile', 'agencies', 'report', 'smslog', 'debug'];
+             'bwallet', 'profile', 'agencies', 'report', 'smslog', 'debug', 'free'];
 var PAY = C.pay || { on: false, used: false, canRefund: false, shopPct: 100, setup: null };
 
 /* برگشت‌ها به کیف پول مشتری می‌رود، نه کارت: بخش «بیعانه و کیف پول» */
@@ -275,6 +275,7 @@ var I = {
 
 /** عنوان نمای جاری — برای نوار بالای موبایل. */
 function viewTitle() {
+  if (S.view === 'free') { return 'نوبت‌های خالی'; }
   var list = nav();
   for (var i = 0; i < list.length; i++) {
     if (list[i].k === S.view) { return list[i].t; }
@@ -325,7 +326,8 @@ function nav() {
 
 /** آیا این نما در منوی کاربر جاری هست؟ */
 function allowed(view) {
-  return nav().some(function (n) { return n.k === view; });
+  // «نوبت‌های خالی» در منو نیست؛ از دسترسی سریع خلاصه باز می‌شود و همه‌ی نقش‌ها می‌بینندش
+  return view === 'free' || nav().some(function (n) { return n.k === view; });
 }
 
 /** نام شعبه و انتخابگر شعبه‌ی مدیر سایت، زیر نام برند. */
@@ -465,8 +467,6 @@ function viewSummary() {
     stat('لغو شده (۳۰ روز)', c.cancelled, I.x, 'bad') +
     '</div>';
 
-  html += freeDays(s.free, s.branch);
-
   if (s.byService && s.byService.length) {
     var max = Math.max.apply(null, s.byService.map(function (x) { return x.total; })) || 1;
 
@@ -487,6 +487,8 @@ function viewSummary() {
   html += '<div class="pn-card"><div class="pn-card__t">' + I.info + ' دسترسی سریع</div>' +
     '<div class="pn-head__act pn-quickacts">' +
       '<button class="pn-btn pn-btn--pri" data-view="board">' + I.grid + ' تخته‌ی روزها</button>' +
+      '<button class="pn-btn pn-btn--soft pn-qfree" data-view="free">' + I.cal + ' نوبت‌های خالی ۷ روز' +
+        (s.free ? ' <span class="pn-qfree__n">' + fa(s.free.free) + ' خالی</span>' : '') + '</button>' +
       '<button class="pn-btn pn-btn--soft" data-view="bookings">' + I.list + ' فهرست نوبت‌ها</button>' +
       '<button class="pn-btn pn-btn--soft" data-view="closures">' + I.lock + ' بستن یک روز</button>' +
       '<a class="pn-btn pn-btn--soft" href="' + esc(C.app || '/') + '" target="_blank">' + I.car + ' دیدن اپ مشتری</a>' +
@@ -502,6 +504,17 @@ function viewSummary() {
  * جای خالی دارد، قرمز پر، خاکستری بسته یا تعطیل. زدن هر خانه، نوبت‌های همان
  * روز و شیفت را در «نوبت‌ها» باز می‌کند.
  */
+/** صفحه‌ی «نوبت‌های خالی ۷ روز آینده» (از دسترسی سریع خلاصه). */
+function viewFree() {
+  var html = head('نوبت‌های خالی', 'جای خالی هر شیفت تا یک هفته',
+    '<button class="pn-btn pn-btn--soft" data-back>' + I.chevR + ' بازگشت</button>' +
+    '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>');
+
+  if (!S.free) { return html + skel(4); }
+
+  return html + freeDays(S.free, S.free.branch);
+}
+
 function freeDays(f, branch) {
   if (!f || !f.days || !f.days.length) { return ''; }
 
@@ -509,8 +522,8 @@ function freeDays(f, branch) {
   var pct = f.capacity ? Math.round(booked / f.capacity * 100) : 0;
   var html = '<div class="pn-card pn-free">' +
     '<div class="pn-free__hd">' +
-      '<div class="pn-free__ttl"><div class="pn-card__t">' + I.cal + ' نوبت‌های خالی</div>' +
-        '<small>۷ روز آینده' + (branch && branch.title ? ' · ' + esc(branch.title) : '') + '</small></div>' +
+      '<div class="pn-free__ttl"><div class="pn-card__t">' + I.cal + ' ۷ روز آینده</div>' +
+        (branch && branch.title ? '<small>' + esc(branch.title) + '</small>' : '') + '</div>' +
       '<div class="pn-free__big"><b>' + fa(f.free || 0) + '</b><span>جای خالی<br>از ' + fa(f.capacity || 0) + '</span></div>' +
     '</div>' +
     '<div class="pn-free__meter" role="img" aria-label="' + fa(pct) + ' درصد ظرفیت هفته رزرو شده">' +
@@ -2871,7 +2884,7 @@ function switchBranch(id, then) {
     if (r.success === false || !r.counts) { toast(r.message || 'تغییر شعبه ناموفق بود.', 'bad'); paint(); return; }
 
     // همه‌ی داده‌های شعبه‌ی قبلی کنار می‌رود
-    S.board = S.list = S.services = S.svcMeta = S.customers = S.closures = S.sched = null;
+    S.board = S.list = S.services = S.svcMeta = S.customers = S.closures = S.sched = S.free = null;
     S.custBranch = '';
     S.refunds = S.wallets = S.payReview = S.payReport = S.bwallet = S.profile = null;
     S.health = null;
@@ -3835,6 +3848,7 @@ function render() {
 
   switch (S.view) {
     case 'board':    body = viewBoard(); break;
+    case 'free':     body = viewFree(); break;
     case 'bookings': body = viewBookings(); break;
     case 'customers': body = viewCustomers(); break;
     case 'services': body = viewServices(); break;
@@ -3969,6 +3983,7 @@ function jobs() {
   return {
     summary:  ['panel/summary', function (r) { S.summary = r; }],
     board:    ['panel/board?days=7' + (S.boardFrom ? '&from=' + S.boardFrom : ''), function (r) { S.board = r; }],
+    free:     ['panel/free', function (r) { S.free = r; }],
     bookings: ['panel/bookings?scope=' + f.scope + '&status=' + encodeURIComponent(f.status) +
                '&block=' + encodeURIComponent(f.block) + '&service=' + encodeURIComponent(f.service) +
                '&from=' + encodeURIComponent(f.from) + '&to=' + encodeURIComponent(f.to) + '&q=' + encodeURIComponent(f.q) +
@@ -4087,6 +4102,7 @@ function looksValid(view, r) {
   switch (view) {
     case 'summary':  return !!r.counts;
     case 'board':    return Array.isArray(r.days);
+    case 'free':     return Array.isArray(r.days);
     case 'bookings': return Array.isArray(r.items);
     case 'customers': return Array.isArray(r.items);
     case 'services': return Array.isArray(r.items);
@@ -4106,6 +4122,7 @@ function looksValid(view, r) {
 function go(view) {
   if (VIEWS.indexOf(view) === -1 || !allowed(view)) { view = 'summary'; }
 
+  if (S.view !== view) { S.prevView = S.view; }
   S.view = view;
   S.menu = false;
   S.modal = null;
@@ -4878,6 +4895,14 @@ function bind() {
     var el;
 
     if ((el = up('[data-view]'))) { e.preventDefault(); go(el.getAttribute('data-view')); return; }
+
+    /* «بازگشت»: اگر از صفحه‌ی دیگری از پنل آمده، همان دکمه‌ی برگشت مرورگر/گوشی؛
+       اگر صفحه مستقیم باز شده (لینک یا تازه‌سازی)، خلاصه. */
+    if (up('[data-back]')) {
+      e.preventDefault();
+      if (S.prevView && history.length > 1) { history.back(); } else { go('summary'); }
+      return;
+    }
     if (up('[data-menu]')) { e.preventDefault(); S.menu = true; paint(); return; }
     if (up('[data-menu-close]')) { e.preventDefault(); S.menu = false; paint(); return; }
 
