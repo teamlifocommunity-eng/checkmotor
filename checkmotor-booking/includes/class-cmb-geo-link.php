@@ -124,6 +124,27 @@ class CMB_Geo_Link {
 	 * @return array|null [lat, lng]
 	 */
 	public static function parse( $text ) {
+		$d = self::parse_detail( $text );
+
+		return $d ? array( $d[0], $d[1] ) : null;
+	}
+
+	/** ارقام فارسی/عربی به انگلیسی (برای خود نشانی لینک، مثل nshn.ir/۲bEY…). */
+	public static function latin_digits( $text ) {
+		return strtr( (string) $text, array( '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4', '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+			'٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4', '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9' ) );
+	}
+
+	/**
+	 * مثل parse، با نشانه‌ی دقت.
+	 *
+	 * «دقیق»: نشانگر محل، مقصد مسیریابی، مختصات صریح. «تقریبی»: فقط مرکز دید نقشه
+	 * (@lat,lng گوگل/نشان، #c نشان، #z/lat/lng بلد) که با پنل کناری صفحه تا چند صد متر
+	 * با خود محل فاصله دارد؛ مثلاً در نشان مقصد 28.942091,50.935555 ولی #c28.942-50.941.
+	 *
+	 * @return array|null [lat, lng, approx(bool)]
+	 */
+	public static function parse_detail( $text ) {
 		$t = self::normalize( $text );
 
 		if ( '' === trim( $t ) ) {
@@ -132,41 +153,33 @@ class CMB_Geo_Link {
 
 		$n = '(-?\d{1,3}\.\d+)';
 
-		// به ترتیب دقت: نشانگر محل پیش از مرکز دید نقشه
-		$patterns = array(
-			'/!3d' . $n . '!4d' . $n . '/',                                   // گوگل: محل دقیق
-			'/[?&](?:q|query|ll|sll|destination|daddr|center|coordinate|coords?|latlng|latLng|to|markers?|location|loc|point|pt)=(?:ll\.|loc:)?' . $n . '\s*,\s*' . $n . '/i',
-			'/[?&]latitude=' . $n . '.*?[?&]longitude=' . $n . '/i',         // بلد
-			'/[?&]lat=' . $n . '.*?[?&](?:lng|lon|long)=' . $n . '/i',
-			'/[?&]mlat=' . $n . '.*?[?&]mlon=' . $n . '/i',                   // OpenStreetMap
-			'/\/(?:place|search)\/' . $n . ',(?:\+|\s)*' . $n . '/',                // گوگل: /search/35.7,+51.4
-			'/\/dir\/(?:[^\/@?#]*\/)*' . $n . ',(?:\+|\s)*' . $n . '(?:[\/?#]|$)/', // گوگل: مسیر؛ آخرین نقطه = مقصد
-			'/@' . $n . ',' . $n . '/',                                       // گوگل و نشان: مرکز دید
-			'/#c' . $n . '-' . $n . '-/',                                     // نشان: #c35.7-51.4-17z
-			'/#map=\d+(?:\.\d+)?\/' . $n . '\/' . $n . '/',                    // OpenStreetMap
-			'/#\d+(?:\.\d+)?\/' . $n . '\/' . $n . '/',                        // بلد: #15/35.7/51.4
-			'/\/destination\/' . $n . ',' . $n . '/',                         // نشان: مسیریابی
-			'/geo:' . $n . ',' . $n . '/i',
+		// دقیق: [الگو، جابه‌جایی طول/عرض]
+		$exact = array(
+			array( '/!3d' . $n . '!4d' . $n . '/' ),                                   // گوگل: نشانگر
+			array( '/\/destination\/' . $n . ',' . $n . '/' ),                          // نشان: مسیریابی
+			array( '/[?&](?:q|query|ll|sll|destination|daddr|center|coordinate|coords?|latlng|latLng|to|markers?|location|loc|point|pt)=(?:ll\.|loc:)?' . $n . '\s*,\s*' . $n . '/i' ),
+			array( '/[?&]latitude=' . $n . '.*?[?&]longitude=' . $n . '/i' ),         // بلد
+			array( '/[?&]lat=' . $n . '.*?[?&](?:lng|lon|long)=' . $n . '/i' ),
+			array( '/[?&]mlat=' . $n . '.*?[?&]mlon=' . $n . '/i' ),                   // OpenStreetMap
+			array( '/\/(?:place|search)\/' . $n . ',(?:\+|\s)*' . $n . '/' ),           // گوگل: /search/35.7,+51.4
+			array( '/\/dir\/(?:[^\/@?#]*\/)*' . $n . ',(?:\+|\s)*' . $n . '(?:[\/?#]|$)/' ), // گوگل: مسیر؛ آخرین نقطه = مقصد
+			array( '/geo:' . $n . ',' . $n . '/i' ),
 			// داده‌ی صفحه (لینک کوتاهی که به صفحه‌ی مکان می‌رسد)
-			'/"lat(?:itude)?"\s*:\s*"?' . $n . '"?[^{}\[\]]{0,200}?"(?:lng|lon|long|longitude)"\s*:\s*"?' . $n . '/i',
+			array( '/"lat(?:itude)?"\s*:\s*"?' . $n . '"?[^{}\[\]]{0,200}?"(?:lng|lon|long|longitude)"\s*:\s*"?' . $n . '/i' ),
 			array( '/"(?:lng|lon|long|longitude)"\s*:\s*"?' . $n . '"?[^{}\[\]]{0,200}?"lat(?:itude)?"\s*:\s*"?' . $n . '/i', true ),
-			array( '/"x"\s*:\s*"?' . $n . '"?\s*,\s*"y"\s*:\s*"?' . $n . '/i', true ),   // نشان: x = طول، y = عرض
-			'/"y"\s*:\s*"?' . $n . '"?\s*,\s*"x"\s*:\s*"?' . $n . '/i',
-			'/latitude["\']\s+content=["\']' . $n . '["\'][\s\S]{0,400}?longitude["\']\s+content=["\']' . $n . '/i', // متای place:location
-			'/content=["\']' . $n . '["\']\s+(?:property|itemprop|name)=["\'][a-z:]*latitude["\'][\s\S]{0,400}?content=["\']' . $n . '["\']\s+(?:property|itemprop|name)=["\'][a-z:]*longitude/i',
-			array( '/APP_INITIALIZATION_STATE=\[\[\[\s*-?[\d.]+\s*,\s*' . $n . '\s*,\s*' . $n . '\s*\]/', true ), // گوگل: [ارتفاع، طول، عرض]
+			array( '/"x"\s*:\s*"?' . $n . '"?\s*,\s*"y"\s*:\s*"?' . $n . '/i', true ),  // نشان: x = طول، y = عرض
+			array( '/"y"\s*:\s*"?' . $n . '"?\s*,\s*"x"\s*:\s*"?' . $n . '/i' ),
+			array( '/latitude["\']\s+content=["\']' . $n . '["\'][\s\S]{0,400}?longitude["\']\s+content=["\']' . $n . '/i' ), // متای place:location
+			array( '/content=["\']' . $n . '["\']\s+(?:property|itemprop|name)=["\'][a-z:]*latitude["\'][\s\S]{0,400}?content=["\']' . $n . '["\']\s+(?:property|itemprop|name)=["\'][a-z:]*longitude/i' ),
 			array( '/"coordinates"\s*:\s*\[\s*' . $n . '\s*,\s*' . $n . '\s*\]/i', true ), // GeoJSON: [طول، عرض]
 		);
 
-		foreach ( $patterns as $re ) {
-			$swap = is_array( $re ) && ! empty( $re[1] );
-			$re   = is_array( $re ) ? $re[0] : $re;
-
-			if ( preg_match( $re, $t, $m ) ) {
-				$p = $swap ? self::pair( $m[2], $m[1] ) : self::pair( $m[1], $m[2] );
+		foreach ( $exact as $e ) {
+			if ( preg_match( $e[0], $t, $m ) ) {
+				$p = empty( $e[1] ) ? self::pair( $m[1], $m[2] ) : self::pair( $m[2], $m[1] );
 
 				if ( $p ) {
-					return $p;
+					return array( $p[0], $p[1], false );
 				}
 			}
 		}
@@ -174,9 +187,10 @@ class CMB_Geo_Link {
 		// ویز: waze.com/ul/h<geohash>
 		if ( preg_match( '~waze\.com/ul/h([0-9b-hjkmnp-z]{5,12})~i', $t, $m ) ) {
 			$g = self::geohash( $m[1] );
+			$p = $g ? self::pair( $g[0], $g[1] ) : null;
 
-			if ( $g ) {
-				return self::pair( $g[0], $g[1] );
+			if ( $p ) {
+				return array( $p[0], $p[1], false );
 			}
 		}
 
@@ -185,12 +199,40 @@ class CMB_Geo_Link {
 		if ( preg_match( '/' . $dms . '([NS])[\s,+]*' . $dms . '([EW])/iu', $t, $m ) ) {
 			$la = ( $m[1] + $m[2] / 60 + $m[3] / 3600 ) * ( 'S' === strtoupper( $m[4] ) ? -1 : 1 );
 			$lo = ( $m[5] + $m[6] / 60 + $m[7] / 3600 ) * ( 'W' === strtoupper( $m[8] ) ? -1 : 1 );
-			return self::pair( $la, $lo );
+			$p  = self::pair( $la, $lo );
+
+			if ( $p ) {
+				return array( $p[0], $p[1], false );
+			}
 		}
 
-		// فقط دو عدد اعشاری، مثل «35.7, 51.4» یا «35.7 51.4»
-		if ( preg_match( '/^\s*\(?\s*' . $n . '\s*[,\s]\s*' . $n . '\s*\)?\s*$/', $t, $m ) ) {
-			return self::pair( $m[1], $m[2] );
+		// دو عدد اعشاری، مثل «35.7, 51.4»؛ یا متن بی‌لینک مثل «مختصات: ۲۸٫۹۴۲۰۹۱، ۵۰٫۹۳۵۵۵۵» (کپی از نشان)
+		if ( preg_match( '/^\s*\(?\s*' . $n . '\s*[,\s]\s*' . $n . '\s*\)?\s*$/', $t, $m )
+			|| ( false === strpos( $t, '://' ) && preg_match( '/(-?\d{1,3}\.\d{3,})\s*[,\s\/]\s*(-?\d{1,3}\.\d{3,})/', $t, $m ) ) ) {
+			$p = self::pair( $m[1], $m[2] );
+
+			if ( $p ) {
+				return array( $p[0], $p[1], false );
+			}
+		}
+
+		// تقریبی: فقط مرکز دید نقشه
+		$approx = array(
+			array( '/@' . $n . ',' . $n . '/' ),                                       // گوگل و نشان
+			array( '/#c' . $n . '-' . $n . '-/' ),                                     // نشان: #c35.7-51.4-17z
+			array( '/#map=\d+(?:\.\d+)?\/' . $n . '\/' . $n . '/' ),                    // OpenStreetMap
+			array( '/#\d+(?:\.\d+)?\/' . $n . '\/' . $n . '/' ),                        // بلد: #15/35.7/51.4
+			array( '/APP_INITIALIZATION_STATE=\[\[\[\s*-?[\d.]+\s*,\s*' . $n . '\s*,\s*' . $n . '\s*\]/', true ), // گوگل: [ارتفاع، طول، عرض]
+		);
+
+		foreach ( $approx as $e ) {
+			if ( preg_match( $e[0], $t, $m ) ) {
+				$p = empty( $e[1] ) ? self::pair( $m[1], $m[2] ) : self::pair( $m[2], $m[1] );
+
+				if ( $p ) {
+					return array( $p[0], $p[1], true );
+				}
+			}
 		}
 
 		return null;
@@ -243,16 +285,26 @@ class CMB_Geo_Link {
 	 * @return array|WP_Error { lat, lng, source, url }
 	 */
 	public static function resolve( $url ) {
-		$url = trim( (string) $url );
+		$raw = trim( (string) $url );
+		$url = $raw;
 
 		if ( preg_match( '~https?://[^\s"\'<>]+~i', $url, $m ) ) {
-			$url = rtrim( $m[0], '.,;:!?)»،؛' ); // متن «اشتراک‌گذاری» نام مکان را هم همراه لینک دارد
+			// متن «اشتراک‌گذاری» نام مکان را هم همراه لینک دارد؛ ارقام فارسی در خود لینک هم
+			$url = self::latin_digits( rtrim( $m[0], '.,;:!?)»،؛' ) );
 		}
 
-		$p = self::parse( $url );
+		$p = self::parse_detail( $url );
 
-		if ( $p ) {
-			return array( 'lat' => $p[0], 'lng' => $p[1], 'source' => self::source_name( $url ), 'url' => $url );
+		// متن بی‌لینک (مثل مختصات کپی‌شده از نشان)
+		if ( ! $p && $url === $raw ) {
+			$p = self::parse_detail( $raw );
+		}
+
+		$local = $p ? array( 'lat' => $p[0], 'lng' => $p[1], 'approx' => $p[2], 'source' => self::source_name( $url ), 'url' => $url ) : null;
+
+		// دقیق، یا لینکی که نمی‌شود برای دقیق‌ترش باز کرد
+		if ( $local && ( ! $local['approx'] || ! preg_match( '~^https?://~i', $url ) || ! self::allowed_host( $url ) ) ) {
+			return $local;
 		}
 
 		if ( ! preg_match( '~^https?://~i', $url ) || ! self::allowed_host( $url ) ) {
@@ -274,14 +326,23 @@ class CMB_Geo_Link {
 		);
 		$fetched    = false;
 		self::$hops = array();
+		$best       = $local;
 
 		foreach ( $agents as $agent ) {
 			$out = self::follow( $url, $agent, $fetched );
 
-			if ( $out ) {
+			if ( $out && ! $out['approx'] ) {
 				set_transient( $cache, $out, DAY_IN_SECONDS );
 				return $out;
 			}
+
+			$best = $best ? $best : $out;
+		}
+
+		// فقط مرکز دید نقشه پیدا شد: با نشانه‌ی «تقریبی» تا کاربر روی نقشه بررسی کند
+		if ( $best ) {
+			set_transient( $cache, $best, HOUR_IN_SECONDS );
+			return $best;
 		}
 
 		if ( class_exists( 'CMB_Debug' ) ) {
@@ -300,6 +361,7 @@ class CMB_Geo_Link {
 		$current = $url;
 		$seen    = array();
 		$trail   = $url;
+		$approx  = null;
 
 		for ( $hop = 0; $hop < 6 && '' !== $current && ! isset( $seen[ $current ] ); $hop++ ) {
 			$seen[ $current ] = true;
@@ -317,7 +379,7 @@ class CMB_Geo_Link {
 
 			if ( is_wp_error( $res ) ) {
 				self::$hops[] = array( 'url' => substr( $current, 0, 300 ), 'error' => $res->get_error_message() );
-				return null;
+				return $approx;
 			}
 
 			$fetched = true;
@@ -342,18 +404,28 @@ class CMB_Geo_Link {
 				'head'     => substr( preg_replace( '~\s+~', ' ', $body ), 0, 400 ),
 			);
 
+			$trail .= ' ' . $final . ' ' . $location . ' ' . $current;
+
 			foreach ( array( $final, $location, $body ) as $k => $candidate ) {
-				$p = '' !== $candidate ? self::parse( $candidate ) : null;
+				$p = '' !== $candidate ? self::parse_detail( $candidate ) : null;
 
 				// عددی که از دل صفحه درآمده فقط اگر داخل ایران باشد (نه هر x/y تصادفی)
 				if ( $p && 2 === $k && ! ( $p[0] >= 24 && $p[0] <= 40.5 && $p[1] >= 43.5 && $p[1] <= 64 ) ) {
 					$p = null;
 				}
 
-				if ( $p ) {
-					$trail .= ' ' . $final . ' ' . $location . ' ' . $current;
-					return array( 'lat' => $p[0], 'lng' => $p[1], 'source' => self::source_name( $trail ), 'url' => $final ? $final : ( $location ? $location : $current ) );
+				if ( ! $p ) {
+					continue;
 				}
+
+				$out = array( 'lat' => $p[0], 'lng' => $p[1], 'approx' => $p[2], 'source' => self::source_name( $trail ), 'url' => $final ? $final : ( $location ? $location : $current ) );
+
+				if ( ! $p[2] ) {
+					return $out;
+				}
+
+				// مرکز دید: نگه می‌داریم و پرش بعدی (صفحه‌ی مکان) را برای نشانگر دقیق می‌خوانیم
+				$approx = $approx ? $approx : $out;
 			}
 
 			$next = '';
@@ -373,10 +445,9 @@ class CMB_Geo_Link {
 				}
 			}
 
-			$trail  .= ' ' . $current;
 			$current = $next;
 		}
 
-		return null;
+		return $approx;
 	}
 }

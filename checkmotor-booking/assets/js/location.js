@@ -37,41 +37,55 @@ function geohash(h) {
   return [(lat[0] + lat[1]) / 2, (lng[0] + lng[1]) / 2];
 }
 function decodeAll(t) { for (var i = 0; i < 2; i++) { try { t = decodeURIComponent(t); } catch (e) { break; } } return t; }
+function latinDigits(t) {
+  return String(t).replace(/[۰-۹]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d); })
+    .replace(/[٠-٩]/g, function (d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d); });
+}
+/* مختصات از متن لینک؛ آرایه‌ی [عرض، طول] و p.approx وقتی فقط مرکز دید نقشه است
+   (@ گوگل/نشان، #c نشان، #z/lat/lng بلد) که تا چند صد متر با خود محل فاصله دارد. */
 function parseLink(text) {
-  var t = String(text == null ? '' : text).replace(/[۰-۹]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d); })
-    .replace(/[٠-٩]/g, function (d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d); }).replace(/٫/g, '.').replace(/،/g, ',');
+  var t = latinDigits(text == null ? '' : text).replace(/٫/g, '.').replace(/،/g, ',');
   t = decodeAll(t);
   if (!t.trim()) { return null; }
   var n = '(-?\\d{1,3}\\.\\d+)';
-  var res = [
-    '!3d' + n + '!4d' + n,
-    '[?&](?:q|query|ll|sll|destination|daddr|center|coordinate|coords?|latlng|latLng|to|markers?|location|loc|point|pt)=(?:ll\\.|loc:)?' + n + '\\s*,\\s*' + n,
-    '[?&]latitude=' + n + '.*?[?&]longitude=' + n,
-    '[?&]lat=' + n + '.*?[?&](?:lng|lon|long)=' + n,
-    '[?&]mlat=' + n + '.*?[?&]mlon=' + n,
-    '/(?:place|search)/' + n + ',(?:\\+|\\s)*' + n,
-    '/dir/(?:[^/@?#]*/)*' + n + ',(?:\\+|\\s)*' + n + '(?:[/?#]|$)',
-    '@' + n + ',' + n,
-    '#c' + n + '-' + n + '-',
-    '#map=\\d+(?:\\.\\d+)?/' + n + '/' + n,
-    '#\\d+(?:\\.\\d+)?/' + n + '/' + n,
-    '/destination/' + n + ',' + n,
-    'geo:' + n + ',' + n
-  ];
-  for (var i = 0; i < res.length; i++) {
-    var m = new RegExp(res[i], 'i').exec(t);
-    var p = m && pair(m[1], m[2]);
-    if (p) { return p; }
-  }
+  var pick = function (list, approx) {
+    for (var i = 0; i < list.length; i++) {
+      var m = new RegExp(list[i][0], 'i').exec(t);
+      var p = m && (list[i][1] ? pair(m[2], m[1]) : pair(m[1], m[2]));
+      if (p) { p.approx = approx; return p; }
+    }
+    return null;
+  };
+  var p = pick([
+    ['!3d' + n + '!4d' + n],
+    ['/destination/' + n + ',' + n],
+    ['[?&](?:q|query|ll|sll|destination|daddr|center|coordinate|coords?|latlng|latLng|to|markers?|location|loc|point|pt)=(?:ll\\.|loc:)?' + n + '\\s*,\\s*' + n],
+    ['[?&]latitude=' + n + '.*?[?&]longitude=' + n],
+    ['[?&]lat=' + n + '.*?[?&](?:lng|lon|long)=' + n],
+    ['[?&]mlat=' + n + '.*?[?&]mlon=' + n],
+    ['/(?:place|search)/' + n + ',(?:\\+|\\s)*' + n],
+    ['/dir/(?:[^/@?#]*/)*' + n + ',(?:\\+|\\s)*' + n + '(?:[/?#]|$)'],
+    ['geo:' + n + ',' + n]
+  ], false);
+  if (p) { return p; }
   var w = /waze\.com\/ul\/h([0-9b-hjkmnp-z]{5,12})/i.exec(t);
-  if (w) { var g = geohash(w[1]); if (g) { return pair(g[0], g[1]); } }
+  if (w) { var g = geohash(w[1]); p = g && pair(g[0], g[1]); if (p) { p.approx = false; return p; } }
   var dms = '(\\d{1,3})\\s*°\\s*(\\d{1,2})\\s*[\'′]\\s*(\\d{1,2}(?:\\.\\d+)?)\\s*(?:"|″|\'\')?\\s*';
   var d = new RegExp(dms + '([NS])[\\s,+]*' + dms + '([EW])', 'i').exec(t);
   if (d) {
-    return pair((+d[1] + d[2] / 60 + d[3] / 3600) * (/s/i.test(d[4]) ? -1 : 1), (+d[5] + d[6] / 60 + d[7] / 3600) * (/w/i.test(d[8]) ? -1 : 1));
+    p = pair((+d[1] + d[2] / 60 + d[3] / 3600) * (/s/i.test(d[4]) ? -1 : 1), (+d[5] + d[6] / 60 + d[7] / 3600) * (/w/i.test(d[8]) ? -1 : 1));
+    if (p) { p.approx = false; return p; }
   }
-  var plain = new RegExp('^\\s*\\(?\\s*' + n + '\\s*[,\\s]\\s*' + n + '\\s*\\)?\\s*$').exec(t);
-  return plain ? pair(plain[1], plain[2]) : null;
+  // دو عدد؛ یا متن بی‌لینک مثل «مختصات: ۲۸٫۹۴۲۰۹۱، ۵۰٫۹۳۵۵۵۵» (کپی از نشان)
+  var plain = new RegExp('^\\s*\\(?\\s*' + n + '\\s*[,\\s]\\s*' + n + '\\s*\\)?\\s*$').exec(t) ||
+    (t.indexOf('://') === -1 ? /(-?\d{1,3}\.\d{3,})\s*[,\s\/]\s*(-?\d{1,3}\.\d{3,})/.exec(t) : null);
+  if (plain) { p = pair(plain[1], plain[2]); if (p) { p.approx = false; return p; } }
+  return pick([
+    ['@' + n + ',' + n],
+    ['#c' + n + '-' + n + '-'],
+    ['#map=\\d+(?:\\.\\d+)?/' + n + '/' + n],
+    ['#\\d+(?:\\.\\d+)?/' + n + '/' + n]
+  ], true);
 }
 function sourceName(t) {
   t = String(t || '').toLowerCase();
@@ -89,27 +103,40 @@ function applyLink(host, text) {
   if (!host) { return; }
   var msg = host.querySelector('.cmb-location__msg');
   var say = function (txt, kind) { if (msg) { msg.textContent = txt; msg.className = 'cmb-location__msg' + (kind ? ' is-' + kind : ''); } };
-  var url = (/(https?:\/\/\S+|geo:\S+)/i.exec(String(text)) || [String(text)])[0];
-  var put = function (p, src) {
+  var url = latinDigits((/(https?:\/\/[^\s"'<>]+|geo:\S+|waze:\/\/\S+)/i.exec(String(text)) || [String(text)])[0]).trim();
+  var put = function (p, src, approx) {
     var a = document.getElementById(host.dataset.latInput), b = document.getElementById(host.dataset.lngInput);
     if (!a || !b || a.disabled || b.disabled) { return; }
     a.value = p[0].toFixed(6); b.value = p[1].toFixed(6);
     [a, b].forEach(function (el) { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
-    say('✓ موقعیت' + (src ? ' از ' + src : '') + ' خوانده شد: ' + fa(p[0].toFixed(5)) + '، ' + fa(p[1].toFixed(5)) +
+    var where = fa(p[0].toFixed(5)) + '، ' + fa(p[1].toFixed(5));
+    if (approx) {
+      say('⚠ موقعیت تقریبی' + (src ? ' از ' + src : '') + ' (مرکز نقشه، نه خود نشانگر؛ ممکن است چند صد متر جابه‌جا باشد): ' + where +
+        '. برای دقت: در ' + (src || 'برنامه‌ی نقشه') + ' «مسیریابی» را بزنید و لینک همان صفحه را بچسبانید، یا مختصات را کپی کنید، یا نشانگر را روی نقشه‌ی زیر جابه‌جا کنید.', 'warn');
+      return;
+    }
+    say('✓ موقعیت' + (src ? ' از ' + src : '') + ' خوانده شد: ' + where +
       (inIran(p[0], p[1]) ? '. برای ثبت، فرم را ذخیره کنید.' : '. این نقطه داخل ایران نیست؛ لینک را بررسی کنید.'), inIran(p[0], p[1]) ? 'ok' : 'warn');
   };
   var p = parseLink(text);
-  if (p) { put(p, sourceName(text)); return; }
+  var canAsk = looksLikeMapLink(url) && /^https?:/i.test(url) && window.CMBLocation.resolve;
+  if (p && (!p.approx || !canAsk)) { put(p, sourceName(text), p.approx); return; }
   if (!String(text).trim()) { say(''); return; }
-  if (!looksLikeMapLink(url) || !window.CMBLocation.resolve) {
+  if (!canAsk) {
     say('مختصاتی در این لینک پیدا نشد. لینک «اشتراک‌گذاری» گوگل‌مپ، نشان، بلد یا ویز را بچسبانید، یا مختصات را دستی وارد کنید.', 'bad');
     return;
   }
-  say('در حال خواندن لینک کوتاه…');
+  if (p) { put(p, sourceName(text), true); }
+  say(p ? 'در حال یافتن نشانگر دقیق…' : 'در حال خواندن لینک کوتاه…');
+  var local = p;
   window.CMBLocation.resolve(url).then(function (r) {
-    if (r && r.success !== false && r.lat !== undefined) { put([Number(r.lat), Number(r.lng)], r.source || sourceName(url)); }
+    if (r && r.success !== false && r.lat !== undefined) { put([Number(r.lat), Number(r.lng)], r.source || sourceName(url), !!r.approx); }
+    else if (local) { put(local, sourceName(text), true); }
     else { say((r && r.message) || 'در این لینک موقعیتی پیدا نشد.', 'bad'); }
-  }, function () { say('ارتباط با سرور برقرار نشد؛ دوباره امتحان کنید یا مختصات را دستی وارد کنید.', 'bad'); });
+  }, function () {
+    if (local) { put(local, sourceName(text), true); return; }
+    say('ارتباط با سرور برقرار نشد؛ دوباره امتحان کنید یا مختصات را دستی وارد کنید.', 'bad');
+  });
 }
 function html(o) {
   o = o || {};
@@ -120,7 +147,7 @@ function html(o) {
       '<label class="cmb-location__pl" for="' + id + '-link">لینک موقعیت را بچسبانید</label>' +
       '<input class="cmb-location__link" id="' + id + '-link" type="url" dir="ltr" inputmode="url" autocomplete="off" data-cmb-map-link placeholder="https://maps.app.goo.gl/…">' +
       '<p class="cmb-location__msg" role="status" aria-live="polite"></p>' +
-      '<p class="cmb-location__sub">از گوگل‌مپ، نشان، بلد، ویز یا هر نقشه‌ی دیگر «اشتراک‌گذاری ← کپی لینک»؛ مختصات خودکار پر می‌شود.</p></div>' : '';
+      '<p class="cmb-location__sub">از گوگل‌مپ، نشان، بلد، ویز یا هر نقشه‌ی دیگر «اشتراک‌گذاری ← کپی لینک»؛ مختصات خودکار پر می‌شود. دقیق‌ترین راه در نشان: دکمه‌ی کپی کنار «مختصات جغرافیایی»، یا لینک صفحه‌ی «مسیریابی».</p></div>' : '';
   return '<section class="cmb-location" data-cmb-location data-lat="' + esc(o.lat) + '" data-lng="' + esc(o.lng) + '"' +
     ' data-lat-input="' + esc(o.latInput || '') + '" data-lng-input="' + esc(o.lngInput || '') + '" data-editable="' + (o.editable ? '1' : '0') + '" data-title="' + esc(o.title || '') + '"' +
     ' aria-label="' + esc(o.editable ? 'انتخاب موقعیت مرکز' : 'موقعیت ' + (o.title || 'مرکز')) + '">' + paste +
@@ -295,7 +322,7 @@ document.addEventListener('input', function (e) {
   linkTimer = setTimeout(function () {
     // متن «اشتراک‌گذاری» (مثل «معبر بدون نام» + لینک نشان): در کادر فقط خود لینک بماند
     var only = /(https?:\/\/[^\s"'<>]+)/i.exec(el.value);
-    if (only && only[1] !== el.value.trim()) { el.value = only[1]; }
+    if (only && latinDigits(only[1]) !== el.value.trim()) { el.value = latinDigits(only[1]); }
     applyLink(el.closest('[data-cmb-location]'), el.value);
   }, 250);
 });
