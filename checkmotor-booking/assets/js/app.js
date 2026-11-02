@@ -251,6 +251,34 @@ function req(method, path, body, retried) {
 function get(p) { return req('GET', p); }
 function post(p, b) { return req('POST', p, b); }
 
+/* ۱.۵۱.۱ — فهرست مراکز زنده از سرور.
+   فهرست داخل خود HTML صفحه است؛ اگر صفحه از کش (کش هاست یا CDN، دکمه‌ی
+   برگشت مرورگر، یا تبی که از دیروز باز مانده) بیاید، نمایندگی‌ای که تازه
+   خدمت یا موجودی گرفته هنوز «فعلاً نوبت نمی‌گیرد» دیده می‌شد. حالا هنگام
+   باز شدن صفحه و برگشتن به تب، وضعیت زنده خوانده می‌شود. */
+var brLive = { busy: false, at: 0 };
+function refreshBranches(force) {
+  if (brLive.busy || (!force && Date.now() - brLive.at < 20000)) { return; }
+  brLive.busy = true;
+  get('branches?_=' + Date.now()).then(function (r) {
+    brLive.busy = false; brLive.at = Date.now();
+    if (!r || r.success === false || !r.groups || typeof r.picker === 'undefined') { return; }
+    var before = JSON.stringify([BR.picker, BR.groups]);
+    var wasPicker = !!BR.picker;
+    BR.groups = r.groups; BR.picker = !!r.picker; BR.count = r.count; BR.center = r.center;
+    if (JSON.stringify([BR.picker, BR.groups]) === before) { return; }
+    // مرکز انتخاب‌شده هم وضعیت تازه را بگیرد
+    if (S.branch && S.branch.id) {
+      var fresh = findBranch(S.branch.id);
+      if (fresh) { S.branch.bookable = fresh.bookable; S.branch.unavailable = fresh.unavailable; }
+    }
+    // تازه چند مرکز نوبت می‌گیرند: صفحه‌ی اصلی فهرست مراکز را نشان دهد
+    if (!wasPicker && BR.picker && S.page === 'home' && !S.branchChosen) { S.branchPick = true; }
+    // فقط صفحه‌ی اصلی دوباره کشیده می‌شود؛ وسط رزرو چیزی جابه‌جا نمی‌شود
+    if (S.page === 'home') { render(); }
+  });
+}
+
 /* ─── مسیریابی ─── */
 
 function readRoute() {
@@ -3268,6 +3296,13 @@ function boot() {
   }
 
   load(S.page);
+
+  // وضعیت زنده‌ی مراکز (صفحه‌ی کش‌شده یا تب قدیمی)
+  if (C.branches) {
+    refreshBranches(true);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { refreshBranches(false); } });
+    window.addEventListener('pageshow', function (e) { if (e.persisted) { refreshBranches(true); } });
+  }
 }
 
 if (document.readyState === 'loading') {

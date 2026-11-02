@@ -249,7 +249,20 @@ class CMB_Rest {
 	/* ------------------------------------------------------------------ */
 
 	public function get_branches( WP_REST_Request $request ) {
-		return rest_ensure_response( self::branches_payload() );
+		return self::no_store( rest_ensure_response( self::branches_payload() ) );
+	}
+
+	/**
+	 * وضعیت لحظه‌ای (قابل رزرو بودن، موجودی، خدمات فعال) نباید در کش CDN یا
+	 * پروکسی بماند؛ وردپرس سرآیند no-cache را فقط برای کاربر واردشده می‌فرستد.
+	 */
+	protected static function no_store( $response ) {
+		if ( $response instanceof WP_REST_Response ) {
+			$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+			$response->header( 'Pragma', 'no-cache' );
+		}
+
+		return $response;
 	}
 
 	/** داده‌ی مرحله‌ی انتخاب مرکز — هم REST، هم تزریق در صفحه. */
@@ -269,8 +282,10 @@ class CMB_Rest {
 		/* ساخت و کش پاسخ در CMB_Services::payload() است تا داده‌ی
 		   تزریق‌شده در صفحه و پاسخ REST هرگز از هم فاصله نگیرند. «قابل رزرو
 		   بودن» شعبه بیرون از کش اضافه می‌شود. */
-		return rest_ensure_response(
-			CMB_Services::payload_live( (int) $request->get_param( 'branch_id' ) )
+		return self::no_store(
+			rest_ensure_response(
+				CMB_Services::payload_live( (int) $request->get_param( 'branch_id' ) )
+			)
 		);
 	}
 
