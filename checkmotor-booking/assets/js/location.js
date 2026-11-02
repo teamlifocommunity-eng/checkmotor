@@ -68,7 +68,7 @@ function parseLink(text) {
     ['geo:' + n + ',' + n]
   ], false);
   if (p) { return p; }
-  var w = /waze\.com\/ul\/h([0-9b-hjkmnp-z]{5,12})/i.exec(t);
+  var w = /waze\.com\/(?:ul\/h|[^\s"']*?[?&]h=)([0-9b-hjkmnp-z]{5,12})/i.exec(t);
   if (w) { var g = geohash(w[1]); p = g && pair(g[0], g[1]); if (p) { p.approx = false; return p; } }
   var dms = '(\\d{1,3})\\s*°\\s*(\\d{1,2})\\s*[\'′]\\s*(\\d{1,2}(?:\\.\\d+)?)\\s*(?:"|″|\'\')?\\s*';
   var d = new RegExp(dms + '([NS])[\\s,+]*' + dms + '([EW])', 'i').exec(t);
@@ -78,7 +78,7 @@ function parseLink(text) {
   }
   // دو عدد؛ یا متن بی‌لینک مثل «مختصات: ۲۸٫۹۴۲۰۹۱، ۵۰٫۹۳۵۵۵۵» (کپی از نشان)
   var plain = new RegExp('^\\s*\\(?\\s*' + n + '\\s*[,\\s]\\s*' + n + '\\s*\\)?\\s*$').exec(t) ||
-    (t.indexOf('://') === -1 ? /(-?\d{1,3}\.\d{3,})\s*[,\s\/]\s*(-?\d{1,3}\.\d{3,})/.exec(t) : null);
+    (t.indexOf('://') === -1 && t.length < 200 && !/[<>{}\[\]]/.test(t) ? /(-?\d{1,3}\.\d{3,})\s*[,\s\/]\s*(-?\d{1,3}\.\d{3,})/.exec(t) : null);
   if (plain) { p = pair(plain[1], plain[2]); if (p) { p.approx = false; return p; } }
   return pick([
     ['@' + n + ',' + n],
@@ -130,7 +130,10 @@ function applyLink(host, text) {
   say(p ? 'در حال یافتن نشانگر دقیق…' : 'در حال خواندن لینک کوتاه…');
   var local = p;
   window.CMBLocation.resolve(url).then(function (r) {
-    if (r && r.success !== false && r.lat !== undefined) { put([Number(r.lat), Number(r.lng)], r.source || sourceName(url), !!r.approx); }
+    if (r && r.success !== false && r.lat !== undefined) {
+      put([Number(r.lat), Number(r.lng)], r.source || sourceName(url), !!r.approx);
+      if (r.approx && r.ref && msg) { msg.textContent += ' (کد پیگیری: ' + r.ref + ')'; }
+    }
     else if (local) { put(local, sourceName(text), true); }
     else { say((r && r.message) || 'در این لینک موقعیتی پیدا نشد.', 'bad'); }
   }, function () {

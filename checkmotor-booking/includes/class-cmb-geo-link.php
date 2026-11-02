@@ -172,6 +172,10 @@ class CMB_Geo_Link {
 			array( '/latitude["\']\s+content=["\']' . $n . '["\'][\s\S]{0,400}?longitude["\']\s+content=["\']' . $n . '/i' ), // متای place:location
 			array( '/content=["\']' . $n . '["\']\s+(?:property|itemprop|name)=["\'][a-z:]*latitude["\'][\s\S]{0,400}?content=["\']' . $n . '["\']\s+(?:property|itemprop|name)=["\'][a-z:]*longitude/i' ),
 			array( '/"coordinates"\s*:\s*\[\s*' . $n . '\s*,\s*' . $n . '\s*\]/i', true ), // GeoJSON: [طول، عرض]
+			array( '/\[null,null,' . $n . ',' . $n . '\]/' ),                                   // گوگل: نقطه‌ی مکان در صفحه
+			// تصویر پیش‌نمایش (og:image / twitter:image) که نقشه‌ی ایستای همان نقطه است، با هر چینش نشانی
+			array( '/(?:og:image|twitter:image)["\'][^>]*?content=["\'][^"\']*?[\/=,_|:-]' . $n . '[\/,_|:-]' . $n . '(?:[\/,_|.&?:"\'-]|$)/i' ),
+			array( '/content=["\'][^"\']*?[\/=,_|:-]' . $n . '[\/,_|:-]' . $n . '(?:[\/,_|.&?:"\'-][^"\']*)?["\'][^>]*?(?:og:image|twitter:image)/i' ),
 		);
 
 		foreach ( $exact as $e ) {
@@ -185,7 +189,7 @@ class CMB_Geo_Link {
 		}
 
 		// ویز: waze.com/ul/h<geohash>
-		if ( preg_match( '~waze\.com/ul/h([0-9b-hjkmnp-z]{5,12})~i', $t, $m ) ) {
+		if ( preg_match( '~waze\.com/(?:ul/h|[^\s"\']*?[?&]h=)([0-9b-hjkmnp-z]{5,12})~i', $t, $m ) ) {
 			$g = self::geohash( $m[1] );
 			$p = $g ? self::pair( $g[0], $g[1] ) : null;
 
@@ -208,7 +212,7 @@ class CMB_Geo_Link {
 
 		// دو عدد اعشاری، مثل «35.7, 51.4»؛ یا متن بی‌لینک مثل «مختصات: ۲۸٫۹۴۲۰۹۱، ۵۰٫۹۳۵۵۵۵» (کپی از نشان)
 		if ( preg_match( '/^\s*\(?\s*' . $n . '\s*[,\s]\s*' . $n . '\s*\)?\s*$/', $t, $m )
-			|| ( false === strpos( $t, '://' ) && preg_match( '/(-?\d{1,3}\.\d{3,})\s*[,\s\/]\s*(-?\d{1,3}\.\d{3,})/', $t, $m ) ) ) {
+			|| ( false === strpos( $t, '://' ) && strlen( $t ) < 200 && ! preg_match( '/[<>{}\[\]]/', $t ) && preg_match( '/(-?\d{1,3}\.\d{3,})\s*[,\s\/]\s*(-?\d{1,3}\.\d{3,})/', $t, $m ) ) ) {
 			$p = self::pair( $m[1], $m[2] );
 
 			if ( $p ) {
@@ -222,7 +226,6 @@ class CMB_Geo_Link {
 			array( '/#c' . $n . '-' . $n . '-/' ),                                     // نشان: #c35.7-51.4-17z
 			array( '/#map=\d+(?:\.\d+)?\/' . $n . '\/' . $n . '/' ),                    // OpenStreetMap
 			array( '/#\d+(?:\.\d+)?\/' . $n . '\/' . $n . '/' ),                        // بلد: #15/35.7/51.4
-			array( '/APP_INITIALIZATION_STATE=\[\[\[\s*-?[\d.]+\s*,\s*' . $n . '\s*,\s*' . $n . '\s*\]/', true ), // گوگل: [ارتفاع، طول، عرض]
 		);
 
 		foreach ( $approx as $e ) {
@@ -266,6 +269,7 @@ class CMB_Geo_Link {
 			'~property=["\']og:url["\'][^>]*content=["\']([^"\']+)~i',
 			'~content=["\']([^"\']+)["\'][^>]*property=["\']og:url~i',
 			'~rel=["\']canonical["\'][^>]*href=["\']([^"\']+)~i',
+			'~data-url=["\'](/maps/[^"\']+|https?://[^"\']+)~i',                  // گوگل: صفحه‌ی جست‌وجو
 		);
 
 		foreach ( $res as $re ) {
@@ -324,6 +328,11 @@ class CMB_Geo_Link {
 			'Mozilla/5.0 (compatible; CheckMotorBooking/' . ( defined( 'CMB_VERSION' ) ? CMB_VERSION : '1' ) . '; +' . home_url( '/' ) . ')',
 			'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
 		);
+		// گوگل به ربات‌ها نسخه‌ی سبک بی‌مختصات می‌دهد؛ برای گوگل اول مثل مرورگر
+		if ( preg_match( '~(?:^|\.)(?:goo\.gl|g\.co|google\.com)$~i', (string) wp_parse_url( $url, PHP_URL_HOST ) ) ) {
+			$agents = array_reverse( $agents );
+		}
+
 		$fetched    = false;
 		self::$hops = array();
 		$best       = $local;
@@ -341,7 +350,13 @@ class CMB_Geo_Link {
 
 		// فقط مرکز دید نقشه پیدا شد: با نشانه‌ی «تقریبی» تا کاربر روی نقشه بررسی کند
 		if ( $best ) {
+			// تا روی سایت واقعی دیده شود چرا نشانگر دقیق پیدا نشد
+			if ( $fetched && class_exists( 'CMB_Debug' ) ) {
+				$best['ref'] = CMB_Debug::log( 'warn', 'geo', 'cmb_geo_approx', 'فقط موقعیت تقریبی (مرکز نقشه) پیدا شد: ' . $url, array( 'context' => array( 'hops' => self::$hops ) ) );
+			}
+
 			set_transient( $cache, $best, HOUR_IN_SECONDS );
+
 			return $best;
 		}
 
@@ -374,6 +389,9 @@ class CMB_Geo_Link {
 					'limit_response_size' => 512 * KB_IN_BYTES,
 					'user-agent'          => $agent,
 					'headers'             => array( 'Accept' => 'text/html,application/xhtml+xml,*/*;q=0.8', 'Accept-Language' => 'fa,en;q=0.8' ),
+					// رد شدن از صفحه‌ی رضایت کوکی گوگل برای سرورهای اروپا (همان کار برنامه‌ی متن‌باز GeoShare)
+					'cookies'             => preg_match( '~(?:^|\.)google\.[a-z.]+$~i', (string) wp_parse_url( $current, PHP_URL_HOST ) )
+						? array( 'CONSENT' => 'PENDING+987', 'SOCS' => 'CAESHAgBEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmRlIAEaBgiAo_CmBg' ) : array(),
 				)
 			);
 
