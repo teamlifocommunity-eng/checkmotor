@@ -1571,3 +1571,5 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
 #cmb-panel .pn-agsvc__row input:focus-visible ~ .pn-agsvc__sw { outline:2px solid #264055; outline-offset:2px; }
 #cmb-panel .pn-agsvc__row.is-test { opacity:.6; cursor:not-allowed; }
 @media (prefers-reduced-motion: reduce) { #cmb-panel .pn-agsvc__sw, #cmb-panel .pn-agsvc__sw::after { transition:none; } }
+/* ۱.۵۱.۲ — کمبود اطلاعات کارت مشتری */
+#cmb-panel .pn-agc__info .pn-agc__missing { color:#8d4e00; background:#fff6e5; border:1px solid #f4d9a6; border-radius:10px; padding:6px 10px; font-size:12px; line-height:1.9; margin-top:6px; }

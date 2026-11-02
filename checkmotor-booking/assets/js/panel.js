@@ -2432,6 +2432,7 @@ function viewAgencies() {
         (agency ? '' : '<span class="pn-badge pn-badge--quick">مرکز اصلی</span>') + '</div>' +
         '<p>' + esc([b.province, b.city].filter(Boolean).join(' / ')) + (b.address ? ' · ' + esc(b.address) : '') + '</p>' +
         '<div class="pn-agc__meta"><span>' + fa(b.future) + ' نوبت آینده</span><span>' + fa(b.services) + ' خدمت فعال</span><span>' + fa((b.users || []).length) + ' کاربر پنل</span></div>' +
+        (agency ? agencyMissing(b) : '') +
         (agency && b.status === 'active' && !b.bookable ? '<p class="pn-agc__warning">مشتری «فعلاً نوبت نمی‌گیرد» می‌بیند: ' +
           esc((b.blockers || []).filter(function (x) { return x.code !== 'inactive'; }).map(function (x) { return x.label; }).join(' — ') || b.reasonLabel) + '</p>' : '') +
       '</div></div>' +
@@ -2450,6 +2451,15 @@ function viewAgencies() {
   });
   if (!agencies.length) { html += note('info', I.info, 'اولین نمایندگی را بسازید. تصویر اختصاصی آن خودکار آماده می‌شود؛ نیازی به بارگذاری عکس نیست.'); }
   return html;
+}
+
+/* آنچه روی کارت مشتری خالی می‌ماند (۱.۵۱.۲): بی مختصات، فاصله و «مسیریابی» نیست؛ بی تلفن، «تماس». */
+function agencyMissing(b) {
+  var miss = [];
+  if (b.lat === null || b.lng === null || b.lat === undefined) { miss.push('موقعیت روی نقشه (فاصله و دکمه‌ی «مسیریابی» نشان داده نمی‌شود)'); }
+  if (!b.phone) { miss.push('تلفن تماس (دکمه‌ی «تماس» نیست)'); }
+  if (!b.address) { miss.push('نشانی'); }
+  return miss.length ? '<p class="pn-agc__missing">برای مشتری کامل نیست: ' + esc(miss.join('، ')) + ' — در «ویرایش و مجوزها» تکمیل کنید.</p>' : '';
 }
 
 function findAgency(id) {
@@ -2611,6 +2621,8 @@ function agencyModal() {
       agencyPlaceFields(f, fld) +
     '</div>' +
     '<label class="pn-field"><span class="pn-field__l">نشانی</span><textarea class="pn-in" id="ag-address" data-cmb-address>' + esc(f.address || '') + '</textarea></label>' +
+    (f.isCenter ? '' : fld('ag-phone', 'تلفن تماس برای مشتری', f.phone, ' dir="ltr" inputmode="tel" placeholder="0917… یا 071…"',
+      'روی کارت شعبه دکمه‌ی «تماس» می‌شود؛ خالی باشد، دکمه نشان داده نمی‌شود.')) +
     fld('ag-contact', 'نام و نام خانوادگی مسئول', f.contactName, ' autocomplete="off" placeholder="مثلاً علی رضایی"',
       'فقط برای مدیریت؛ به مشتری نشان داده نمی‌شود.') +
     (isNew ? '<div class="pn-grid">' + fld('ag-mphone', 'موبایل مدیر نمایندگی', f.managerPhone, ' dir="ltr" inputmode="tel" placeholder="09…"', 'با همین شماره و کد پیامکی وارد پنل می‌شود.') : '') +
@@ -2742,6 +2754,7 @@ function saveAgency() {
   if ($('#ag-policy-own')) { body.allowOwnServices = Number(val('#ag-policy-own')); }
   if ($('#ag-policy-customize')) { body.allowCustomizeServices = Number(val('#ag-policy-customize')); }
   if ($('#ag-mphone')) { body.managerPhone = en(val('#ag-mphone')).trim(); }
+  if ($('#ag-phone')) { body.phone = en(val('#ag-phone')).trim(); }
   if (typeof f.photoId !== 'undefined') { body.photoId = Number(f.photoId) || 0; }
   if (f.svcOn && !f.isCenter) {
     if (f.id) { body.services = {}; Object.keys(f.svcOn).forEach(function (k) { body.services[k] = f.svcOn[k] ? 1 : 0; }); }
@@ -4926,7 +4939,7 @@ function bind() {
     var id = e.target.id, p = {'bp-address':'address','bp-phone':'phone','bp-lat':'lat','bp-lng':'lng'};
     if (S.profile && p[id]) { S.profile[p[id]] = e.target.value; }
     if (S.modal && S.modal.agency && /^ag-/.test(id)) {
-      var f = {'ag-title':'title','ag-slug':'slug','ag-sort':'sortOrder','ag-prov':'province','ag-city':'city','ag-address':'address','ag-contact':'contactName','ag-mphone':'managerPhone','ag-sms':'managerPhones','ag-lat':'lat','ag-lng':'lng'};
+      var f = {'ag-title':'title','ag-slug':'slug','ag-sort':'sortOrder','ag-prov':'province','ag-city':'city','ag-address':'address','ag-phone':'phone','ag-contact':'contactName','ag-mphone':'managerPhone','ag-sms':'managerPhones','ag-lat':'lat','ag-lng':'lng'};
       if (f[id]) { S.modal.agency[f[id]] = e.target.value; }
       if (id === 'ag-title' && $('#ag-display')) { $('#ag-display').textContent = agencyDisplayName(S.modal.agency.title); }
       if (id === 'ag-policy-own') { S.modal.agency.allowOwnServices = Number(e.target.value); }
