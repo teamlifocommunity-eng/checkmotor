@@ -2302,8 +2302,125 @@ class CMB_Panel_Api {
 		$out['users']       = CMB_Branches::users( (int) $b->id );
 		$out['isCenter']    = CMB_Branches::is_center( $b );
 		$out['services']    = count( CMB_Services::get_services( (int) $b->id, true ) );
+		$out['blockers']    = self::branch_blockers( $b );
+
+		if ( CMB_Branches::is_agency( $b ) ) {
+			$out['serviceList'] = self::agency_service_list( (int) $b->id );
+		}
 
 		return $out;
+	}
+
+	/**
+	 * همه‌ی دلیل‌هایی که مشتری این نمایندگی را «فعلاً نوبت نمی‌گیرد» می‌بیند (۱.۵۱.۰).
+	 * bookable() فقط اولین دلیل را می‌گوید؛ مدیر کل باید همه را با هم ببیند.
+	 *
+	 * @return array[] { code, label }
+	 */
+	protected static function branch_blockers( $b ) {
+		$out = array();
+
+		if ( ! CMB_Branches::ready() || ! CMB_Branches::is_agency( $b ) ) {
+			return $out;
+		}
+
+		if ( 'active' !== CMB_Branches::status( $b ) ) {
+			$out[] = array( 'code' => 'inactive', 'label' => 'نمایندگی فعال نیست (پیش‌نویس یا غیرفعال)؛ با «فعال کردن» برای مشتری باز می‌شود.' );
+		}
+
+		if ( ! CMB_Services::get_services( (int) $b->id, true ) ) {
+			$out[] = array( 'code' => 'no_services', 'label' => 'هیچ خدمت فعالی ندارد؛ در بخش «خدمات این نمایندگی» (فرم ویرایش) خدمات را روشن کنید.' );
+		}
+
+		$free = CMB_Branch_Wallet::free( (int) $b->id );
+		$fee  = CMB_Branches::fee();
+
+		if ( $free < $fee ) {
+			$out[] = array( 'code' => 'balance', 'label' => sprintf( 'موجودی آزاد کیف پول (%s) از هزینه‌ی هر رزرو (%s) کمتر است؛ با «تغییر موجودی» یا شارژ آنلاین درست می‌شود.', cmb_toman( $free ), cmb_toman( $fee ) ) );
+		}
+
+		return $out;
+	}
+
+	/** خدمات یک نمایندگی برای فرم مدیر کل: الگوهای کاتالوگ مرکز و خدمت‌های خودش. */
+	protected static function agency_service_list( $branch_id ) {
+		$out = array();
+
+		foreach ( CMB_Services::get_services( (int) $branch_id, false ) as $svc ) {
+			$out[] = array(
+				'id'        => (int) $svc->id,
+				'catalogId' => isset( $svc->catalog_id ) ? (int) $svc->catalog_id : 0,
+				'title'     => $svc->title,
+				'price'     => (int) $svc->price,
+				'priceFa'   => cmb_toman( (int) $svc->price ),
+				'active'    => (int) $svc->is_active,
+				'own'       => empty( $svc->catalog_id ),
+			);
+		}
+
+		return $out;
+	}
+
+	/** کاتالوگ مرکز برای فرم «نمایندگی تازه» (بی خدمت‌های آزمایشی). */
+	protected static function center_catalog() {
+		$out = array();
+
+		if ( ! CMB_Branches::ready() ) {
+			return $out;
+		}
+
+		foreach ( CMB_Services::get_services( CMB_Branches::center_id(), false ) as $svc ) {
+			if ( 2 === (int) $svc->is_active ) {
+				continue;
+			}
+
+			$out[] = array(
+				'id'      => (int) $svc->id,
+				'title'   => $svc->title,
+				'price'   => (int) $svc->price,
+				'priceFa' => cmb_toman( (int) $svc->price ),
+				'active'  => (int) $svc->is_active,
+			);
+		}
+
+		return $out;
+	}
+
+	/**
+	 * روشن/خاموش کردن خدمات نمایندگی از فرم مدیر کل.
+	 *
+	 * $on: شناسه‌ی ردیف‌های خدمت همین نمایندگی => ۰/۱. خدمت آزمایشی دست نمی‌خورد.
+	 *
+	 * @return int|WP_Error تعداد ردیف‌های عوض‌شده
+	 */
+	protected static function apply_agency_services( $branch_id, array $on ) {
+		$changed = 0;
+
+		foreach ( $on as $sid => $active ) {
+			$svc = CMB_Services::get_service( (int) $sid );
+
+			if ( ! $svc || (int) $svc->branch_id !== (int) $branch_id ) {
+				return new WP_Error( 'cmb_bad_service', 'یکی از خدمات انتخاب‌شده مال این نمایندگی نیست؛ صفحه را تازه کنید و دوباره امتحان کنید.', array( 'status' => 400 ) );
+			}
+
+			$want = $active ? 1 : 0;
+
+			if ( 2 === (int) $svc->is_active || $want === (int) $svc->is_active ) {
+				continue;
+			}
+
+			if ( ! CMB_Services::update_service( (int) $svc->id, array( 'is_active' => $want ) ) ) {
+				return new WP_Error( 'cmb_db_error', 'فعال‌سازی خدمات ذخیره نشد؛ دوباره تلاش کنید.', array( 'status' => 500 ) );
+			}
+
+			$changed++;
+		}
+
+		if ( $changed ) {
+			CMB_Services::flush_cache();
+		}
+
+		return $changed;
 	}
 
 	/** چرا نوبت نمی‌گیرد — فقط برای مدیر؛ مشتری فقط «فعلاً نوبت نمی‌گیرد» می‌بیند (D18). */
@@ -2325,6 +2442,11 @@ class CMB_Panel_Api {
 		$items = array();
 
 		foreach ( CMB_Branches::all() as $b ) {
+			// خدمت تازه‌ی مرکز که هنوز برای نمایندگی کپی نشده، در فرم هم دیده شود
+			if ( CMB_Branches::is_agency( $b ) ) {
+				CMB_Services::ensure_catalog( (int) $b->id );
+			}
+
 			$row = self::admin_branch_row( $b );
 
 			if ( $row ) {
@@ -2335,6 +2457,7 @@ class CMB_Panel_Api {
 		return rest_ensure_response(
 			array(
 				'items'    => $items,
+				'catalog'  => self::center_catalog(),
 				'settings' => self::fee_settings(),
 				'maxOps'   => CMB_Branches::MAX_OPERATORS,
 			)
@@ -2351,6 +2474,24 @@ class CMB_Panel_Api {
 				return new WP_Error( 'cmb_bad_policy', 'مجوز خدمات معتبر نیست.', array( 'status' => 400 ) );
 			}
 			$policy[ $key ] = (int) $params[ $param ];
+		}
+		// خدمات (۱.۵۱.۰): در ویرایش {شناسه‌ی خدمت: ۰/۱}، در ساخت فهرست شناسه‌ی خدمت‌های مرکز
+		$svc_on = null;
+		if ( array_key_exists( 'services', $params ) ) {
+			if ( ! is_array( $params['services'] ) ) {
+				return new WP_Error( 'cmb_bad_services', 'فهرست خدمات معتبر نیست.', array( 'status' => 400 ) );
+			}
+			$svc_on = array();
+			foreach ( $params['services'] as $sid => $flag ) {
+				if ( (int) $sid > 0 ) { $svc_on[ (int) $sid ] = ! empty( $flag ) && '0' !== (string) $flag; }
+			}
+		}
+		$catalog_on = null;
+		if ( array_key_exists( 'catalogOn', $params ) ) {
+			if ( ! is_array( $params['catalogOn'] ) ) {
+				return new WP_Error( 'cmb_bad_services', 'فهرست خدمات معتبر نیست.', array( 'status' => 400 ) );
+			}
+			$catalog_on = array_values( array_filter( array_map( 'intval', $params['catalogOn'] ) ) );
 		}
 		// شناسه در بدنه، یا در نشانی (PUT /panel/admin/branches/{id})
 		$id     = isset( $params['id'] ) ? (int) $params['id'] : (int) $request->get_param( 'id' );
@@ -2398,6 +2539,27 @@ class CMB_Panel_Api {
 			$old = (array) get_option( 'cmb_agency_policy_' . $id, array() );
 			update_option( 'cmb_agency_policy_' . $id, array_merge( $old, $policy ), false );
 		}
+
+		// خدمات: نمایندگی تازه کپی کاتالوگ را در create گرفته؛ ردیف‌های تیک‌خورده فعال می‌شوند
+		if ( CMB_Branches::is_agency( $id ) && ( null !== $svc_on || null !== $catalog_on ) ) {
+			CMB_Services::ensure_catalog( $id );
+			$on = null !== $svc_on ? $svc_on : array();
+
+			if ( null !== $catalog_on ) {
+				foreach ( CMB_Services::get_services( $id, false ) as $row ) {
+					if ( ! empty( $row->catalog_id ) && ! isset( $on[ (int) $row->id ] ) ) {
+						$on[ (int) $row->id ] = in_array( (int) $row->catalog_id, $catalog_on, true );
+					}
+				}
+			}
+
+			$applied = self::apply_agency_services( $id, $on );
+
+			if ( is_wp_error( $applied ) ) {
+				return $applied;
+			}
+		}
+
 		return rest_ensure_response(
 			array(
 				'success' => true,

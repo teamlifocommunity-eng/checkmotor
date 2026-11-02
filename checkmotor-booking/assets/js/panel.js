@@ -2432,7 +2432,8 @@ function viewAgencies() {
         (agency ? '' : '<span class="pn-badge pn-badge--quick">مرکز اصلی</span>') + '</div>' +
         '<p>' + esc([b.province, b.city].filter(Boolean).join(' / ')) + (b.address ? ' · ' + esc(b.address) : '') + '</p>' +
         '<div class="pn-agc__meta"><span>' + fa(b.future) + ' نوبت آینده</span><span>' + fa(b.services) + ' خدمت فعال</span><span>' + fa((b.users || []).length) + ' کاربر پنل</span></div>' +
-        (agency && b.status === 'active' && !b.bookable ? '<p class="pn-agc__warning">' + esc(b.reasonLabel) + '</p>' : '') +
+        (agency && b.status === 'active' && !b.bookable ? '<p class="pn-agc__warning">مشتری «فعلاً نوبت نمی‌گیرد» می‌بیند: ' +
+          esc((b.blockers || []).filter(function (x) { return x.code !== 'inactive'; }).map(function (x) { return x.label; }).join(' — ') || b.reasonLabel) + '</p>' : '') +
       '</div></div>' +
       (w ? '<div class="pn-agc__balance"><span>موجودی آزاد <b>' + esc(fa(w.freeFa)) + '</b></span><span>بلوکه <b>' + esc(fa(w.heldFa)) + '</b></span><span>کل <b>' + esc(fa(w.totalFa)) + '</b></span></div>' : '') +
       '<div class="pn-svcacts">' +
@@ -2444,7 +2445,7 @@ function viewAgencies() {
           '<button class="pn-btn pn-btn--bad pn-btn--sm" data-ag-delete="' + b.id + '">' + I.trash + ' حذف نمایندگی</button>' : '') +
       '</div>' +
       (agency && b.slug ? '<div class="pn-agc__link"><span>لینک رزرو شعبه</span><a dir="ltr" href="' + esc((C.app || '/') + '?branch=' + encodeURIComponent(b.slug)) + '" target="_blank" rel="noopener">' + esc((C.app || '/') + '?branch=' + b.slug) + '</a></div>' : '') +
-      (agency && b.status === 'draft' ? '<p class="pn-hint">برای شروع، خدمات و قیمت‌ها را در پنل شعبه آماده کنید و سپس نمایندگی را فعال کنید.</p>' : '') +
+      (agency && b.status === 'draft' ? '<p class="pn-hint">برای شروع، در «ویرایش و مجوزها» خدمات را روشن کنید (قیمت‌ها در پنل شعبه)، و سپس نمایندگی را فعال کنید.</p>' : '') +
     '</article>';
   });
   if (!agencies.length) { html += note('info', I.info, 'اولین نمایندگی را بسازید. تصویر اختصاصی آن خودکار آماده می‌شود؛ نیازی به بارگذاری عکس نیست.'); }
@@ -2595,6 +2596,7 @@ function agencyModal() {
 
   return '<div class="pn-modal__hd"><div class="pn-modal__t">' + (isNew ? 'نمایندگی تازه' : 'ویرایش ' + esc(f.title)) + '</div>' +
       '<button class="pn-modal__x" data-close>' + I.x + '</button></div>' +
+    agencyBlockersNote(f) +
     agencyPolicyFields(f) +
     fld('ag-title', 'نام نمایندگی (همین برای مشتری نمایش داده می‌شود)', f.title, ' placeholder="مثلاً چک موتور - واعظ زاده"',
       'مشتری‌ها شعبه را دقیقاً با همین نام می‌بینند: <b id="ag-display">' + esc(agencyDisplayName(f.title)) + '</b>. سیستم چیزی به آن اضافه نمی‌کند.') +
@@ -2632,12 +2634,61 @@ function agencyModal() {
       '</div>' +
       '<div class="pn-hint">تصویر اختصاصی با رنگ و کد شعبه به‌صورت خودکار ساخته می‌شود. بارگذاری عکس واقعی اختیاری است.</div>' +
     '</div>' +
-    (isNew ? note('info', I.info, 'نمایندگی به‌صورت <b>پیش‌نویس</b> ساخته می‌شود و تا فعالش نکنید به مشتری‌ها نشان داده نمی‌شود. خدمات کاتالوگ مرکز غیرفعال برایش کپی می‌شوند.') : '') +
+    agencyServicesBlock(f) +
+    (isNew ? note('info', I.info, 'نمایندگی به‌صورت <b>پیش‌نویس</b> ساخته می‌شود و تا فعالش نکنید به مشتری‌ها نشان داده نمی‌شود. خدمات تیک‌خورده با قیمت مرکز برایش فعال می‌شوند؛ قیمت را بعداً خود نمایندگی یا شما در «خدمات» پنل همان شعبه تغییر می‌دهید.') : '') +
     '<div class="pn-modal__ft">' +
       '<button class="pn-btn pn-btn--pri" data-ag-save' + (S.busy ? ' disabled' : '') + '>' +
         (S.busy ? '<span class="pn-spin"></span> در حال ذخیره…' : (isNew ? 'ساخت پیش‌نویس' : 'ذخیره')) + '</button>' +
       '<button class="pn-btn pn-btn--soft" data-close>انصراف</button>' +
     '</div>';
+}
+
+/* چرا مشتری این نمایندگی را «فعلاً نوبت نمی‌گیرد» می‌بیند — همه‌ی دلیل‌ها با هم (۱.۵۱.۰). */
+function agencyBlockersNote(f) {
+  var list = f.blockers || [];
+  if (!f.id || f.isCenter || !list.length) { return ''; }
+  return note(f.status === 'active' ? 'bad' : 'warn', I.info,
+    '<b>' + (f.status === 'active' ? 'مشتری این نمایندگی را «فعلاً نوبت نمی‌گیرد» می‌بیند' : 'پیش از فعال کردن، این موارد را درست کنید') + ':</b>' +
+    '<ul class="pn-agblock">' + list.map(function (b) { return '<li>' + esc(b.label) + '</li>'; }).join('') + '</ul>');
+}
+
+/* خدمات نمایندگی در فرم مدیر کل: روشن/خاموش کردن الگوهای مرکز و خدمت‌های خودش (۱.۵۱.۰). */
+function agencyServicesBlock(f) {
+  if (f.isCenter || f.type === 'center') { return ''; }
+  var isNew = !f.id;
+  var rows = isNew
+    ? ((S.agencies && S.agencies.catalog) || []).map(function (c) { return { key: c.id, title: c.title, priceFa: c.priceFa, active: c.active, own: false, centerOff: c.active !== 1 }; })
+    : (f.serviceList || []).map(function (x) { return { key: x.id, title: x.title, priceFa: x.priceFa, active: x.active, own: x.own, test: x.active === 2 }; });
+  if (!f.svcOn) {
+    f.svcOn = {};
+    rows.forEach(function (r) { f.svcOn[r.key] = isNew ? r.active === 1 : r.active === 1; });
+  }
+  if (!rows.length) {
+    return '<div class="pn-field" style="margin-top:16px"><span class="pn-field__l">خدمات این نمایندگی</span>' +
+      note('warn', I.info, 'مرکز هنوز خدمتی در کاتالوگ ندارد؛ اول در «خدمات» مرکز خدمت بسازید.') + '</div>';
+  }
+  return '<div class="pn-field pn-agsvc" style="margin-top:16px"><span class="pn-field__l">خدمات این نمایندگی</span>' +
+    '<div class="pn-agsvc__bar"><span id="ag-svc-count">' + agencySvcCount(f) + '</span>' +
+      '<button type="button" class="pn-btn pn-btn--soft pn-btn--sm" data-ag-svc-all="1">همه روشن</button>' +
+      '<button type="button" class="pn-btn pn-btn--soft pn-btn--sm" data-ag-svc-all="0">همه خاموش</button></div>' +
+    '<div class="pn-agsvc__list">' + rows.map(function (r) {
+      return '<label class="pn-agsvc__row' + (r.test ? ' is-test' : '') + '">' +
+        '<input type="checkbox" data-ag-svc="' + r.key + '"' + (f.svcOn[r.key] ? ' checked' : '') + (r.test ? ' disabled' : '') + '>' +
+        '<span class="pn-agsvc__t"><b>' + esc(r.title) + '</b><small>' + esc(fa(r.priceFa || '')) +
+          (r.own ? ' · خدمت خود نمایندگی' : '') + (r.test ? ' · آزمایشی (فقط مدیران)' : '') +
+          (r.centerOff ? ' · در مرکز خاموش است' : '') + '</small></span>' +
+        '<span class="pn-agsvc__sw" aria-hidden="true"></span></label>';
+    }).join('') + '</div>' +
+    '<p class="pn-hint" id="ag-svc-hint">' + agencySvcHint(f) + '</p></div>';
+}
+function agencySvcCount(f) {
+  var on = Object.keys(f.svcOn || {}).filter(function (k) { return f.svcOn[k]; }).length;
+  return fa(on) + ' از ' + fa(Object.keys(f.svcOn || {}).length) + ' خدمت روشن';
+}
+function agencySvcHint(f) {
+  var on = Object.keys(f.svcOn || {}).filter(function (k) { return f.svcOn[k]; }).length;
+  return on ? 'مشتری فقط خدمات روشن را می‌بیند. قیمت و روزهای هر خدمت در «خدمات» پنل همان شعبه تنظیم می‌شود.'
+    : '<b style="color:#b42318">هیچ خدمتی روشن نیست؛ مشتری این نمایندگی را «فعلاً نوبت نمی‌گیرد» می‌بیند.</b>';
 }
 
 /** همان CMB_Branches::display_name: نام نمایندگی، دقیقاً همان‌طور که وارد شده. */
@@ -2692,6 +2743,10 @@ function saveAgency() {
   if ($('#ag-policy-customize')) { body.allowCustomizeServices = Number(val('#ag-policy-customize')); }
   if ($('#ag-mphone')) { body.managerPhone = en(val('#ag-mphone')).trim(); }
   if (typeof f.photoId !== 'undefined') { body.photoId = Number(f.photoId) || 0; }
+  if (f.svcOn && !f.isCenter) {
+    if (f.id) { body.services = {}; Object.keys(f.svcOn).forEach(function (k) { body.services[k] = f.svcOn[k] ? 1 : 0; }); }
+    else { body.catalogOn = Object.keys(f.svcOn).filter(function (k) { return f.svcOn[k]; }).map(Number); }
+  }
 
   // نامک مرکز اصلی عوض نمی‌شود؛ اصلاً فرستاده نمی‌شود
   if (f.isCenter) { delete body.slug; }
@@ -5510,6 +5565,17 @@ function bind() {
     }
     if (up('[data-ag-delete-confirm]')) { e.preventDefault(); deleteAgency(); return; }
     if (up('[data-ag-save]')) { e.preventDefault(); saveAgency(); return; }
+    if ((el = up('[data-ag-svc-all]')) && S.modal && S.modal.agency) {
+      e.preventDefault();
+      var allOn = el.getAttribute('data-ag-svc-all') === '1', fa2 = S.modal.agency;
+      Array.prototype.forEach.call(document.querySelectorAll('[data-ag-svc]'), function (cb) {
+        if (cb.disabled) { return; }
+        cb.checked = allOn; fa2.svcOn[cb.getAttribute('data-ag-svc')] = allOn;
+      });
+      if ($('#ag-svc-count')) { $('#ag-svc-count').innerHTML = agencySvcCount(fa2); }
+      if ($('#ag-svc-hint')) { $('#ag-svc-hint').innerHTML = agencySvcHint(fa2); }
+      return;
+    }
 
     if ((el = up('[data-ag-status]'))) {
       e.preventDefault();
@@ -5630,6 +5696,13 @@ function bind() {
   });
 
   document.addEventListener('change', function (e) {
+    if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-ag-svc') && S.modal && S.modal.agency) {
+      var fa1 = S.modal.agency; fa1.svcOn = fa1.svcOn || {};
+      fa1.svcOn[e.target.getAttribute('data-ag-svc')] = e.target.checked;
+      if ($('#ag-svc-count')) { $('#ag-svc-count').innerHTML = agencySvcCount(fa1); }
+      if ($('#ag-svc-hint')) { $('#ag-svc-hint').innerHTML = agencySvcHint(fa1); }
+      return;
+    }
     if (e.target && e.target.id === 'sv-poster' && e.target.files && e.target.files[0]) {
       uploadPoster(e.target.files[0]);
     }

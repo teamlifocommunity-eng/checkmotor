@@ -1551,3 +1551,23 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
   #cmb-panel .pn-head__act.pn-quickacts > .pn-qfree { flex:1 1 100%; }
   #cmb-panel .pn-head__act.pn-quickacts > .pn-qfree { white-space:nowrap; gap:8px; }
 }
+
+/* ۱.۵۱.۰ — خدمات نمایندگی در فرم مدیر کل */
+#cmb-panel .pn-agblock { margin:6px 0 0; padding-inline-start:18px; display:grid; gap:4px; }
+#cmb-panel .pn-agblock li { line-height:1.9; }
+#cmb-panel .pn-agsvc__bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+#cmb-panel .pn-agsvc__bar > span { font-size:13px; font-weight:700; color:#264055; margin-inline-end:auto; }
+#cmb-panel .pn-agsvc__list { display:grid; gap:8px; }
+#cmb-panel .pn-agsvc__row { display:flex; align-items:center; gap:12px; padding:12px 14px; background:#f6f8fa; border:1px solid #dce4eb; border-radius:12px; cursor:pointer; min-height:56px; }
+#cmb-panel .pn-agsvc__row input { position:absolute; opacity:0; width:1px; height:1px; }
+#cmb-panel .pn-agsvc__t { flex:1 1 auto; min-width:0; }
+#cmb-panel .pn-agsvc__t b { display:block; font-size:14px; color:#1f2d3a; line-height:1.7; overflow-wrap:anywhere; }
+#cmb-panel .pn-agsvc__t small { display:block; font-size:12px; color:#52616e; line-height:1.8; }
+#cmb-panel .pn-agsvc__sw { flex:none; position:relative; width:44px; height:26px; border-radius:13px; background:#c5cfd8; transition:background .15s; }
+#cmb-panel .pn-agsvc__sw::after { content:""; position:absolute; top:3px; right:3px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25); transition:right .15s; }
+#cmb-panel .pn-agsvc__row input:checked ~ .pn-agsvc__sw { background:#1f9d55; }
+#cmb-panel .pn-agsvc__row input:checked ~ .pn-agsvc__sw::after { right:21px; }
+#cmb-panel .pn-agsvc__row:has(input:checked) { background:#eefaf3; border-color:#a6dcb9; }
+#cmb-panel .pn-agsvc__row input:focus-visible ~ .pn-agsvc__sw { outline:2px solid #264055; outline-offset:2px; }
+#cmb-panel .pn-agsvc__row.is-test { opacity:.6; cursor:not-allowed; }
+@media (prefers-reduced-motion: reduce) { #cmb-panel .pn-agsvc__sw, #cmb-panel .pn-agsvc__sw::after { transition:none; } }
