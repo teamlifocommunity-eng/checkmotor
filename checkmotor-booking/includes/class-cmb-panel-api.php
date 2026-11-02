@@ -189,6 +189,7 @@ class CMB_Panel_Api {
 			'panel/summary'   => array( 'GET', 'summary', $guard ),
 			'panel/board'     => array( 'GET', 'board', $guard ),
 			'panel/free'      => array( 'GET', 'free', $guard ),
+			'panel/geo-link'  => array( 'POST', 'geo_link', $guard ),
 			'panel/bookings'  => array( 'GET', 'bookings', $guard ),
 			'panel/booking'   => array( 'POST', 'update_booking', $guard ),
 			'panel/services'  => array( 'GET', 'services', $guard ),
@@ -679,6 +680,35 @@ class CMB_Panel_Api {
 		}
 
 		return rest_ensure_response( array( 'days' => $out, 'from' => $from ) );
+	}
+
+	/**
+	 * مختصات از لینک نقشه (۱.۵۰.۰)؛ برای لینک‌های کوتاهی که مرورگر خودش
+	 * نمی‌تواند باز کند. فقط کسی که موقعیت شعبه را ویرایش می‌کند، حداکثر
+	 * ۳۰ بار در ساعت.
+	 */
+	public function geo_link( WP_REST_Request $request ) {
+		if ( ! CMB_Branches::can( 'profile' ) ) {
+			return self::role_denied( 'موقعیت شعبه را فقط مدیر شعبه یا مدیر کل تعیین می‌کند.' );
+		}
+
+		$key  = 'cmb_geo_' . get_current_user_id();
+		$used = (int) get_transient( $key );
+
+		if ( $used >= 30 ) {
+			return new WP_Error( 'cmb_geo_rate', 'تعداد درخواست‌ها زیاد شد؛ چند دقیقه‌ی دیگر دوباره امتحان کنید یا مختصات را دستی وارد کنید.', array( 'status' => 429 ) );
+		}
+
+		set_transient( $key, $used + 1, HOUR_IN_SECONDS );
+
+		$url = substr( (string) $request->get_param( 'url' ), 0, 2000 );
+		$out = CMB_Geo_Link::resolve( $url );
+
+		if ( is_wp_error( $out ) ) {
+			return $out;
+		}
+
+		return rest_ensure_response( array( 'success' => true ) + $out );
 	}
 
 	/** صفحه‌ی «نوبت‌های خالی» پنل (۱.۴۹.۰): ۷ روز آینده‌ی شعبه‌ی جاری. */

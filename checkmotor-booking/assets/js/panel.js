@@ -10,6 +10,13 @@ var BASE  = C.base || '/reserve/panel';
 var NONCE = C.nonce || '';
 var NURL  = C.nonceUrl || '/wp-admin/admin-ajax.php?action=cmb_nonce';
 
+/* لینک کوتاه نقشه (maps.app.goo.gl، nshn.ir…) را سرور تا مقصد دنبال می‌کند؛ location.js صدایش می‌زند */
+if (window.CMBLocation) {
+  window.CMBLocation.resolve = function (url) {
+    return req('POST', 'panel/geo-link', { url: url });
+  };
+}
+
 var VIEWS = ['summary', 'board', 'bookings', 'customers', 'services', 'closures', 'settings', 'refunds',
              'bwallet', 'profile', 'agencies', 'report', 'smslog', 'debug', 'free'];
 var PAY = C.pay || { on: false, used: false, canRefund: false, shopPct: 100, setup: null };
@@ -1423,12 +1430,9 @@ function svcModal() {
       '<div class="pn-hint">پنجشنبه و جمعه معمولاً تعطیل است؛ اگر انتخاب نشود، آن روز در تقویم مشتری بسته می‌ماند.</div>' +
     '</div>' +
 
-    /* آپلود پوستر شناسه‌ی خدمت را لازم دارد، پس تا ذخیره‌ی اول
-       نمایش داده نمی‌شود — وگرنه کاربر تصویر انتخاب می‌کند و آپلود
-       بی‌صدا شکست می‌خورد. */
-    (isNew
-      ? '<div class="pn-hint" style="margin-bottom:16px">پوستر را بعد از ذخیره‌ی اول می‌توانید اضافه کنید.</div>'
-      : '<div class="pn-field"><span class="pn-field__l">پوستر خدمت</span>' +
+    /* ۱.۵۰.۰: پوستر در همان فرم ساخت هم آپلود می‌شود؛ تصویر اول بارگذاری و
+       شناسه‌اش با «ذخیره» به خدمت تازه وصل می‌شود. */
+    ('<div class="pn-field"><span class="pn-field__l">پوستر خدمت</span>' +
       '<div class="pn-poster">' +
         (s.poster
           ? '<img class="pn-poster__img" src="' + esc(s.poster) + '" alt="">'
@@ -2255,7 +2259,7 @@ function viewProfile() {
 
   html += '<div class="pn-card"><div class="pn-card__t">' + I.edit + ' اطلاعات تماس و مکان</div>' +
     '<label class="pn-field"><span class="pn-field__l">نشانی کامل</span>' +
-      '<textarea class="pn-in" id="bp-address"' + (ro ? ' disabled' : '') + '>' + esc(P.address) + '</textarea></label>' +
+      '<textarea class="pn-in" id="bp-address" data-cmb-address' + (ro ? ' disabled' : '') + '>' + esc(P.address) + '</textarea></label>' +
     '<div class="pn-grid">' +
       '<label class="pn-field"><span class="pn-field__l">تلفن تماس مشتری</span>' +
         '<input class="pn-in num" id="bp-phone" dir="ltr" inputmode="tel" value="' + esc(P.phone) + '"' + (ro ? ' disabled' : '') + '></label>' +
@@ -2604,7 +2608,7 @@ function agencyModal() {
       fld('ag-sort', 'ترتیب', f.sortOrder || 0, ' type="number" dir="ltr"') +
       agencyPlaceFields(f, fld) +
     '</div>' +
-    '<label class="pn-field"><span class="pn-field__l">نشانی</span><textarea class="pn-in" id="ag-address">' + esc(f.address || '') + '</textarea></label>' +
+    '<label class="pn-field"><span class="pn-field__l">نشانی</span><textarea class="pn-in" id="ag-address" data-cmb-address>' + esc(f.address || '') + '</textarea></label>' +
     fld('ag-contact', 'نام و نام خانوادگی مسئول', f.contactName, ' autocomplete="off" placeholder="مثلاً علی رضایی"',
       'فقط برای مدیریت؛ به مشتری نشان داده نمی‌شود.') +
     (isNew ? '<div class="pn-grid">' + fld('ag-mphone', 'موبایل مدیر نمایندگی', f.managerPhone, ' dir="ltr" inputmode="tel" placeholder="09…"', 'با همین شماره و کد پیامکی وارد پنل می‌شود.') : '') +
@@ -4286,8 +4290,9 @@ function uploadPoster(file) {
   var fd = new FormData();
   fd.append('file', file);
   var editingService = S.svcEdit;
-  if (!editingService || !editingService.id) { return; }
-  fd.append('service_id', editingService.id);
+  if (!editingService) { return; }
+  // خدمت تازه هنوز شناسه ندارد: تصویر جدا بارگذاری و با «ذخیره» وصل می‌شود
+  if (editingService.id) { fd.append('service_id', editingService.id); }
 
   S.uploading = true;
   paintModal();
@@ -4304,10 +4309,14 @@ function uploadPoster(file) {
 
       editingService.posterId = j.posterId;
       editingService.poster = j.poster || '';
-      invalidateData();
-      S.services = null;
 
-      toast('پوستر آپلود شد.', 'ok');
+      if (editingService.id) {
+        invalidateData();
+        S.services = null;
+        toast('پوستر آپلود شد.', 'ok');
+      } else {
+        toast('پوستر آماده است؛ با «ذخیره» به خدمت اضافه می‌شود.', 'ok');
+      }
       paintModal();
     })
     .catch(function () {

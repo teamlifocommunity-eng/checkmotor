@@ -15,14 +15,109 @@ function coords(lat, lng) {
   lat = number(lat); lng = number(lng);
   return lat !== null && lng !== null && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && (lat !== 0 || lng !== 0) ? [lat, lng] : null;
 }
+/* ۱.۵۰.۰: خواندن مختصات از لینک نقشه — همان قواعد CMB_Geo_Link در PHP. */
+function inIran(lat, lng) { return lat >= 24 && lat <= 40.5 && lng >= 43.5 && lng <= 64; }
+function pair(a, b) {
+  a = Number(a); b = Number(b);
+  if (!inIran(a, b) && inIran(b, a)) { var t = a; a = b; b = t; }
+  if (!isFinite(a) || !isFinite(b) || Math.abs(a) > 90 || Math.abs(b) > 180 || (a === 0 && b === 0)) { return null; }
+  return [Math.round(a * 1e6) / 1e6, Math.round(b * 1e6) / 1e6];
+}
+function geohash(h) {
+  var chars = '0123456789bcdefghjkmnpqrstuvwxyz', lat = [-90, 90], lng = [-180, 180], even = true;
+  h = String(h).toLowerCase();
+  for (var i = 0; i < h.length; i++) {
+    var v = chars.indexOf(h.charAt(i));
+    if (v < 0) { return null; }
+    for (var bit = 4; bit >= 0; bit--) {
+      var on = (v >> bit) & 1, r = even ? lng : lat, mid = (r[0] + r[1]) / 2;
+      r[on ? 0 : 1] = mid; even = !even;
+    }
+  }
+  return [(lat[0] + lat[1]) / 2, (lng[0] + lng[1]) / 2];
+}
+function decodeAll(t) { for (var i = 0; i < 2; i++) { try { t = decodeURIComponent(t); } catch (e) { break; } } return t; }
+function parseLink(text) {
+  var t = String(text == null ? '' : text).replace(/[۰-۹]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d); })
+    .replace(/[٠-٩]/g, function (d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d); }).replace(/٫/g, '.').replace(/،/g, ',');
+  t = decodeAll(t);
+  if (!t.trim()) { return null; }
+  var n = '(-?\\d{1,3}\\.\\d+)';
+  var res = [
+    '!3d' + n + '!4d' + n,
+    '[?&](?:q|query|ll|sll|destination|daddr|center|coordinate|to)=(?:ll\\.|loc:)?' + n + '\\s*,\\s*' + n,
+    '[?&]latitude=' + n + '.*?[?&]longitude=' + n,
+    '[?&]lat=' + n + '.*?[?&](?:lng|lon|long)=' + n,
+    '[?&]mlat=' + n + '.*?[?&]mlon=' + n,
+    '/place/' + n + ',\\s*' + n,
+    '@' + n + ',' + n,
+    '#c' + n + '-' + n + '-',
+    '#map=\\d+(?:\\.\\d+)?/' + n + '/' + n,
+    '#\\d+(?:\\.\\d+)?/' + n + '/' + n,
+    '/destination/' + n + ',' + n,
+    'geo:' + n + ',' + n
+  ];
+  for (var i = 0; i < res.length; i++) {
+    var m = new RegExp(res[i], 'i').exec(t);
+    var p = m && pair(m[1], m[2]);
+    if (p) { return p; }
+  }
+  var w = /waze\.com\/ul\/h([0-9b-hjkmnp-z]{5,12})/i.exec(t);
+  if (w) { var g = geohash(w[1]); if (g) { return pair(g[0], g[1]); } }
+  var plain = new RegExp('^\\s*\\(?\\s*' + n + '\\s*[,\\s]\\s*' + n + '\\s*\\)?\\s*$').exec(t);
+  return plain ? pair(plain[1], plain[2]) : null;
+}
+function sourceName(t) {
+  t = String(t || '').toLowerCase();
+  var map = [['goo.gl', 'گوگل‌مپ'], ['google.', 'گوگل‌مپ'], ['neshan', 'نشان'], ['nshn.ir', 'نشان'], ['balad', 'بلد'], ['waze', 'ویز'], ['apple.com', 'اپل‌مپ'], ['openstreetmap', 'OpenStreetMap'], ['osm.org', 'OpenStreetMap'], ['geo:', 'لینک geo']];
+  for (var i = 0; i < map.length; i++) { if (t.indexOf(map[i][0]) !== -1) { return map[i][1]; } }
+  return '';
+}
+function looksLikeMapLink(t) {
+  t = String(t || '');
+  return /https?:\/\/|geo:/i.test(t) && /goo\.gl|google\.|neshan|nshn\.ir|balad|waze|apple\.com|openstreetmap|osm\.org|geo:/i.test(t);
+}
+function fa(v) { return String(v).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }); }
+/* لینک را روی یک بخش موقعیت اعمال می‌کند: مختصات در فیلدها، نشانگر نقشه جابه‌جا. */
+function applyLink(host, text) {
+  if (!host) { return; }
+  var msg = host.querySelector('.cmb-location__msg');
+  var say = function (txt, kind) { if (msg) { msg.textContent = txt; msg.className = 'cmb-location__msg' + (kind ? ' is-' + kind : ''); } };
+  var url = (/(https?:\/\/\S+|geo:\S+)/i.exec(String(text)) || [String(text)])[0];
+  var put = function (p, src) {
+    var a = document.getElementById(host.dataset.latInput), b = document.getElementById(host.dataset.lngInput);
+    if (!a || !b || a.disabled || b.disabled) { return; }
+    a.value = p[0].toFixed(6); b.value = p[1].toFixed(6);
+    [a, b].forEach(function (el) { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
+    say('✓ موقعیت' + (src ? ' از ' + src : '') + ' خوانده شد: ' + fa(p[0].toFixed(5)) + '، ' + fa(p[1].toFixed(5)) +
+      (inIran(p[0], p[1]) ? '. برای ثبت، فرم را ذخیره کنید.' : '. این نقطه داخل ایران نیست؛ لینک را بررسی کنید.'), inIran(p[0], p[1]) ? 'ok' : 'warn');
+  };
+  var p = parseLink(text);
+  if (p) { put(p, sourceName(text)); return; }
+  if (!String(text).trim()) { say(''); return; }
+  if (!looksLikeMapLink(url) || !window.CMBLocation.resolve) {
+    say('مختصاتی در این لینک پیدا نشد. لینک «اشتراک‌گذاری» گوگل‌مپ، نشان، بلد یا ویز را بچسبانید، یا مختصات را دستی وارد کنید.', 'bad');
+    return;
+  }
+  say('در حال خواندن لینک کوتاه…');
+  window.CMBLocation.resolve(url).then(function (r) {
+    if (r && r.success !== false && r.lat !== undefined) { put([Number(r.lat), Number(r.lng)], r.source || sourceName(url)); }
+    else { say((r && r.message) || 'در این لینک موقعیتی پیدا نشد.', 'bad'); }
+  }, function () { say('ارتباط با سرور برقرار نشد؛ دوباره امتحان کنید یا مختصات را دستی وارد کنید.', 'bad'); });
+}
 function html(o) {
   o = o || {};
   // نمایش برای مشتری فقط با کلید نشان؛ بدون آن، دکمه‌ی «مسیریابی» کافی است
   if (!o.editable && (!coords(o.lat, o.lng) || !config.key)) { return ''; }
   var id = 'cmb-location-' + (++nextId);
+  var paste = o.editable ? '<div class="cmb-location__paste">' +
+      '<label class="cmb-location__pl" for="' + id + '-link">لینک موقعیت را بچسبانید</label>' +
+      '<input class="cmb-location__link" id="' + id + '-link" type="url" dir="ltr" inputmode="url" autocomplete="off" data-cmb-map-link placeholder="https://maps.app.goo.gl/…">' +
+      '<p class="cmb-location__msg" role="status" aria-live="polite"></p>' +
+      '<p class="cmb-location__sub">از گوگل‌مپ، نشان، بلد، ویز یا هر نقشه‌ی دیگر «اشتراک‌گذاری ← کپی لینک»؛ مختصات خودکار پر می‌شود.</p></div>' : '';
   return '<section class="cmb-location" data-cmb-location data-lat="' + esc(o.lat) + '" data-lng="' + esc(o.lng) + '"' +
     ' data-lat-input="' + esc(o.latInput || '') + '" data-lng-input="' + esc(o.lngInput || '') + '" data-editable="' + (o.editable ? '1' : '0') + '" data-title="' + esc(o.title || '') + '"' +
-    ' aria-label="' + esc(o.editable ? 'انتخاب موقعیت مرکز' : 'موقعیت ' + (o.title || 'مرکز')) + '">' +
+    ' aria-label="' + esc(o.editable ? 'انتخاب موقعیت مرکز' : 'موقعیت ' + (o.title || 'مرکز')) + '">' + paste +
     '<button type="button" class="cmb-location__toggle" data-cmb-map-open aria-expanded="false" aria-controls="' + id + '">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>' +
       (o.editable ? 'انتخاب موقعیت روی نقشهٔ نشان' : 'نمایش روی نقشه') + '</button>' +
@@ -185,5 +280,29 @@ document.addEventListener('click', function (e) {
 document.addEventListener('change', function (e) {
   instances.forEach(function (x) { if (e.target.id && (e.target.id === x.host.dataset.latInput || e.target.id === x.host.dataset.lngInput)) { x.set(read(x.host), true); } });
 });
-window.CMBLocation = { html: html, sync: prune, coords: coords };
+/* چسباندن یا تایپ لینک در کادر «لینک موقعیت» */
+var linkTimer = null;
+document.addEventListener('input', function (e) {
+  var el = e.target;
+  if (!el || !el.hasAttribute || !el.hasAttribute('data-cmb-map-link')) { return; }
+  clearTimeout(linkTimer);
+  linkTimer = setTimeout(function () { applyLink(el.closest('[data-cmb-location]'), el.value); }, 250);
+});
+/* لینک نقشه‌ای که اشتباهی در کادر «نشانی» چسبانده شود: موقعیت خوانده می‌شود و متن
+   نشانی دست نمی‌خورد. کادر نشانی باید data-cmb-address داشته باشد. */
+document.addEventListener('paste', function (e) {
+  var el = e.target;
+  if (!el || !el.hasAttribute || !el.hasAttribute('data-cmb-address')) { return; }
+  var text = (e.clipboardData || window.clipboardData) ? (e.clipboardData || window.clipboardData).getData('text') : '';
+  if (!looksLikeMapLink(text)) { return; }
+  var form = el.closest('.pn-modal, form, .pn-card') || document;
+  var host = form.querySelector('[data-cmb-location][data-editable="1"]');
+  if (!host) { return; }
+  e.preventDefault();
+  var box = host.querySelector('[data-cmb-map-link]');
+  if (box) { box.value = text.trim(); }
+  applyLink(host, text);
+  if (box) { box.scrollIntoView({ block: 'nearest' }); }
+});
+window.CMBLocation = { html: html, sync: prune, coords: coords, parse: parseLink, apply: applyLink, resolve: null };
 })();
