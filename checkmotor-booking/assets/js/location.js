@@ -45,11 +45,12 @@ function parseLink(text) {
   var n = '(-?\\d{1,3}\\.\\d+)';
   var res = [
     '!3d' + n + '!4d' + n,
-    '[?&](?:q|query|ll|sll|destination|daddr|center|coordinate|to)=(?:ll\\.|loc:)?' + n + '\\s*,\\s*' + n,
+    '[?&](?:q|query|ll|sll|destination|daddr|center|coordinate|coords?|latlng|latLng|to|markers?|location|loc|point|pt)=(?:ll\\.|loc:)?' + n + '\\s*,\\s*' + n,
     '[?&]latitude=' + n + '.*?[?&]longitude=' + n,
     '[?&]lat=' + n + '.*?[?&](?:lng|lon|long)=' + n,
     '[?&]mlat=' + n + '.*?[?&]mlon=' + n,
-    '/place/' + n + ',\\s*' + n,
+    '/(?:place|search)/' + n + ',(?:\\+|\\s)*' + n,
+    '/dir/(?:[^/@?#]*/)*' + n + ',(?:\\+|\\s)*' + n + '(?:[/?#]|$)',
     '@' + n + ',' + n,
     '#c' + n + '-' + n + '-',
     '#map=\\d+(?:\\.\\d+)?/' + n + '/' + n,
@@ -64,6 +65,11 @@ function parseLink(text) {
   }
   var w = /waze\.com\/ul\/h([0-9b-hjkmnp-z]{5,12})/i.exec(t);
   if (w) { var g = geohash(w[1]); if (g) { return pair(g[0], g[1]); } }
+  var dms = '(\\d{1,3})\\s*°\\s*(\\d{1,2})\\s*[\'′]\\s*(\\d{1,2}(?:\\.\\d+)?)\\s*(?:"|″|\'\')?\\s*';
+  var d = new RegExp(dms + '([NS])[\\s,+]*' + dms + '([EW])', 'i').exec(t);
+  if (d) {
+    return pair((+d[1] + d[2] / 60 + d[3] / 3600) * (/s/i.test(d[4]) ? -1 : 1), (+d[5] + d[6] / 60 + d[7] / 3600) * (/w/i.test(d[8]) ? -1 : 1));
+  }
   var plain = new RegExp('^\\s*\\(?\\s*' + n + '\\s*[,\\s]\\s*' + n + '\\s*\\)?\\s*$').exec(t);
   return plain ? pair(plain[1], plain[2]) : null;
 }
@@ -75,7 +81,7 @@ function sourceName(t) {
 }
 function looksLikeMapLink(t) {
   t = String(t || '');
-  return /https?:\/\/|geo:/i.test(t) && /goo\.gl|google\.|neshan|nshn\.ir|balad|waze|apple\.com|openstreetmap|osm\.org|geo:/i.test(t);
+  return /https?:\/\/|geo:|waze:\/\//i.test(t) && /goo\.gl|google\.|neshan|nshn\.ir|balad|waze|apple\.com|openstreetmap|osm\.org|geo:/i.test(t);
 }
 function fa(v) { return String(v).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }); }
 /* لینک را روی یک بخش موقعیت اعمال می‌کند: مختصات در فیلدها، نشانگر نقشه جابه‌جا. */
@@ -286,7 +292,12 @@ document.addEventListener('input', function (e) {
   var el = e.target;
   if (!el || !el.hasAttribute || !el.hasAttribute('data-cmb-map-link')) { return; }
   clearTimeout(linkTimer);
-  linkTimer = setTimeout(function () { applyLink(el.closest('[data-cmb-location]'), el.value); }, 250);
+  linkTimer = setTimeout(function () {
+    // متن «اشتراک‌گذاری» (مثل «معبر بدون نام» + لینک نشان): در کادر فقط خود لینک بماند
+    var only = /(https?:\/\/[^\s"'<>]+)/i.exec(el.value);
+    if (only && only[1] !== el.value.trim()) { el.value = only[1]; }
+    applyLink(el.closest('[data-cmb-location]'), el.value);
+  }, 250);
 });
 /* لینک نقشه‌ای که اشتباهی در کادر «نشانی» چسبانده شود: موقعیت خوانده می‌شود و متن
    نشانی دست نمی‌خورد. کادر نشانی باید data-cmb-address داشته باشد. */
@@ -300,7 +311,7 @@ document.addEventListener('paste', function (e) {
   if (!host) { return; }
   e.preventDefault();
   var box = host.querySelector('[data-cmb-map-link]');
-  if (box) { box.value = text.trim(); }
+  if (box) { box.value = ((/(https?:\/\/[^\s"'<>]+)/i.exec(text) || [text.trim()])[0]); }
   applyLink(host, text);
   if (box) { box.scrollIntoView({ block: 'nearest' }); }
 });

@@ -19,6 +19,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CMB_Geo_Link {
 
+	/** پرش‌های آخرین resolve، برای گزارش عیب‌یابی وقتی موقعیت پیدا نشد. */
+	protected static $hops = array();
+
 	/** میزبان‌هایی که سرور اجازه دارد لینک کوتاهشان را دنبال کند. */
 	const HOSTS = array(
 		'maps.app.goo.gl', 'goo.gl', 'g.co', 'google.com', 'maps.google.com', 'www.google.com', 'consent.google.com',
@@ -52,6 +55,12 @@ class CMB_Geo_Link {
 		$t = (string) $text;
 		$t = strtr( $t, array( '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4', '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
 			'٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4', '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9', '٫' => '.', '،' => ',' ) );
+
+		// بدنه‌ی صفحه: &amp; ،\/ و \u0026 در HTML و JSON
+		if ( false !== strpos( $t, '&' ) || false !== strpos( $t, '\\' ) ) {
+			$t = str_replace( array( '\\/', '\\u0026', '\\u003d', '\\u003D' ), array( '/', '&', '=', '=' ), $t );
+			$t = html_entity_decode( $t, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		}
 
 		// دو بار، برای لینک‌هایی که داخل پارامتر continue/link کدگذاری شده‌اند
 		return rawurldecode( rawurldecode( $t ) );
@@ -126,25 +135,35 @@ class CMB_Geo_Link {
 		// به ترتیب دقت: نشانگر محل پیش از مرکز دید نقشه
 		$patterns = array(
 			'/!3d' . $n . '!4d' . $n . '/',                                   // گوگل: محل دقیق
-			'/[?&](?:q|query|ll|sll|destination|daddr|center|coordinate|to)=(?:ll\.|loc:)?' . $n . '\s*,\s*' . $n . '/i',
+			'/[?&](?:q|query|ll|sll|destination|daddr|center|coordinate|coords?|latlng|latLng|to|markers?|location|loc|point|pt)=(?:ll\.|loc:)?' . $n . '\s*,\s*' . $n . '/i',
 			'/[?&]latitude=' . $n . '.*?[?&]longitude=' . $n . '/i',         // بلد
 			'/[?&]lat=' . $n . '.*?[?&](?:lng|lon|long)=' . $n . '/i',
 			'/[?&]mlat=' . $n . '.*?[?&]mlon=' . $n . '/i',                   // OpenStreetMap
-			'/\/place\/' . $n . ',\s*' . $n . '/',
+			'/\/(?:place|search)\/' . $n . ',(?:\+|\s)*' . $n . '/',                // گوگل: /search/35.7,+51.4
+			'/\/dir\/(?:[^\/@?#]*\/)*' . $n . ',(?:\+|\s)*' . $n . '(?:[\/?#]|$)/', // گوگل: مسیر؛ آخرین نقطه = مقصد
 			'/@' . $n . ',' . $n . '/',                                       // گوگل و نشان: مرکز دید
 			'/#c' . $n . '-' . $n . '-/',                                     // نشان: #c35.7-51.4-17z
 			'/#map=\d+(?:\.\d+)?\/' . $n . '\/' . $n . '/',                    // OpenStreetMap
 			'/#\d+(?:\.\d+)?\/' . $n . '\/' . $n . '/',                        // بلد: #15/35.7/51.4
 			'/\/destination\/' . $n . ',' . $n . '/',                         // نشان: مسیریابی
 			'/geo:' . $n . ',' . $n . '/i',
-			'/"latitude"\s*:\s*"?' . $n . '"?\s*,\s*"longitude"\s*:\s*"?' . $n . '/i',
-			'/"lat"\s*:\s*"?' . $n . '"?\s*,\s*"(?:lng|lon)"\s*:\s*"?' . $n . '/i',
-			'/"coordinates"\s*:\s*\[\s*' . $n . '\s*,\s*' . $n . '\s*\]/i',      // GeoJSON: [طول، عرض]؛ pair() برمی‌گرداند
+			// داده‌ی صفحه (لینک کوتاهی که به صفحه‌ی مکان می‌رسد)
+			'/"lat(?:itude)?"\s*:\s*"?' . $n . '"?[^{}\[\]]{0,200}?"(?:lng|lon|long|longitude)"\s*:\s*"?' . $n . '/i',
+			array( '/"(?:lng|lon|long|longitude)"\s*:\s*"?' . $n . '"?[^{}\[\]]{0,200}?"lat(?:itude)?"\s*:\s*"?' . $n . '/i', true ),
+			array( '/"x"\s*:\s*"?' . $n . '"?\s*,\s*"y"\s*:\s*"?' . $n . '/i', true ),   // نشان: x = طول، y = عرض
+			'/"y"\s*:\s*"?' . $n . '"?\s*,\s*"x"\s*:\s*"?' . $n . '/i',
+			'/latitude["\']\s+content=["\']' . $n . '["\'][\s\S]{0,400}?longitude["\']\s+content=["\']' . $n . '/i', // متای place:location
+			'/content=["\']' . $n . '["\']\s+(?:property|itemprop|name)=["\'][a-z:]*latitude["\'][\s\S]{0,400}?content=["\']' . $n . '["\']\s+(?:property|itemprop|name)=["\'][a-z:]*longitude/i',
+			array( '/APP_INITIALIZATION_STATE=\[\[\[\s*-?[\d.]+\s*,\s*' . $n . '\s*,\s*' . $n . '\s*\]/', true ), // گوگل: [ارتفاع، طول، عرض]
+			array( '/"coordinates"\s*:\s*\[\s*' . $n . '\s*,\s*' . $n . '\s*\]/i', true ), // GeoJSON: [طول، عرض]
 		);
 
 		foreach ( $patterns as $re ) {
+			$swap = is_array( $re ) && ! empty( $re[1] );
+			$re   = is_array( $re ) ? $re[0] : $re;
+
 			if ( preg_match( $re, $t, $m ) ) {
-				$p = self::pair( $m[1], $m[2] );
+				$p = $swap ? self::pair( $m[2], $m[1] ) : self::pair( $m[1], $m[2] );
 
 				if ( $p ) {
 					return $p;
@@ -159,6 +178,14 @@ class CMB_Geo_Link {
 			if ( $g ) {
 				return self::pair( $g[0], $g[1] );
 			}
+		}
+
+		// درجه/دقیقه/ثانیه، مثل «31°19'12.4"N 48°40'09.1"E» (گوگل‌مپ و گوگل‌ارث)
+		$dms = '(\d{1,3})\s*°\s*(\d{1,2})\s*[\'′]\s*(\d{1,2}(?:\.\d+)?)\s*(?:"|″|\'\')?\s*';
+		if ( preg_match( '/' . $dms . '([NS])[\s,+]*' . $dms . '([EW])/iu', $t, $m ) ) {
+			$la = ( $m[1] + $m[2] / 60 + $m[3] / 3600 ) * ( 'S' === strtoupper( $m[4] ) ? -1 : 1 );
+			$lo = ( $m[5] + $m[6] / 60 + $m[7] / 3600 ) * ( 'W' === strtoupper( $m[8] ) ? -1 : 1 );
+			return self::pair( $la, $lo );
 		}
 
 		// فقط دو عدد اعشاری، مثل «35.7, 51.4» یا «35.7 51.4»
@@ -177,7 +204,7 @@ class CMB_Geo_Link {
 			return false;
 		}
 
-		foreach ( self::HOSTS as $h ) {
+		foreach ( (array) apply_filters( 'cmb_geo_link_hosts', self::HOSTS ) as $h ) {
 			if ( $host === $h || substr( $host, -strlen( '.' . $h ) ) === '.' . $h ) {
 				return true;
 			}
@@ -186,17 +213,40 @@ class CMB_Geo_Link {
 		return false;
 	}
 
+	/** پرش بعدی که خود صفحه نشان می‌دهد: meta refresh، location در جاوااسکریپت، og:url یا canonical. */
+	protected static function next_from_body( $body ) {
+		$b = str_replace( array( '\\/', '\\u0026' ), array( '/', '&' ), (string) $body );
+		$res = array(
+			'~http-equiv=["\']?refresh["\']?[^>]*content=["\'][^"\']*?url\s*=\s*["\']?([^"\'\s>]+)~i',
+			'~content=["\'][^"\']*?url\s*=\s*([^"\'\s>]+)["\'][^>]*http-equiv=["\']?refresh~i',
+			'~(?:window\.|document\.)?location(?:\.href)?\s*=\s*["\'](https?://[^"\']+)~i',
+			'~location\.(?:replace|assign)\(\s*["\'](https?://[^"\']+)~i',
+			'~property=["\']og:url["\'][^>]*content=["\']([^"\']+)~i',
+			'~content=["\']([^"\']+)["\'][^>]*property=["\']og:url~i',
+			'~rel=["\']canonical["\'][^>]*href=["\']([^"\']+)~i',
+		);
+
+		foreach ( $res as $re ) {
+			if ( preg_match( $re, $b, $m ) ) {
+				return html_entity_decode( trim( $m[1] ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+			}
+		}
+
+		return '';
+	}
+
 	/**
-	 * مختصات لینک؛ لینک کوتاه تا مقصد دنبال می‌شود (فقط میزبان‌های مجاز،
-	 * حداکثر ۵ تغییر مسیر، ۸ ثانیه، بدنه‌ی حداکثر ۵۱۲ کیلوبایت).
+	 * مختصات لینک؛ لینک کوتاه گام‌به‌گام تا مقصد دنبال می‌شود (حداکثر ۶ پرش، هر کدام
+	 * ۸ ثانیه و بدنه‌ی حداکثر ۵۱۲ کیلوبایت). هر پرش جداست تا Location (حتی اگر به
+	 * intent:// یا neshan:// برود)، meta refresh و og:url هر کدام خوانده شوند.
 	 *
 	 * @return array|WP_Error { lat, lng, source, url }
 	 */
 	public static function resolve( $url ) {
 		$url = trim( (string) $url );
 
-		if ( preg_match( '~https?://\S+~i', $url, $m ) ) {
-			$url = $m[0]; // متن «اشتراک‌گذاری» گاهی جمله‌ای همراه لینک است
+		if ( preg_match( '~https?://[^\s"\'<>]+~i', $url, $m ) ) {
+			$url = rtrim( $m[0], '.,;:!?)»،؛' ); // متن «اشتراک‌گذاری» نام مکان را هم همراه لینک دارد
 		}
 
 		$p = self::parse( $url );
@@ -209,38 +259,124 @@ class CMB_Geo_Link {
 			return new WP_Error( 'cmb_geo_host', 'این لینک از سرویس‌های نقشه‌ی شناخته‌شده نیست. لینک گوگل‌مپ، نشان، بلد یا ویز را بچسبانید، یا مختصات را دستی وارد کنید.', array( 'status' => 400 ) );
 		}
 
-		$res = wp_safe_remote_get(
-			$url,
-			array(
-				'timeout'             => 8,
-				'redirection'         => 5,
-				'limit_response_size' => 512 * KB_IN_BYTES,
-				'user-agent'          => 'Mozilla/5.0 (compatible; CheckMotorBooking/' . ( defined( 'CMB_VERSION' ) ? CMB_VERSION : '1' ) . ')',
-				'headers'             => array( 'Accept-Language' => 'fa,en;q=0.8' ),
-			)
+		$cache = 'cmb_geo_' . md5( $url );
+		$hit   = get_transient( $cache );
+
+		if ( is_array( $hit ) && isset( $hit['lat'], $hit['lng'] ) ) {
+			return $hit;
+		}
+
+		// اول با نشانی خودمان (بیشتر سرویس‌ها به ربات پیش‌نمایش صفحه‌ی ساده با og می‌دهند)،
+		// اگر چیزی پیدا نشد یک بار هم مثل مرورگر معمولی
+		$agents = array(
+			'Mozilla/5.0 (compatible; CheckMotorBooking/' . ( defined( 'CMB_VERSION' ) ? CMB_VERSION : '1' ) . '; +' . home_url( '/' ) . ')',
+			'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
 		);
+		$fetched    = false;
+		self::$hops = array();
 
-		if ( is_wp_error( $res ) ) {
-			return new WP_Error( 'cmb_geo_fetch', 'باز کردن لینک ممکن نشد. لینک کامل نقشه (نه کوتاه‌شده) را بچسبانید یا مختصات را دستی وارد کنید.', array( 'status' => 502 ) );
-		}
+		foreach ( $agents as $agent ) {
+			$out = self::follow( $url, $agent, $fetched );
 
-		$final = '';
-
-		if ( isset( $res['http_response'] ) && is_object( $res['http_response'] ) && method_exists( $res['http_response'], 'get_response_object' ) ) {
-			$obj   = $res['http_response']->get_response_object();
-			$final = isset( $obj->url ) ? (string) $obj->url : '';
-		}
-
-		$location = (string) wp_remote_retrieve_header( $res, 'location' );
-
-		foreach ( array( $final, $location, (string) wp_remote_retrieve_body( $res ) ) as $candidate ) {
-			$p = '' !== $candidate ? self::parse( $candidate ) : null;
-
-			if ( $p ) {
-				return array( 'lat' => $p[0], 'lng' => $p[1], 'source' => self::source_name( $url . ' ' . $final ), 'url' => $final ? $final : $url );
+			if ( $out ) {
+				set_transient( $cache, $out, DAY_IN_SECONDS );
+				return $out;
 			}
 		}
 
+		if ( class_exists( 'CMB_Debug' ) ) {
+			CMB_Debug::log( 'warn', 'geo', $fetched ? 'cmb_geo_none' : 'cmb_geo_fetch', 'لینک نقشه خوانده نشد: ' . $url, array( 'context' => array( 'hops' => self::$hops ) ) );
+		}
+
+		if ( ! $fetched ) {
+			return new WP_Error( 'cmb_geo_fetch', 'باز کردن لینک ممکن نشد. چند لحظه بعد دوباره بچسبانید، یا لینک کامل نقشه (نه کوتاه‌شده) یا مختصات را وارد کنید.', array( 'status' => 502 ) );
+		}
+
 		return new WP_Error( 'cmb_geo_none', 'در این لینک موقعیتی پیدا نشد. در برنامه‌ی نقشه روی محل بزنید و لینک «اشتراک‌گذاری» همان نقطه را بچسبانید، یا مختصات را دستی وارد کنید.', array( 'status' => 422 ) );
+	}
+
+	/** دنبال کردن پرش‌به‌پرش؛ مختصات یا null. $fetched: آیا دست‌کم یک پاسخ رسید. */
+	protected static function follow( $url, $agent, &$fetched ) {
+		$current = $url;
+		$seen    = array();
+		$trail   = $url;
+
+		for ( $hop = 0; $hop < 6 && '' !== $current && ! isset( $seen[ $current ] ); $hop++ ) {
+			$seen[ $current ] = true;
+
+			$res = wp_safe_remote_get(
+				$current,
+				array(
+					'timeout'             => 8,
+					'redirection'         => 0,
+					'limit_response_size' => 512 * KB_IN_BYTES,
+					'user-agent'          => $agent,
+					'headers'             => array( 'Accept' => 'text/html,application/xhtml+xml,*/*;q=0.8', 'Accept-Language' => 'fa,en;q=0.8' ),
+				)
+			);
+
+			if ( is_wp_error( $res ) ) {
+				self::$hops[] = array( 'url' => substr( $current, 0, 300 ), 'error' => $res->get_error_message() );
+				return null;
+			}
+
+			$fetched = true;
+			$code    = (int) wp_remote_retrieve_response_code( $res );
+			$final   = '';
+
+			if ( isset( $res['http_response'] ) && is_object( $res['http_response'] ) && method_exists( $res['http_response'], 'get_response_object' ) ) {
+				$obj   = $res['http_response']->get_response_object();
+				$final = isset( $obj->url ) && $obj->url !== $current ? (string) $obj->url : '';
+			}
+
+			$location = wp_remote_retrieve_header( $res, 'location' );
+			$location = is_array( $location ) ? (string) end( $location ) : (string) $location;
+			$body     = (string) wp_remote_retrieve_body( $res );
+
+			self::$hops[] = array(
+				'url'      => substr( $current, 0, 300 ),
+				'http'     => $code,
+				'location' => substr( $location, 0, 300 ),
+				'bytes'    => strlen( $body ),
+				'title'    => preg_match( '~<title[^>]*>([^<]{0,150})~i', $body, $tm ) ? trim( $tm[1] ) : '',
+				'head'     => substr( preg_replace( '~\s+~', ' ', $body ), 0, 400 ),
+			);
+
+			foreach ( array( $final, $location, $body ) as $k => $candidate ) {
+				$p = '' !== $candidate ? self::parse( $candidate ) : null;
+
+				// عددی که از دل صفحه درآمده فقط اگر داخل ایران باشد (نه هر x/y تصادفی)
+				if ( $p && 2 === $k && ! ( $p[0] >= 24 && $p[0] <= 40.5 && $p[1] >= 43.5 && $p[1] <= 64 ) ) {
+					$p = null;
+				}
+
+				if ( $p ) {
+					$trail .= ' ' . $final . ' ' . $location . ' ' . $current;
+					return array( 'lat' => $p[0], 'lng' => $p[1], 'source' => self::source_name( $trail ), 'url' => $final ? $final : ( $location ? $location : $current ) );
+				}
+			}
+
+			$next = '';
+
+			if ( $code >= 300 && $code < 400 && '' !== $location ) {
+				$next = WP_Http::make_absolute_url( $location, $current );
+				// تغییر مسیر از خود سرویس نقشه به هر میزبان https مجاز است (wp_safe جلوی شبکه‌ی داخلی را می‌گیرد)
+				if ( ! preg_match( '~^https?://~i', $next ) ) {
+					$next = '';
+				}
+			} elseif ( '' !== $body ) {
+				$next = self::next_from_body( $body );
+				$next = '' !== $next ? WP_Http::make_absolute_url( $next, $current ) : '';
+				// پرش از دل صفحه فقط به سرویس‌های نقشه
+				if ( '' !== $next && ( ! preg_match( '~^https?://~i', $next ) || ! self::allowed_host( $next ) ) ) {
+					$next = '';
+				}
+			}
+
+			$trail  .= ' ' . $current;
+			$current = $next;
+		}
+
+		return null;
 	}
 }
