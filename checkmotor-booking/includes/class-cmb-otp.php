@@ -245,6 +245,22 @@ class CMB_OTP {
 	 *
 	 * @return int|WP_Error شناسه‌ی کاربر.
 	 */
+	/**
+	 * ورود با شماره‌ای که از راه دیگری تأیید شده (کد نظرسنجی پیامک‌شده به همان
+	 * گوشی؛ سند نظرسنجی، تصمیم ۶). همان کوکی ۱۴ روزه‌ی ورود با کد.
+	 *
+	 * @return int|WP_Error
+	 */
+	public static function login_phone( $phone, $name = '' ) {
+		$phone = cmb_normalize_phone( $phone );
+
+		if ( ! $phone ) {
+			return new WP_Error( 'cmb_invalid_phone', 'شماره موبایل معتبر نیست.', array( 'status' => 400 ) );
+		}
+
+		return self::login_or_register( $phone, $name );
+	}
+
 	protected static function login_or_register( $phone, $name = '' ) {
 		$user    = self::find_user( $phone );
 		$current = get_current_user_id();

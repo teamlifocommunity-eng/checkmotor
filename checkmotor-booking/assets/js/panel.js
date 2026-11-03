@@ -18,7 +18,7 @@ if (window.CMBLocation) {
 }
 
 var VIEWS = ['summary', 'board', 'bookings', 'customers', 'services', 'closures', 'settings', 'refunds',
-             'bwallet', 'profile', 'agencies', 'report', 'smslog', 'debug', 'free'];
+             'bwallet', 'profile', 'agencies', 'report', 'smslog', 'debug', 'free', 'reviews'];
 var PAY = C.pay || { on: false, used: false, canRefund: false, shopPct: 100, setup: null };
 
 /* برگشت‌ها به کیف پول مشتری می‌رود، نه کارت: بخش «بیعانه و کیف پول» */
@@ -65,6 +65,8 @@ var S = {
   // نمایندگی‌ها: کیف پول و پروفایل شعبه‌ی جاری، و بخش‌های مدیر سایت
   svcMeta: null, bwallet: null, bwPage: 1, bwAmount: '', profile: null,
   agencies: null, agReport: null, agFrom: '', agTo: '',
+  /* نظرسنجی بعد از خدمت (۱.۵۲.۰) */
+  rvData: null, rvF: { scope: 'month', from: '', to: '', block: '', svc: '', rating: '', follow: 0, branch: 'all', page: 1 }, rvDraft: {},
   // آزمون و عیب‌یابی (فقط مدیر سایت)
   dbg: { tab: 'checks', checks: null, sim: null, simBranch: 0, simService: 0, simPhone: '', simBusy: false,
          tries: {}, tryBusy: '', st: null, stBusy: false, stHist: null,
@@ -250,6 +252,7 @@ var I = {
   clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 6.8v5.4l3.3 2"/></svg>',
   car: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14.5l1.7-5a2.4 2.4 0 0 1 2.3-1.6h10a2.4 2.4 0 0 1 2.3 1.6l1.7 5"/><path d="M3 14.5h18v3.6a1 1 0 0 1-1 1h-1.6a1 1 0 0 1-1-1v-.9H6.6v.9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>',
   user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-1.5a4.5 4.5 0 0 0-4.5-4.5h-7A4.5 4.5 0 0 0 4 19.5V21"/><circle cx="12" cy="7.5" r="4.2"/></svg>',
+  star: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M12 2.8l2.85 5.78 6.38.93-4.62 4.5 1.09 6.35L12 17.36l-5.7 3 1.09-6.35-4.62-4.5 6.38-.93z"/></svg>',
   users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 20.5v-1.6a4 4 0 0 0-4-4h-5a4 4 0 0 0-4 4v1.6"/><circle cx="10" cy="7.5" r="3.7"/><path d="M21.5 20.5v-1.6a4 4 0 0 0-3-3.9"/><path d="M15.5 4.1a4 4 0 0 1 0 7"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6.5L9.3 17.2 4 12"/></svg>',
   ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.2 12.3l2.6 2.6 5-5"/></svg>',
@@ -295,6 +298,7 @@ var NAV = [
   { k: 'board',    t: 'تخته روزها',   ic: I.grid },
   { k: 'bookings', t: 'نوبت‌ها',      ic: I.list },
   { k: 'customers', t: 'مشتری‌ها',    ic: I.users },
+  { k: 'reviews',  t: 'نظرسنجی',      ic: I.star },
   { k: 'services', t: 'خدمات',        ic: I.tag },
   { k: 'closures', t: 'بستن روز',     ic: I.lock },
   { k: 'settings', t: 'تنظیمات شیفت', ic: I.cog }
@@ -2959,6 +2963,7 @@ function switchBranch(id, then) {
     S.board = S.list = S.services = S.svcMeta = S.customers = S.closures = S.sched = S.free = null;
     S.custBranch = '';
     S.refunds = S.wallets = S.payReview = S.payReport = S.bwallet = S.profile = null;
+    S.rvData = null; S.rvDraft = {}; S.rvF.branch = 'all'; S.rvF.page = 1;
     S.health = null;
     S.got = {};
     S.filter = newFilter();
@@ -3045,6 +3050,199 @@ function exportAgReport() {
   setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
 }
 
+/* ═══ نظرسنجی بعد از خدمت (۱.۵۲.۰) ═══ */
+
+var RV_LABELS = ['', 'خیلی بد', 'بد', 'معمولی', 'خوب', 'عالی'];
+var RV_FOLLOW = { open: 'باز', called: 'تماس گرفته شد', resolved: 'حل شد' };
+
+function rvStars(n) {
+  var o = '';
+  for (var i = 1; i <= 5; i++) { o += '<i class="' + (i <= n ? 'is-on' : '') + '">' + I.star + '</i>'; }
+  return '<span class="pn-rvst" role="img" aria-label="' + fa(n) + ' از ۵ ستاره">' + o + '</span>';
+}
+
+function rvQuery(extra) {
+  var f = S.rvF;
+  return 'scope=' + encodeURIComponent(f.scope) + '&from=' + encodeURIComponent(f.from) + '&to=' + encodeURIComponent(f.to) +
+    '&block=' + encodeURIComponent(f.block) + '&svc=' + encodeURIComponent(f.svc) + '&rating=' + encodeURIComponent(f.rating) +
+    '&follow=' + (f.follow ? 1 : 0) + '&branch=' + encodeURIComponent(f.branch) + '&page=' + (extra && extra.page ? extra.page : f.page);
+}
+
+function rvPct(v) { return v === null || v === undefined ? '—' : fa(v) + '٪'; }
+function rvAvg(v) { return v === null || v === undefined ? '—' : fa(String(v).replace('.', '٫')); }
+
+function rvTable(title, rows, withBranch) {
+  if (!rows || !rows.length) { return ''; }
+  return '<div class="pn-card pn-rvtab"><div class="pn-card__t">' + esc(title) + '</div>' +
+    '<div class="pn-tablewrap"><table class="pn-table"><thead><tr><th>' + (withBranch ? 'نمایندگی' : 'مورد') + '</th><th>میانگین</th><th>نظر</th><th>نرخ پاسخ</th><th>۱ و ۲ ستاره</th></tr></thead><tbody>' +
+    rows.map(function (x) {
+      return '<tr><td data-label="' + (withBranch ? 'نمایندگی' : 'مورد') + '"><div class="pn-table__b">' + esc(x.label) + '</div></td>' +
+        '<td class="num" data-label="میانگین">' + (x.avg ? '<b>' + rvAvg(x.avg) + '</b> ' + I.star : '—') + '</td>' +
+        '<td class="num" data-label="نظر">' + fa(x.count) + '</td>' +
+        '<td class="num" data-label="نرخ پاسخ">' + rvPct(x.response) + '</td>' +
+        '<td class="num" data-label="۱ و ۲ ستاره">' + rvPct(x.lowPct) + '</td></tr>';
+    }).join('') + '</tbody></table></div></div>';
+}
+
+function rvItem(x, admin) {
+  var d = S.rvDraft[x.id] || { status: x.follow || 'open', note: x.followNote || '' };
+  return '<article class="pn-card pn-rvi' + (x.rating <= 2 ? ' is-low' : '') + '">' +
+    '<div class="pn-rvi__hd">' + rvStars(x.rating) + '<b class="pn-rvi__l">' + esc(x.ratingLabel) + '</b>' +
+      (x.wantsCall ? '<span class="pn-badge pn-badge--bad">درخواست تماس</span>' : '') +
+      (x.follow ? '<span class="pn-badge pn-rvf--' + esc(x.follow) + '">پیگیری: ' + esc(RV_FOLLOW[x.follow] || x.follow) + '</span>' : '') +
+      '<span class="pn-rvi__t">' + fa(esc(x.answeredFa)) + '</span></div>' +
+    (x.tags && x.tags.length ? '<div class="pn-rvi__tags">' + x.tags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
+    (x.comment ? '<p class="pn-rvi__c">' + esc(x.comment) + '</p>' : '') +
+    '<div class="pn-rvi__m"><span><b>' + esc(x.customer || 'مشتری') + '</b> · <a href="tel:' + esc(x.phone) + '" dir="ltr">' + fa(esc(x.phone)) + '</a></span>' +
+      '<span>' + esc(x.service) + (S.rvF.branch === 'all' || admin ? ' · ' + esc(x.branch) : '') + '</span>' +
+      '<span>' + fa(esc(x.dateFa)) + ' · ' + esc(x.blockLabel) + '</span></div>' +
+    (x.follow ? '<div class="pn-rvi__f">' +
+        '<label class="pn-field"><span class="pn-field__l">وضعیت پیگیری</span><select class="pn-in" data-rvf-status="' + x.id + '">' +
+          Object.keys(RV_FOLLOW).map(function (k) { return '<option value="' + k + '"' + (d.status === k ? ' selected' : '') + '>' + RV_FOLLOW[k] + '</option>'; }).join('') +
+        '</select></label>' +
+        '<label class="pn-field pn-rvi__fn"><span class="pn-field__l">یادداشت پیگیری</span><textarea class="pn-in" rows="2" data-rvf-note="' + x.id + '" placeholder="نتیجه‌ی تماس…">' + esc(d.note) + '</textarea></label>' +
+        '<button class="pn-btn pn-btn--dark pn-btn--sm" data-rvf-save="' + x.id + '"' + (S.busy ? ' disabled' : '') + '>ذخیره‌ی پیگیری</button>' +
+        (x.followBy ? '<div class="pn-hint">آخرین پیگیری: ' + esc(x.followBy) + (x.followAtFa ? ' · ' + fa(esc(x.followAtFa)) : '') + '</div>' : '') +
+      '</div>' : '') +
+    '<div class="pn-svcacts">' +
+      '<button class="pn-btn pn-btn--soft pn-btn--sm" data-rv-booking="' + x.booking + '">' + I.list + ' جزئیات نوبت' + (x.code ? ' <span class="pn-code">' + esc(x.code) + '</span>' : '') + '</button>' +
+      (!x.follow ? '<button class="pn-btn pn-btn--soft pn-btn--sm" data-rvf-start="' + x.id + '">پیگیری</button>' : '') +
+      (admin ? '<button class="pn-btn pn-btn--bad pn-btn--sm" data-rv-del="' + x.id + '">' + I.trash + ' حذف</button>' : '') +
+    '</div></article>';
+}
+
+function viewReviews() {
+  var R = S.rvData, f = S.rvF;
+  var admin = R ? R.isAdmin : ctx().isAdmin;
+  var html = head('نظرسنجی', 'امتیاز مشتری‌ها بعد از «انجام شد»',
+    (admin ? '<button class="pn-btn pn-btn--dark" data-rv-csv' + (R && R.total ? '' : ' disabled') + '>' + I.down + ' خروجی اکسل</button>' : '') +
+    '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>');
+
+  if (R && (!R.enabled || !R.pattern) && admin) {
+    html += note('warn', I.alert, !R.enabled ? 'نظرسنجی در تنظیمات خاموش است؛ پیامکی نمی‌رود.'
+      : 'پترن «نظرسنجی» در تنظیمات پیامک وارد نشده؛ تا وارد نشود پیامک نظرسنجی نمی‌رود. لینک ثابت متن پترن: <bdi dir="ltr">' + esc(String(R.url || '').replace(/^https?:\/\/(www\.)?/, '')) + '</bdi>');
+  }
+
+  var scopes = [{ k: 'week', t: 'این هفته' }, { k: 'month', t: 'این ماه' }, { k: 'all', t: 'همه' }];
+  var ranged = !!(f.from || f.to);
+  var blocks = (R && R.blocks) || [{ k: 'morning', t: 'شیفت صبح' }, { k: 'afternoon', t: 'شیفت عصر' }];
+
+  html += '<div class="pn-card"><div class="pn-filters pn-filters--bk">' +
+    '<div class="pn-tabs">' + scopes.map(function (x) {
+      return '<button class="pn-tabs__b' + (f.scope === x.k ? ' is-on' : '') + (ranged ? ' is-muted' : '') + '" data-rv-scope="' + x.k + '">' + x.t + '</button>';
+    }).join('') + '</div>' +
+    (admin && R && R.branches && R.branches.length > 1 ? '<label class="pn-field"><span class="pn-field__l">شعبه</span><select class="pn-in" id="rv-branch">' +
+      '<option value="all"' + (f.branch === 'all' ? ' selected' : '') + '>همه‌ی شعبه‌ها (مقایسه)</option>' +
+      R.branches.map(function (b) { return '<option value="' + b.id + '"' + (String(f.branch) === String(b.id) ? ' selected' : '') + '>' + esc(b.title) + '</option>'; }).join('') +
+      '</select></label>' : '') +
+    '<label class="pn-field"><span class="pn-field__l">از تاریخ</span>' + J.fieldHTML('rv-from', f.from, { placeholder: 'از اول' }) + '</label>' +
+    '<label class="pn-field"><span class="pn-field__l">تا تاریخ</span>' + J.fieldHTML('rv-to', f.to, { placeholder: 'تا آخر' }) + '</label>' +
+    '<label class="pn-field"><span class="pn-field__l">شیفت</span><select class="pn-in" id="rv-block"><option value="">همه</option>' +
+      blocks.map(function (b) { return '<option value="' + esc(b.k) + '"' + (f.block === b.k ? ' selected' : '') + '>' + esc(b.t) + '</option>'; }).join('') + '</select></label>' +
+    (R && R.services && R.services.length ? '<label class="pn-field"><span class="pn-field__l">خدمت</span><select class="pn-in" id="rv-svc"><option value="">همه‌ی خدمات</option>' +
+      R.services.map(function (t) { return '<option' + (f.svc === t ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select></label>' : '') +
+    '<label class="pn-field"><span class="pn-field__l">امتیاز</span><select class="pn-in" id="rv-rating"><option value="">همه</option>' +
+      [5, 4, 3, 2, 1].map(function (n) { return '<option value="' + n + '"' + (String(f.rating) === String(n) ? ' selected' : '') + '>' + fa(n) + ' ستاره — ' + RV_LABELS[n] + '</option>'; }).join('') + '</select></label>' +
+    '<label class="pn-check pn-rv-onlyf"><input type="checkbox" id="rv-follow"' + (f.follow ? ' checked' : '') + '> فقط منتظر پیگیری</label>' +
+    '<button class="pn-btn pn-btn--dark" data-rv-apply>اعمال</button>' +
+  '</div></div>';
+
+  if (!R) { return html + skel(3); }
+
+  var st = R.stats;
+  html += '<div class="pn-rvstats">' +
+    [['میانگین امتیاز', st.avg === null ? '—' : rvAvg(st.avg), st.avg ? rvStars(Math.round(st.avg)) : ''],
+     ['نظر', fa(st.count), fa(st.sent) + ' پیامک'],
+     ['نرخ پاسخ', rvPct(st.response), 'پاسخ به پیامک'],
+     ['۱ و ۲ ستاره', rvPct(st.lowPct), ''],
+     ['منتظر پیگیری', fa(st.follow), st.follow ? '<button class="pn-link" data-rv-onlyf>نمایش صف</button>' : '']].map(function (x, i) {
+      return '<div class="pn-rvstat' + (i === 4 && st.follow ? ' is-alert' : '') + '"><span>' + x[0] + '</span><b>' + x[1] + '</b><small>' + x[2] + '</small></div>';
+    }).join('') + '</div>';
+
+  // توزیع ستاره‌ها
+  var tot = R.dist.reduce(function (a, b) { return a + b; }, 0);
+  html += '<div class="pn-rvgrid"><div class="pn-card"><div class="pn-card__t">توزیع ستاره‌ها</div>' +
+    [5, 4, 3, 2, 1].map(function (n) {
+      var c = R.dist[n - 1] || 0, pc = tot ? Math.round(100 * c / tot) : 0;
+      return '<div class="pn-rvbar' + (n <= 2 ? ' is-low' : '') + '"><span>' + fa(n) + ' ' + I.star + '</span><div><i style="width:' + pc + '%"></i></div><b>' + fa(c) + ' <small>(' + fa(pc) + '٪)</small></b></div>';
+    }).join('') + '</div>' +
+    rvTable('به تفکیک شیفت', R.byBlock) + '</div>';
+
+  if (R.byBranch && R.byBranch.length) { html += rvTable('مقایسه‌ی نمایندگی‌ها', R.byBranch, true); }
+  html += rvTable('به تفکیک خدمت', R.byService);
+
+  html += '<div class="pn-rvlist-h"><h2>' + (f.follow ? 'صف پیگیری' : 'نظرها') + ' <small>' + fa(R.total) + ' مورد</small></h2></div>';
+
+  if (!R.items.length) {
+    html += empty(f.follow ? 'موردی منتظر پیگیری نیست' : 'هنوز نظری ثبت نشده', f.follow ? '' : 'بعد از «انجام شد»، پیامک نظرسنجی برای مشتری می‌رود.');
+  } else {
+    html += R.items.map(function (x) { return rvItem(x, admin); }).join('');
+    if (R.pages > 1) {
+      html += '<div class="pn-pager">' +
+        '<button class="pn-btn pn-btn--soft pn-btn--sm" data-rv-page="' + (R.page - 1) + '"' + (R.page <= 1 ? ' disabled' : '') + '>قبلی</button>' +
+        '<span>صفحه ' + fa(R.page) + ' از ' + fa(R.pages) + '</span>' +
+        '<button class="pn-btn pn-btn--soft pn-btn--sm" data-rv-page="' + (R.page + 1) + '"' + (R.page >= R.pages ? ' disabled' : '') + '>بعدی</button></div>';
+    }
+  }
+
+  html += '<div class="pn-hint">نظرها به تاریخ نوبت شمرده می‌شوند. نرخ پاسخ = نظرهای ثبت‌شده بعد از پیامک ÷ پیامک‌های رفته. نمایندگی نظر را نمی‌بیند که حذف یا ویرایش کند؛ حذف فقط با مدیر کل و در گزارش ثبت می‌شود.</div>';
+  return html;
+}
+
+function rvReadFilters() {
+  var f = S.rvF;
+  if ($('#rv-from')) { f.from = val('#rv-from'); }
+  if ($('#rv-to')) { f.to = val('#rv-to'); }
+  if ($('#rv-block')) { f.block = val('#rv-block'); }
+  if ($('#rv-svc')) { f.svc = val('#rv-svc'); }
+  if ($('#rv-rating')) { f.rating = val('#rv-rating'); }
+  if ($('#rv-branch')) { f.branch = val('#rv-branch'); }
+  if ($('#rv-follow')) { f.follow = $('#rv-follow').checked ? 1 : 0; }
+}
+
+function rvReload() { S.rvData = null; load('reviews', true); }
+
+function rvFollowSave(id) {
+  var d = S.rvDraft[id] || {};
+  var sel = $('[data-rvf-status="' + id + '"]'), nt = $('[data-rvf-note="' + id + '"]');
+  if (sel) { d.status = sel.value; }
+  if (nt) { d.note = nt.value; }
+  S.busy = true; paint();
+  post('panel/review/follow', { id: id, status: d.status || 'open', note: d.note || '' }).then(function (r) {
+    S.busy = false;
+    if (r.success === false) { toast(r.message || 'ذخیره نشد.', 'bad'); paint(); return; }
+    delete S.rvDraft[id];
+    toast(r.message || 'پیگیری ذخیره شد.', 'ok');
+    rvReload();
+  });
+}
+
+function rvExport() {
+  get('panel/review/export?' + rvQuery()).then(function (r) {
+    if (!r || !r.items) { toast((r && r.message) || 'خروجی ساخته نشد.', 'bad'); return; }
+    var lines = [['تاریخ نوبت', 'شیفت', 'نمایندگی', 'خدمت', 'مشتری', 'موبایل', 'کد پیگیری', 'امتیاز', 'برچسب‌ها', 'توضیح', 'درخواست تماس', 'زمان نظر', 'پیگیری', 'یادداشت پیگیری', 'پیگیر'].map(csvCell).join(',')];
+    r.items.forEach(function (x) {
+      lines.push([x.dateFa, x.blockLabel, x.branch, x.service, x.customer, x.phone, x.code, x.rating, (x.tags || []).join('، '), x.comment, x.wantsCall ? 'بله' : '', x.answeredFa, RV_FOLLOW[x.follow] || '', x.followNote, x.followBy].map(csvCell).join(','));
+    });
+    var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = 'reviews-' + (r.from || 'all') + '-' + (r.to || 'all') + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  });
+}
+
+function rvBookingHtml(v) {
+  if (!v) { return ''; }
+  return '<div class="pn-rvbox"><div class="pn-rvbox__h">' + I.star + ' نظر مشتری</div>' +
+    '<div class="pn-rvi__hd">' + rvStars(v.rating) + '<b class="pn-rvi__l">' + esc(v.ratingLabel) + '</b>' +
+    (v.wantsCall ? '<span class="pn-badge pn-badge--bad">درخواست تماس</span>' : '') +
+    (v.follow ? '<span class="pn-badge pn-rvf--' + esc(v.follow) + '">پیگیری: ' + esc(RV_FOLLOW[v.follow] || '') + '</span>' : '') + '</div>' +
+    (v.tags && v.tags.length ? '<div class="pn-rvi__tags">' + v.tags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
+    (v.comment ? '<p class="pn-rvi__c">' + esc(v.comment) + '</p>' : '') +
+    '<div class="pn-hint">' + fa(esc(v.answeredFa)) + (v.followNote ? ' · یادداشت پیگیری: ' + esc(v.followNote) : '') + '</div></div>';
+}
+
 /* ═══ مودال نوبت ═══ */
 
 function bookingModal() {
@@ -3118,6 +3316,7 @@ function bookingModal() {
     '<div class="pn-kv"><span class="pn-kv__k">زمان ثبت</span><span class="pn-kv__v num">' + esc(J.formatTime(b.createdAt, FA_DIGITS) || fa(b.createdAt)) + '</span></div>' +
     payHtml +
     feeHtml(b) +
+    rvBookingHtml(b.review) +
 
     (b.status !== 'cancelled' ? '' :
       note('warn', I.alert, 'این نوبت لغو شده و ظرفیتش آزاد شده است.')) +
@@ -3921,6 +4120,7 @@ function render() {
   switch (S.view) {
     case 'board':    body = viewBoard(); break;
     case 'free':     body = viewFree(); break;
+    case 'reviews':  body = viewReviews(); break;
     case 'bookings': body = viewBookings(); break;
     case 'customers': body = viewCustomers(); break;
     case 'services': body = viewServices(); break;
@@ -4056,6 +4256,7 @@ function jobs() {
     summary:  ['panel/summary', function (r) { S.summary = r; }],
     board:    ['panel/board?days=7' + (S.boardFrom ? '&from=' + S.boardFrom : ''), function (r) { S.board = r; }],
     free:     ['panel/free', function (r) { S.free = r; }],
+    reviews:  ['panel/reviews?' + rvQuery(), function (r) { S.rvData = r; }],
     bookings: ['panel/bookings?scope=' + f.scope + '&status=' + encodeURIComponent(f.status) +
                '&block=' + encodeURIComponent(f.block) + '&service=' + encodeURIComponent(f.service) +
                '&from=' + encodeURIComponent(f.from) + '&to=' + encodeURIComponent(f.to) + '&q=' + encodeURIComponent(f.q) +
@@ -4089,7 +4290,7 @@ function jobs() {
 function hasData(view) {
   var m = { summary: S.summary, board: S.board, bookings: S.list, customers: S.customers,
             services: S.services, closures: S.closures, settings: S.sched,
-            bwallet: S.bwallet, profile: S.profile, agencies: S.agencies, report: S.agReport, debug: dbgData(),
+            bwallet: S.bwallet, profile: S.profile, agencies: S.agencies, report: S.agReport, debug: dbgData(), reviews: S.rvData,
             refunds: S.refWhich === 'review' ? S.payReview : (S.refWhich === 'report' ? S.payReport : (S.refWhich === 'wallet' ? S.wallets : S.refunds)) };
   return !!m[view];
 }
@@ -4175,6 +4376,7 @@ function looksValid(view, r) {
     case 'summary':  return !!r.counts;
     case 'board':    return Array.isArray(r.days);
     case 'free':     return Array.isArray(r.days);
+    case 'reviews':  return !!r.stats;
     case 'bookings': return Array.isArray(r.items);
     case 'customers': return Array.isArray(r.items);
     case 'services': return Array.isArray(r.items);
@@ -5647,6 +5849,40 @@ function bind() {
     if ((el = up('[data-ag-enter]'))) { e.preventDefault(); switchBranch(el.getAttribute('data-ag-enter'), 'summary'); return; }
 
     /* ── گزارش نمایندگی‌ها ── */
+
+    /* ── نظرسنجی ── */
+    if ((el = up('[data-rv-scope]'))) { e.preventDefault(); rvReadFilters(); S.rvF.scope = el.getAttribute('data-rv-scope'); S.rvF.from = S.rvF.to = ''; S.rvF.page = 1; rvReload(); return; }
+    if (up('[data-rv-apply]')) { e.preventDefault(); rvReadFilters(); S.rvF.page = 1; rvReload(); return; }
+    if (up('[data-rv-onlyf]')) { e.preventDefault(); S.rvF.follow = 1; S.rvF.page = 1; rvReload(); return; }
+    if ((el = up('[data-rv-page]'))) { e.preventDefault(); S.rvF.page = Math.max(1, Number(el.getAttribute('data-rv-page'))); rvReload(); return; }
+    if ((el = up('[data-rvf-save]'))) { e.preventDefault(); rvFollowSave(Number(el.getAttribute('data-rvf-save'))); return; }
+    if ((el = up('[data-rvf-start]'))) {
+      e.preventDefault();
+      var sid = Number(el.getAttribute('data-rvf-start'));
+      S.rvDraft[sid] = { status: 'open', note: '' };
+      (S.rvData.items || []).forEach(function (x) { if (x.id === sid) { x.follow = 'open'; } });
+      paint();
+      return;
+    }
+    if ((el = up('[data-rv-del]'))) {
+      e.preventDefault();
+      var did = Number(el.getAttribute('data-rv-del'));
+      if (!window.confirm('این نظر برای همیشه حذف شود؟ حذف در گزارش ثبت می‌شود.')) { return; }
+      post('panel/review/delete', { id: did }).then(function (r) {
+        if (r.success === false) { toast(r.message || 'حذف نشد.', 'bad'); return; }
+        toast(r.message || 'حذف شد.', 'ok'); rvReload();
+      });
+      return;
+    }
+    if (up('[data-rv-csv]')) { e.preventDefault(); rvExport(); return; }
+    if ((el = up('[data-rv-booking]'))) {
+      e.preventDefault();
+      get('panel/booking-item?id=' + Number(el.getAttribute('data-rv-booking'))).then(function (r) {
+        if (!r || r.success === false || !r.item) { toast((r && r.message) || 'نوبت پیدا نشد.', 'bad'); return; }
+        S.modal = { item: r.item }; paintModal();
+      });
+      return;
+    }
 
     if (up('[data-agrep-apply]')) {
       e.preventDefault();

@@ -189,6 +189,11 @@ class CMB_Panel_Api {
 			'panel/summary'   => array( 'GET', 'summary', $guard ),
 			'panel/board'     => array( 'GET', 'board', $guard ),
 			'panel/free'      => array( 'GET', 'free', $guard ),
+			'panel/reviews'   => array( 'GET', 'reviews', $guard ),
+			'panel/review/follow' => array( 'POST', 'review_follow', $guard ),
+			'panel/review/delete' => array( 'POST', 'review_delete', $admin ),
+			'panel/review/export' => array( 'GET', 'review_export', $admin ),
+			'panel/booking-item'  => array( 'GET', 'booking_item', $guard ),
 			'panel/geo-link'  => array( 'POST', 'geo_link', $guard ),
 			'panel/bookings'  => array( 'GET', 'bookings', $guard ),
 			'panel/booking'   => array( 'POST', 'update_booking', $guard ),
@@ -988,6 +993,14 @@ class CMB_Panel_Api {
 			$services[] = array( 'id' => (int) $sv->id, 'title' => (string) $sv->title );
 		}
 
+		// نظرسنجی هر نوبت، با یک کوئری (۱.۵۲.۰)
+		if ( class_exists( 'CMB_Reviews' ) && $items ) {
+			$rv = CMB_Reviews::for_bookings( wp_list_pluck( $items, 'id' ) );
+			foreach ( $items as $i => $it ) {
+				$items[ $i ]['review'] = isset( $rv[ (int) $it['id'] ] ) ? $rv[ (int) $it['id'] ] : null;
+			}
+		}
+
 		return rest_ensure_response(
 			array(
 				'items'    => $items,
@@ -1000,6 +1013,232 @@ class CMB_Panel_Api {
 				'range'    => $has_date ? array( 'from' => $from, 'to' => $to ) : ( in_array( $scope, array( 'week', 'month' ), true ) ? array_combine( array( 'from', 'to' ), 'week' === $scope ? self::jalali_week( $today ) : self::jalali_month( $today ) ) : null ),
 			)
 		);
+	}
+
+	/* ------------------------------------------------------------------
+	 * نظرسنجی بعد از خدمت (۱.۵۲.۰)
+	 * --------------------------------------------------------------- */
+
+	protected static function reviews_unready() {
+		if ( class_exists( 'CMB_Reviews' ) && CMB_Reviews::ready() ) {
+			return null;
+		}
+
+		return new WP_Error( 'cmb_review_schema', 'جدول نظرسنجی هنوز ساخته نشده؛ یک بار پیشخوان وردپرس را باز کنید.', array( 'status' => 503 ) );
+	}
+
+	/** فیلترهای گزارش؛ نمایندگی همیشه فقط شعبه‌ی خودش. */
+	protected static function review_filters( WP_REST_Request $request ) {
+		$today  = cmb_today();
+		$scope  = sanitize_key( (string) $request->get_param( 'scope' ) );
+		$is_day = function ( $v ) { return (bool) preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $v ); };
+		$from   = (string) $request->get_param( 'from' );
+		$to     = (string) $request->get_param( 'to' );
+		$from   = $is_day( $from ) ? $from : '';
+		$to     = $is_day( $to ) ? $to : '';
+
+		if ( $from && $to && $from > $to ) {
+			list( $from, $to ) = array( $to, $from );
+		}
+
+		if ( ! $from && ! $to && in_array( $scope, array( 'week', 'month' ), true ) ) {
+			list( $from, $to ) = 'week' === $scope ? self::jalali_week( $today ) : self::jalali_month( $today );
+		}
+
+		$admin  = current_user_can( 'manage_options' );
+		$branch = (string) $request->get_param( 'branch' );
+		$f      = array(
+			'from'      => $from,
+			'to'        => $to,
+			'block'     => sanitize_key( (string) $request->get_param( 'block' ) ),
+			'svc_title' => sanitize_text_field( (string) $request->get_param( 'svc' ) ),
+			'rating'    => max( 0, min( 5, (int) $request->get_param( 'rating' ) ) ),
+			'follow'    => (int) $request->get_param( 'follow' ) ? 1 : 0,
+			'page'      => max( 1, (int) $request->get_param( 'page' ) ),
+		);
+
+		if ( $admin && ( '' === $branch || 'all' === $branch ) ) {
+			$f['all'] = true;
+		} elseif ( $admin && (int) $branch > 0 ) {
+			$f['branch'] = (int) $branch;
+		} else {
+			$f['scope_sql'] = CMB_Branches::scope_sql( CMB_Branches::panel_branch_id(), 'r.branch_id' );
+		}
+
+		return $f;
+	}
+
+	public function reviews( WP_REST_Request $request ) {
+		$err = self::reviews_unready();
+
+		if ( $err ) {
+			return $err;
+		}
+
+		global $wpdb;
+
+		$f     = self::review_filters( $request );
+		$admin = current_user_can( 'manage_options' );
+		$out   = CMB_Reviews::report( $f, ! empty( $f['all'] ) );
+
+		// فهرست خدمت‌ها و شعبه‌های فیلتر (فقط آن‌هایی که نظر دارند)
+		$f2       = $f; unset( $f2['svc_title'] );
+		$where    = CMB_Reviews::report_where( $f2 );
+		$titles   = array();
+		foreach ( (array) $wpdb->get_col( 'SELECT DISTINCT r.service_id FROM ' . CMB_Reviews::table() . " r WHERE {$where}" ) as $sid ) { // phpcs:ignore
+			$s = CMB_Services::get_service( (int) $sid );
+			if ( $s ) { $titles[ $s->title ] = true; }
+		}
+
+		$branches = array();
+		if ( $admin && CMB_Branches::ready() ) {
+			foreach ( CMB_Branches::all() as $b ) {
+				$branches[] = array( 'id' => (int) $b->id, 'title' => CMB_Branches::display_name( $b ) );
+			}
+		}
+
+		$blocks = array();
+		foreach ( cmb_blocks( CMB_Branches::panel_branch_id() ) as $key => $b ) {
+			$blocks[] = array( 'k' => $key, 't' => $b['label'] );
+		}
+
+		return rest_ensure_response(
+			$out + array(
+				'filters'  => array( 'from' => $f['from'], 'to' => $f['to'], 'branch' => ! empty( $f['all'] ) ? 'all' : ( ! empty( $f['branch'] ) ? (string) $f['branch'] : '' ) ),
+				'services' => array_keys( $titles ),
+				'branches' => $branches,
+				'blocks'   => $blocks,
+				'isAdmin'  => $admin,
+				'enabled'  => CMB_Reviews::enabled(),
+				'pattern'  => '' !== trim( (string) CMB_Settings::get( 'pattern_review', '' ) ),
+				'url'      => CMB_Reviews::url(),
+			)
+		);
+	}
+
+	/** ردیف نظر در دامنه‌ی کاربر جاری؟ */
+	protected static function review_in_scope( $row ) {
+		return $row && ( current_user_can( 'manage_options' ) || CMB_Branches::in_scope( (int) $row->branch_id, CMB_Branches::panel_branch_id() ) );
+	}
+
+	/** پیگیری: باز ← تماس گرفته شد ← حل شد، با یادداشت و نام پیگیر. */
+	public function review_follow( WP_REST_Request $request ) {
+		global $wpdb;
+
+		$err = self::reviews_unready();
+
+		if ( $err ) {
+			return $err;
+		}
+
+		$row = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . CMB_Reviews::table() . ' WHERE id = %d', (int) $request->get_param( 'id' ) ) ); // phpcs:ignore
+
+		if ( ! self::review_in_scope( $row ) || 'answered' !== $row->status ) {
+			return new WP_Error( 'cmb_review_404', 'این نظر پیدا نشد یا مال شعبه‌ی دیگری است.', array( 'status' => 404 ) );
+		}
+
+		$status = sanitize_key( (string) $request->get_param( 'status' ) );
+
+		if ( ! in_array( $status, array( 'open', 'called', 'resolved' ), true ) ) {
+			return new WP_Error( 'cmb_review_follow', 'وضعیت پیگیری معتبر نیست.', array( 'status' => 400 ) );
+		}
+
+		$note = sanitize_textarea_field( (string) $request->get_param( 'note' ) );
+		$note = function_exists( 'mb_substr' ) ? mb_substr( $note, 0, 1000 ) : substr( $note, 0, 1000 );
+
+		$wpdb->update(
+			CMB_Reviews::table(),
+			array( 'follow_status' => $status, 'follow_note' => $note, 'follow_by' => get_current_user_id(), 'follow_at' => cmb_now()->format( 'Y-m-d H:i:s' ), 'updated_at' => cmb_now()->format( 'Y-m-d H:i:s' ) ),
+			array( 'id' => (int) $row->id )
+		);
+
+		$fresh = $wpdb->get_row( $wpdb->prepare( 'SELECT r.*, b.customer_name, b.tracking_code, b.phone AS b_phone FROM ' . CMB_Reviews::table() . ' r LEFT JOIN ' . cmb_table( 'bookings' ) . ' b ON b.id = r.booking_id WHERE r.id = %d', (int) $row->id ) ); // phpcs:ignore
+
+		return rest_ensure_response( array( 'success' => true, 'message' => 'پیگیری ذخیره شد.', 'item' => CMB_Reviews::panel_item( $fresh ) ) );
+	}
+
+	/** حذف نظر: فقط مدیر کل، با ثبت در گزارش (سند بخش ۸). */
+	public function review_delete( WP_REST_Request $request ) {
+		global $wpdb;
+
+		$err = self::reviews_unready();
+
+		if ( $err ) {
+			return $err;
+		}
+
+		$row = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . CMB_Reviews::table() . ' WHERE id = %d', (int) $request->get_param( 'id' ) ) ); // phpcs:ignore
+
+		if ( ! $row ) {
+			return new WP_Error( 'cmb_review_404', 'این نظر پیدا نشد.', array( 'status' => 404 ) );
+		}
+
+		$wpdb->delete( CMB_Reviews::table(), array( 'id' => (int) $row->id ) );
+
+		$who = wp_get_current_user();
+		$msg = sprintf( 'نظر نوبت #%d (%d ستاره) را %s حذف کرد.', (int) $row->booking_id, (int) $row->rating, $who && $who->ID ? $who->display_name : 'مدیر' );
+
+		cmb_log( $msg, array( 'booking' => (int) $row->booking_id ) );
+
+		if ( class_exists( 'CMB_Debug' ) ) {
+			CMB_Debug::log( 'info', 'review', 'review_deleted', $msg, array( 'branch_id' => (int) $row->branch_id, 'context' => array( 'booking' => (int) $row->booking_id, 'rating' => (int) $row->rating, 'comment' => (string) $row->comment ) ) );
+		}
+
+		return rest_ensure_response( array( 'success' => true, 'message' => 'نظر حذف شد و در گزارش ثبت شد.' ) );
+	}
+
+	/** خروجی اکسل (مدیر کل): همه‌ی نظرهای فیلترشده. */
+	public function review_export( WP_REST_Request $request ) {
+		global $wpdb;
+
+		$err = self::reviews_unready();
+
+		if ( $err ) {
+			return $err;
+		}
+
+		$f     = self::review_filters( $request );
+		$where = CMB_Reviews::report_where( $f ) . " AND r.status = 'answered'";
+
+		if ( $f['rating'] ) {
+			$where .= $wpdb->prepare( ' AND r.rating = %d', $f['rating'] );
+		}
+		if ( $f['follow'] ) {
+			$where .= " AND r.follow_status IN ('open','called')";
+		}
+
+		$rows  = (array) $wpdb->get_results( 'SELECT r.*, b.customer_name, b.tracking_code, b.phone AS b_phone FROM ' . CMB_Reviews::table() . ' r LEFT JOIN ' . cmb_table( 'bookings' ) . " b ON b.id = r.booking_id WHERE {$where} ORDER BY r.answered_at DESC LIMIT 5000" ); // phpcs:ignore
+		$items = array();
+
+		foreach ( $rows as $r ) {
+			$items[] = CMB_Reviews::panel_item( $r );
+		}
+
+		return rest_ensure_response( array( 'items' => $items, 'from' => $f['from'], 'to' => $f['to'] ) );
+	}
+
+	/** یک نوبت برای پنجره‌ی جزئیات (از فهرست نظرها). */
+	public function booking_item( WP_REST_Request $request ) {
+		$b = CMB_Bookings::get( (int) $request->get_param( 'id' ) );
+
+		if ( ! $b ) {
+			return new WP_Error( 'cmb_not_found', 'نوبت یافت نشد.', array( 'status' => 404 ) );
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			$own = CMB_Branches::assert_branch( (int) $b->branch_id );
+
+			if ( is_wp_error( $own ) ) {
+				return $own;
+			}
+		}
+
+		$item = self::row_to_array( $b );
+		$rv   = class_exists( 'CMB_Reviews' ) ? CMB_Reviews::for_bookings( array( (int) $b->id ) ) : array();
+
+		$item['review'] = isset( $rv[ (int) $b->id ] ) ? $rv[ (int) $b->id ] : null;
+
+		return rest_ensure_response( array( 'success' => true, 'item' => $item ) );
 	}
 
 	/**

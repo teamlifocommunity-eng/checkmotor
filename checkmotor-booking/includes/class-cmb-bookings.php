@@ -1324,6 +1324,8 @@ class CMB_Bookings {
 
 		$wpdb->delete( cmb_table( 'bookings' ), array( 'id' => (int) $booking_id ) );
 
+		do_action( 'cmb_booking_deleted', (int) $booking_id );
+
 		if ( $fee_row ) {
 			// ردیف دفتر نمایندگی می‌گوید کدام نوبت را چه کسی پاک کرد
 			$who  = wp_get_current_user();
@@ -1395,6 +1397,8 @@ class CMB_Bookings {
 				array_filter( array( $booking->car_brand, $booking->car_model, $booking->car_year ) )
 			),
 			'status'       => $booking->status,
+			// نظرسنجی (۱.۵۲.۰): open | editable | done، یا null
+			'review'       => class_exists( 'CMB_Reviews' ) ? CMB_Reviews::booking_state( $booking ) : null,
 			'statusLabel'  => cmb_status_label( $booking->status ),
 			'note'         => CMB_Settings::get( 'confirm_note', '' ),
 			'lateRule'     => CMB_Settings::get( 'late_rule_note', '' ),

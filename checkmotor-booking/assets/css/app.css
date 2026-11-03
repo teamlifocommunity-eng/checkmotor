@@ -1382,3 +1382,64 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
 .cmb-brinfo__call { background:#f1f4f7; color:#264055; border:1px solid #e1e7ed; }
 .cmb-brinfo__call:hover { background:#e8edf2; }
 
+
+/* ═══ نظرسنجی بعد از خدمت (۱.۵۲.۰) ═══ */
+.cmb-rv-head { padding-bottom: var(--s3); margin-bottom: var(--s3); border-bottom: 1px solid var(--g5); }
+.cmb-rv-head__t { font-size: var(--t-hd); font-weight: 800; color: var(--ink); line-height: 1.6; }
+.cmb-rv-head__s { display: flex; align-items: center; gap: 6px; font-size: var(--t-sb); color: var(--ink-2); line-height: 1.8; }
+#cmb-app .cmb-rv-head__s svg { width: 16px; height: 16px; flex: 0 0 16px; color: var(--ink-3); }
+.cmb-rv-q { font-size: var(--t-bd); font-weight: 700; color: var(--ink); text-align: center; margin-top: var(--s2); }
+/* ستاره‌های بزرگ و قابل لمس؛ مثل اسنپ از چپ به راست پر می‌شوند (ستاره‌ی ۱ سمت چپ) */
+.cmb-rv-picks { display: flex; justify-content: center; gap: 6px; margin: var(--s3) 0 var(--s2); direction: ltr; }
+.cmb-rv-pick {
+  width: 52px; height: 52px; padding: 6px; border: 0; background: none; border-radius: 50%;
+  color: var(--g3); cursor: pointer; transition: transform .12s ease, color .12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+#cmb-app .cmb-rv-pick svg { width: 100%; height: 100%; display: block; }
+.cmb-rv-pick.is-on { color: #F5A524; }
+.cmb-rv-pick:active { transform: scale(.9); }
+.cmb-rv-pick:focus-visible { outline: 2px solid var(--steel-700); outline-offset: 2px; }
+@media (max-width: 360px) { .cmb-rv-pick { width: 46px; height: 46px; } }
+.cmb-rv-lbl { text-align: center; font-size: var(--t-cl); font-weight: 700; color: var(--ink-2); min-height: 1.8em; }
+.cmb-rv-tq { font-size: var(--t-cl); font-weight: 700; color: var(--ink); margin: var(--s4) 0 var(--s2); }
+.cmb-rv-tq small { font-weight: 500; color: var(--ink-3); }
+.cmb-rv-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.cmb-rv-tags.is-ro { justify-content: center; margin-top: var(--s2); }
+.cmb-rv-chip {
+  min-height: 40px; padding: 6px 14px; border-radius: 999px; border: 1.5px solid var(--g4); background: var(--card);
+  font: inherit; font-size: var(--t-sb); font-weight: 600; color: var(--ink); line-height: 1.6; cursor: pointer;
+}
+.cmb-rv-chip.is-on { border-color: var(--flame); background: var(--flame-50); color: var(--flame-600); }
+span.cmb-rv-chip { cursor: default; display: inline-flex; align-items: center; }
+.cmb-rv-call {
+  display: flex; align-items: center; gap: 10px; margin-top: var(--s4); padding: 12px var(--s3);
+  border-radius: var(--r-sm); background: var(--bad-bg); color: var(--bad); font-weight: 700; font-size: var(--t-cl); cursor: pointer;
+}
+.cmb-rv-call input { width: 20px; height: 20px; accent-color: var(--bad); flex: 0 0 20px; }
+.cmb-rv-count { display: block; text-align: left; font-size: var(--t-cp); color: var(--ink-3); margin-top: 4px; }
+.cmb-rv-code { letter-spacing: .3em; font-size: var(--t-lg); text-align: center; font-weight: 800; }
+#cmb-app .cmb-rv-code::placeholder { letter-spacing: normal; font-size: var(--t-cl); font-weight: 500; }
+.cmb-rv-stars { display: inline-flex; gap: 2px; color: #F5A524; direction: ltr; vertical-align: middle; }
+.cmb-rv-st { width: 16px; height: 16px; color: var(--g4); display: inline-block; }
+.cmb-rv-st.is-on { color: #F5A524; }
+#cmb-app .cmb-rv-st svg { width: 100%; height: 100%; display: block; }
+.cmb-rv-stars--lg { gap: 6px; margin: var(--s2) auto; display: flex; justify-content: center; }
+.cmb-rv-stars--lg .cmb-rv-st { width: 34px; height: 34px; }
+.cmb-rv-done { text-align: center; }
+.cmb-rv-cmt { margin-top: var(--s3); font-size: var(--t-cl); color: var(--ink-2); line-height: 1.9; overflow-wrap: anywhere; }
+.cmb-rv-item {
+  width: 100%; display: flex; align-items: center; gap: var(--s3); padding: 14px var(--s4); margin-bottom: var(--s2);
+  background: var(--card); border: 1px solid var(--g5); border-radius: var(--r-md); box-shadow: var(--sh-1);
+  font: inherit; text-align: right; color: var(--ink); cursor: pointer;
+}
+.cmb-rv-item__b { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.cmb-rv-item__b b { font-size: var(--t-bd); overflow-wrap: anywhere; }
+.cmb-rv-item__b small { font-size: var(--t-ft); color: var(--ink-3); overflow-wrap: anywhere; }
+.cmb-rv-item__go { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--flame-600); font-weight: 700; font-size: var(--t-sb); }
+#cmb-app .cmb-rv-item__go svg { width: 16px; height: 16px; }
+.cmb-rv-rate { margin-top: var(--s3); }
+#cmb-app .cmb-rv-rate svg { width: 18px; height: 18px; color: #F5A524; }
+.cmb-rv-mine { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: var(--s3); padding-top: var(--s3); border-top: 1px dashed var(--g4); font-size: var(--t-sb); color: var(--ink-2); }
+.cmb-mb3 { margin-bottom: var(--s3); }
+@media (prefers-reduced-motion: reduce) { .cmb-rv-pick { transition: none; } }

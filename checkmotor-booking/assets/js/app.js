@@ -65,7 +65,12 @@ var S = {
      شعبه هیچ‌چیز این بخش دیده نمی‌شود و اپ دقیقاً مثل قبل است. */
   branchPick: false, branchChosen: false, branchQ: '', branchProvince: '',
   // موقعیت مشتری فقط در همین مرورگر می‌ماند و به سرور فرستاده نمی‌شود
-  near: null, nearBusy: false, nearAsked: false, mapAt: null
+  near: null, nearBusy: false, nearAsked: false, mapAt: null,
+
+  /* نظرسنجی بعد از خدمت (۱.۵۲.۰): صفحه‌ی ثابت /nazar */
+  rv: { loaded: false, loading: false, items: [], tags: { bad: [], good: [] }, sel: null, token: '', want: 0,
+        phone: '', code: '', err: '', busy: false, other: false, editing: false, thanks: '', expired: false,
+        form: { rating: 0, tags: [], comment: '', wantsCall: false } }
 };
 
 var BR = C.branches || { picker: false, groups: [], center: 0, preselect: null };
@@ -293,6 +298,7 @@ function readRoute() {
   var p = r.split('/')[0];
   if (p === 'book') { return 'book'; }
   if (p === 'pay') { return 'pay'; }
+  if (p === 'review') { return 'review'; }
   if (TABS.indexOf(p) !== -1) { return p; }
   return 'home';
 }
@@ -330,6 +336,7 @@ var I = {
   info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
   bug: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="7.5" y="6.5" width="9" height="13" rx="4.5"/><path d="M12 10v9.5M9.5 4.5l1.3 2M14.5 4.5l-1.3 2M7.5 11H4M20 11h-3.5M7.5 15.5H4.5M19.5 15.5h-3M8 7.8 5.5 6M16 7.8l2.5-1.8"/></svg>',
   alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 3.9L2.6 18a1.6 1.6 0 0 0 1.4 2.4h16a1.6 1.6 0 0 0 1.4-2.4l-8-14.1a1.6 1.6 0 0 0-2.8 0z"/><path d="M12 9.5v4M12 17h.01"/></svg>',
+  star: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l2.85 5.78 6.38.93-4.62 4.5 1.09 6.35L12 17.36l-5.7 3 1.09-6.35-4.62-4.5 6.38-.93z"/></svg>',
   ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.2 12.3l2.6 2.6 5-5"/></svg>',
   phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16.9v2.6a1.8 1.8 0 0 1-2 1.8 17.6 17.6 0 0 1-7.7-2.7 17.3 17.3 0 0 1-5.3-5.3A17.6 17.6 0 0 1 3.3 5.5 1.8 1.8 0 0 1 5.1 3.5h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9l-1.1 1.1a14 14 0 0 0 5.3 5.3l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6a1.8 1.8 0 0 1 1.6 1.9z"/></svg>',
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>',
@@ -1581,6 +1588,17 @@ function pendingBox(b) {
     '</div></div>';
 }
 
+/* نظرسنجی روی کارت نوبت «انجام شد» (۱.۵۲.۰) */
+function rateBox(b) {
+  var r = b.review;
+  if (!r) { return ''; }
+  if (r.state === 'open') {
+    return '<button type="button" class="cmb-btn cmb-btn--soft cmb-rv-rate" data-rate="' + b.id + '">' + I.star + ' به این خدمت امتیاز بدهید</button>';
+  }
+  return '<div class="cmb-rv-mine">نظر شما: ' + rvStars(r.rating) +
+    (r.state === 'editable' ? '<button type="button" class="cmb-link" data-rate="' + b.id + '">ویرایش</button>' : '') + '</div>';
+}
+
 function viewMine() {
   var html = topBar('نوبت‌های من', '', false) + '<div class="cmb-page cmb-mt4">';
 
@@ -1629,6 +1647,7 @@ function viewMine() {
       '</div>' +
       pendingBox(b) +
       cancelBox(b) +
+      rateBox(b) +
       '</div>';
   });
 
@@ -1652,6 +1671,208 @@ function viewMine() {
 
   html += '</div>';
   return html;
+}
+
+/* ═══ نظرسنجی بعد از خدمت (۱.۵۲.۰) ═══
+   پیامک: لینک ثابت /nazar + کد ۵ رقمی. با کوکی ورود مستقیم فرم؛ بی‌کوکی «شماره + کد». */
+
+var RV_LABEL = ['', 'خیلی بد', 'بد', 'معمولی', 'خوب', 'عالی'];
+
+function rvStars(n, big) {
+  var out = '';
+  for (var i = 1; i <= 5; i++) { out += '<span class="cmb-rv-st' + (i <= n ? ' is-on' : '') + '">' + I.star + '</span>'; }
+  return '<span class="cmb-rv-stars' + (big ? ' cmb-rv-stars--lg' : '') + '" aria-label="' + fa(n) + ' از ۵">' + out + '</span>';
+}
+
+function rvHead(it) {
+  return '<div class="cmb-rv-head">' +
+    '<div class="cmb-rv-head__t">' + esc(it.service) + '</div>' +
+    '<div class="cmb-rv-head__s">' + I.pin + '<span>' + esc(it.branch) + '</span></div>' +
+    '<div class="cmb-rv-head__s">' + I.cal + '<span>' + fa(esc(it.dateFa)) + (it.blockLabel ? ' · ' + esc(it.blockLabel) : '') + '</span></div>' +
+  '</div>';
+}
+
+function rvCodeForm(intro) {
+  var R = S.rv;
+  return '<div class="cmb-card">' +
+    '<div class="cmb-svc__t">نظرسنجی خدمت</div>' +
+    '<p class="cmb-hint">' + esc(intro || 'شماره و کدی را که پیامک شده وارد کنید.') + '</p>' +
+    '<label class="cmb-field"><span class="cmb-field__l">شماره موبایل</span>' +
+      '<input class="cmb-in" id="cmb-rv-phone" type="tel" inputmode="numeric" autocomplete="tel" maxlength="15" dir="ltr" placeholder="09123456789" value="' + esc(R.phone) + '"></label>' +
+    '<label class="cmb-field"><span class="cmb-field__l">کد نظرسنجی</span>' +
+      '<input class="cmb-in cmb-rv-code" id="cmb-rv-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="5" dir="ltr" placeholder="کد ۵ رقمی پیامک" value="' + esc(R.code) + '"></label>' +
+    (R.err ? '<div class="cmb-hint" role="alert" style="color:var(--bad)">' + esc(R.err) + '</div>' : '') +
+    '<button class="cmb-btn cmb-btn--pri cmb-mt5" data-rv-verify' + (R.busy ? ' disabled' : '') + '>' +
+      (R.busy ? '<span class="cmb-spin"></span> در حال بررسی…' : 'ادامه') + '</button>' +
+  '</div>';
+}
+
+function rvForm(it) {
+  var R = S.rv, f = R.form, T = R.tags || { bad: [], good: [] };
+  var list = f.rating ? (f.rating <= 3 ? T.bad : T.good) : [];
+  var stars = '';
+  for (var i = 1; i <= 5; i++) {
+    stars += '<button type="button" class="cmb-rv-pick' + (i <= f.rating ? ' is-on' : '') + '" data-rv-star="' + i + '" role="radio" aria-checked="' + (i === f.rating) + '" aria-label="' + fa(i) + ' ستاره، ' + RV_LABEL[i] + '">' + I.star + '</button>';
+  }
+  return '<div class="cmb-card">' + rvHead(it) +
+    '<div class="cmb-rv-q">به خدمت امروز چند ستاره می‌دهید؟</div>' +
+    '<div class="cmb-rv-picks" role="radiogroup" aria-label="امتیاز">' + stars + '</div>' +
+    '<div class="cmb-rv-lbl">' + (f.rating ? esc(RV_LABEL[f.rating]) : 'روی ستاره‌ها بزنید') + '</div>' +
+    (list.length ? '<div class="cmb-rv-tq">' + (f.rating <= 3 ? 'چه چیزی خوب نبود؟' : 'چه چیزی خوب بود؟') + ' <small>(اختیاری)</small></div>' +
+      '<div class="cmb-rv-tags">' + list.map(function (t) {
+        var on = f.tags.indexOf(t) !== -1;
+        return '<button type="button" class="cmb-rv-chip' + (on ? ' is-on' : '') + '" data-rv-tag="' + esc(t) + '" aria-pressed="' + on + '">' + esc(t) + '</button>';
+      }).join('') + '</div>' : '') +
+    (f.rating && f.rating <= 2 ? '<label class="cmb-rv-call"><input type="checkbox" id="cmb-rv-call"' + (f.wantsCall ? ' checked' : '') + '><span>با من تماس بگیرید</span></label>' : '') +
+    (f.rating ? '<label class="cmb-field cmb-mt4"><span class="cmb-field__l">توضیح <small>(اختیاری)</small></span>' +
+      '<textarea class="cmb-in" id="cmb-rv-comment" rows="3" maxlength="500" placeholder="اگر نکته‌ای هست بنویسید…">' + esc(f.comment) + '</textarea>' +
+      '<span class="cmb-rv-count" id="cmb-rv-count">' + fa(f.comment.length) + ' / ۵۰۰</span></label>' : '') +
+    (R.err ? '<div class="cmb-hint" role="alert" style="color:var(--bad)">' + esc(R.err) + '</div>' : '') +
+    '<button class="cmb-btn cmb-btn--pri cmb-mt5" data-rv-submit' + (!f.rating || R.busy ? ' disabled' : '') + '>' +
+      (R.busy ? '<span class="cmb-spin"></span> در حال ثبت…' : (it.answered ? 'ذخیره‌ی ویرایش' : 'ثبت نظر')) + '</button>' +
+  '</div>';
+}
+
+function rvAnswered(it) {
+  return '<div class="cmb-card">' + rvHead(it) +
+    '<div class="cmb-rv-done">' + rvStars(it.rating, true) +
+      '<div class="cmb-rv-lbl">' + esc(RV_LABEL[it.rating] || '') + '</div>' +
+      (it.tags && it.tags.length ? '<div class="cmb-rv-tags is-ro">' + it.tags.map(function (t) { return '<span class="cmb-rv-chip is-on">' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
+      (it.comment ? '<p class="cmb-rv-cmt">«' + esc(it.comment) + '»</p>' : '') +
+      (it.wantsCall ? '<p class="cmb-hint">درخواست تماس شما ثبت شده است.</p>' : '') +
+    '</div>' +
+    (it.editable
+      ? '<button class="cmb-btn cmb-btn--soft cmb-mt4" data-rv-edit>ویرایش نظر</button>' +
+        (it.editUntil ? '<p class="cmb-hint cmb-center">تا ' + fa(esc(it.editUntil)) + ' قابل ویرایش است.</p>' : '')
+      : '<p class="cmb-hint cmb-center">نظر شما ثبت شده و دیگر قابل ویرایش نیست.</p>') +
+  '</div>';
+}
+
+function viewReview() {
+  var R = S.rv;
+  var html = topBar('نظرسنجی خدمت', 'امتیاز شما به بهتر شدن خدمت کمک می‌کند', R.sel && R.items.length > 1) + '<div class="cmb-page cmb-mt4">';
+
+  if (R.loading && !R.loaded) {
+    return html + '<div class="cmb-sk cmb-sk--card"></div></div>';
+  }
+
+  if (R.thanks && R.sel) {
+    return html + '<div class="cmb-card cmb-center">' +
+      '<div class="cmb-empty__ic" style="margin:0 auto var(--s3);background:var(--ok-bg);color:var(--ok)">' + I.ok + '</div>' +
+      '<div class="cmb-svc__t">' + esc(R.thanks) + '</div>' + rvStars(R.sel.rating, true) +
+      (R.sel.wantsCall ? '<p class="cmb-hint cmb-mt3">به‌زودی با شما تماس می‌گیریم.</p>' : '') +
+      (R.sel.editable ? '<button class="cmb-link cmb-mt3" data-rv-edit>ویرایش نظر</button>' : '') +
+      '</div>' +
+      (R.items.filter(function (x) { return !x.answered; }).length ? '<button class="cmb-btn cmb-btn--soft cmb-mt3" data-rv-list>نظرسنجی بعدی</button>' : '') +
+      '<button class="cmb-btn cmb-btn--ghost cmb-mt3" data-tab="mine">نوبت‌های من</button></div>';
+  }
+
+  if (R.sel) {
+    html += (R.sel.answered && !R.editing) ? rvAnswered(R.sel) : rvForm(R.sel);
+    if (!S.logged) { html += '<p class="cmb-hint cmb-center cmb-mt3">نظر به نام صاحب نوبت ثبت می‌شود.</p>'; }
+    return html + '</div>';
+  }
+
+  if (R.expired) {
+    html += note('warn', I.info, 'این کد منقضی شده است. با کد پیامکی وارد شوید؛ از «نوبت‌های من» تا ۳۰ روز بعد از نوبت می‌شود نظر داد.') +
+      (S.logged && S.hasPhone ? '<button class="cmb-btn cmb-btn--pri cmb-mt3" data-tab="mine">نوبت‌های من</button>' : authCard('یک کد ۵ رقمی برایتان پیامک می‌شود.'));
+    return html + '</div>';
+  }
+
+  if (R.items.length && !R.other) {
+    html += '<div class="cmb-svc__t cmb-mb3">نظرسنجی‌های باز شما</div>' + R.items.map(function (it) {
+      return '<button type="button" class="cmb-rv-item" data-rv-open="' + it.booking + '">' +
+        '<span class="cmb-rv-item__b"><b>' + esc(it.service) + '</b><small>' + esc(it.branch) + ' · ' + fa(esc(it.dateFa)) + '</small></span>' +
+        (it.answered ? rvStars(it.rating) : '<span class="cmb-rv-item__go">نظر بدهید ' + I.chevL + '</span>') + '</button>';
+    }).join('') +
+      '<button class="cmb-link cmb-mt4" data-rv-other>نظرسنجی برای شماره‌ی دیگری است؟</button>';
+    return html + '</div>';
+  }
+
+  if (S.logged && S.hasPhone && !R.other) {
+    html += '<div class="cmb-card cmb-center">' +
+      '<div class="cmb-empty__ic" style="margin:0 auto var(--s3)">' + I.star + '</div>' +
+      '<div class="cmb-svc__t">نظرسنجی فعالی ندارید</div>' +
+      '<p class="cmb-hint">اگر پیامک نظرسنجی برای شماره‌ی دیگری آمده، شماره و کد را وارد کنید.</p></div>';
+  }
+
+  html += rvCodeForm(R.other ? 'شماره‌ای که پیامک نظرسنجی را گرفته و کد آن را وارد کنید.' : '');
+
+  if (S.logged && S.hasPhone) { html += '<button class="cmb-btn cmb-btn--ghost cmb-mt3" data-tab="mine">نوبت‌های من</button>'; }
+
+  return html + '</div>';
+}
+
+function rvOpen(it) {
+  var R = S.rv;
+  R.sel = it; R.thanks = ''; R.err = ''; R.editing = false;
+  R.form = { rating: it.rating || 0, tags: (it.tags || []).slice(), comment: it.comment || '', wantsCall: !!it.wantsCall };
+  window.scrollTo(0, 0);
+  paint();
+}
+
+function rvLoad() {
+  var R = S.rv;
+  R.loading = true;
+  paint();
+  get('review/mine').then(function (r) {
+    R.loading = false; R.loaded = true;
+    if (r.success === false) { R.err = r.message || ''; paint(); return; }
+    R.items = r.items || []; R.tags = r.tags || R.tags;
+    var want = R.want && R.items.filter(function (x) { return x.booking === R.want; })[0];
+    if (R.want && !want) {
+      // از «نوبت‌های من»: نوبتی که هنوز در فهرست نیست (مثلاً بی‌پیامک) مستقیم خوانده می‌شود
+      get('review/form?booking=' + R.want).then(function (f) {
+        R.want = 0;
+        if (f.success === false) { R.err = f.message || ''; paint(); return; }
+        R.tags = f.tags || R.tags; rvOpen(f.item);
+      });
+      return;
+    }
+    R.want = 0;
+    if (want) { rvOpen(want); return; }
+    if (R.items.length === 1 && !R.items[0].answered) { rvOpen(R.items[0]); return; }
+    paint();
+  });
+}
+
+function rvVerify() {
+  var R = S.rv;
+  var ph = document.getElementById('cmb-rv-phone'), cd = document.getElementById('cmb-rv-code');
+  if (ph) { R.phone = en(ph.value).trim(); }
+  if (cd) { R.code = en(cd.value).replace(/\D/g, ''); }
+  if (!/^0?9\d{9}$/.test(R.phone.replace(/^\+98/, '0'))) { R.err = 'شماره موبایل را درست وارد کنید.'; paint(); return; }
+  if (R.code.length !== 5) { R.err = 'کد نظرسنجی ۵ رقم است.'; paint(); return; }
+  R.busy = true; R.err = ''; paint();
+  post('review/verify', { phone: R.phone, code: R.code }).then(function (r) {
+    R.busy = false;
+    if (r.success === false) {
+      if (r.code === 'cmb_review_expired') { R.expired = true; R.err = ''; paint(); return; }
+      R.err = r.message || 'کد یا شماره درست نیست.'; paint(); return;
+    }
+    if (r.nonce) { NONCE = r.nonce; }
+    if (r.loggedIn && !S.logged) { S.logged = true; S.hasPhone = true; S.me = { name: (r.item && r.item.customer) || '', phone: R.phone }; S.bookingsFresh = false; }
+    R.token = r.token || ''; R.tags = r.tags || R.tags; R.other = false; R.code = '';
+    rvOpen(r.item);
+  });
+}
+
+function rvSubmit() {
+  var R = S.rv, f = R.form;
+  if (!R.sel || !f.rating || R.busy) { return; }
+  var c = document.getElementById('cmb-rv-comment');
+  if (c) { f.comment = c.value.slice(0, 500); }
+  R.busy = true; R.err = ''; paint();
+  post('review/submit', { booking: R.sel.booking, token: R.token, rating: f.rating, tags: f.tags, comment: f.comment, wantsCall: f.wantsCall }).then(function (r) {
+    R.busy = false;
+    if (r.success === false) { R.err = r.message || 'ثبت نظر انجام نشد.'; paint(); return; }
+    R.sel = r.item; R.editing = false; R.thanks = r.message || 'ممنون! نظر شما ثبت شد.';
+    R.items = R.items.map(function (x) { return x.booking === r.item.booking ? r.item : x; });
+    // کارت «نوبت‌های من» هم وضعیت تازه را نشان دهد
+    S.bookings.forEach(function (b) { if (b.id === r.item.booking) { b.review = { state: r.item.editable ? 'editable' : 'done', rating: r.item.rating }; } });
+    window.scrollTo(0, 0);
+    paint();
+  });
 }
 
 /* ═══ حساب من ═══ */
@@ -1992,6 +2213,7 @@ function render() {
     case 'me':   inner = viewMe(); break;
     case 'wallet': inner = viewWallet(); break;
     case 'pay':  inner = viewPay(); break;
+    case 'review': inner = viewReview(); break;
     default:     inner = viewHome();
   }
 
@@ -2131,6 +2353,8 @@ function load(page) {
       return;
     }
   }
+
+  if (page === 'review') { rvLoad(); return; }
 
   if (page === 'wallet') {
     if (!S.logged) { paint(); return; }
@@ -2743,6 +2967,19 @@ function stopTimer() {
 
 function bind() {
   document.addEventListener('input', function (e) {
+    if (e.target && e.target.id === 'cmb-rv-comment') {
+      S.rv.form.comment = e.target.value.slice(0, 500);
+      var rc = document.getElementById('cmb-rv-count');
+      if (rc) { rc.textContent = fa(S.rv.form.comment.length) + ' / ۵۰۰'; }
+      return;
+    }
+    if (e.target && e.target.id === 'cmb-rv-phone') { S.rv.phone = e.target.value; return; }
+    if (e.target && e.target.id === 'cmb-rv-code') {
+      S.rv.code = en(e.target.value).replace(/\D/g, '').slice(0, 5);
+      // پیشنهاد خودکار کد از پیامک: با رسیدن به ۵ رقم خودش ادامه می‌دهد
+      if (S.rv.code.length === 5 && /^0?9\d{9}$/.test(en(S.rv.phone).trim())) { setTimeout(rvVerify, 150); }
+      return;
+    }
     if (e.target && e.target.id === 'cmb-br-q') {
       S.branchQ = e.target.value;
       paint();
@@ -2767,6 +3004,41 @@ function bind() {
     }
 
     if (up('[data-start]')) { e.preventDefault(); startBooking(); return; }
+
+    /* ── نظرسنجی ── */
+    if ((el = up('[data-rate]'))) { e.preventDefault(); S.rv.want = Number(el.getAttribute('data-rate')); S.rv.sel = null; S.rv.thanks = ''; go('review'); return; }
+    if (up('[data-rv-verify]')) { e.preventDefault(); rvVerify(); return; }
+    if (up('[data-rv-submit]')) { e.preventDefault(); rvSubmit(); return; }
+    if ((el = up('[data-rv-star]'))) {
+      e.preventDefault();
+      var rf = S.rv.form, nr = Number(el.getAttribute('data-rv-star'));
+      var cm = document.getElementById('cmb-rv-comment');
+      if (cm) { rf.comment = cm.value.slice(0, 500); }
+      // برچسب‌های گروه دیگر (ایراد ↔ نکته‌ی مثبت) با عوض شدن گروه پاک می‌شوند
+      if ((rf.rating <= 3) !== (nr <= 3)) { rf.tags = []; }
+      if (nr > 2) { rf.wantsCall = false; }
+      rf.rating = nr; S.rv.err = '';
+      paint();
+      return;
+    }
+    if ((el = up('[data-rv-tag]'))) {
+      e.preventDefault();
+      var tg = el.getAttribute('data-rv-tag'), tl = S.rv.form.tags, ti = tl.indexOf(tg);
+      if (ti === -1) { tl.push(tg); } else { tl.splice(ti, 1); }
+      el.classList.toggle('is-on', ti === -1);
+      el.setAttribute('aria-pressed', String(ti === -1));
+      return;
+    }
+    if (up('[data-rv-edit]')) { e.preventDefault(); S.rv.editing = true; S.rv.thanks = ''; paint(); return; }
+    if ((el = up('[data-rv-open]'))) {
+      e.preventDefault();
+      var oid = Number(el.getAttribute('data-rv-open'));
+      var oit = S.rv.items.filter(function (x) { return x.booking === oid; })[0];
+      if (oit) { rvOpen(oit); }
+      return;
+    }
+    if (up('[data-rv-list]')) { e.preventDefault(); S.rv.sel = null; S.rv.thanks = ''; var nx = S.rv.items.filter(function (x) { return !x.answered; })[0]; if (nx) { rvOpen(nx); } else { paint(); } return; }
+    if (up('[data-rv-other]')) { e.preventDefault(); S.rv.other = true; S.rv.err = ''; paint(); return; }
 
     if (up('[data-services-retry]')) { e.preventDefault(); S.servicesTried = false; S.servicesError = ''; load('home'); return; }
     if ((el = up('[data-map-open]'))) {
@@ -2853,6 +3125,8 @@ function bind() {
 
     if (up('[data-back]')) {
       e.preventDefault();
+
+      if (S.page === 'review' && S.rv.sel) { S.rv.sel = null; S.rv.thanks = ''; paint(); return; }
 
       if (S.receipt) { S.receipt = null; go('home'); return; }
       if (S.page === 'home' && S.branchPick) { S.branchPick = false; paint(); return; }
@@ -3030,6 +3304,7 @@ function bind() {
 
   /* مقادیر فرم قبل از رندر مجدد از بین نروند */
   document.addEventListener('change', function (e) {
+    if (e.target && e.target.id === 'cmb-rv-call') { S.rv.form.wantsCall = !!e.target.checked; return; }
     /* استان/شهر کشویی: با تغییرِ استان فهرستِ شهر و با انتخابِ «شهر دیگر»
        ورودیِ متنی باید دوباره رندر شوند، پس اینجا paint لازم است. */
     if (e.target.id === 'cmb-f-province' || e.target.id === 'cmb-f-city-sel') {

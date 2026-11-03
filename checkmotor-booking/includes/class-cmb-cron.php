@@ -147,6 +147,11 @@ class CMB_Cron {
 
 		$table = cmb_table( 'bookings' );
 
+		// نظرسنجی (۱.۵۲.۰): همین نوبت‌ها ساعت ۱۰ امروز پیامک می‌گیرند
+		$closing = class_exists( 'CMB_Reviews' ) && CMB_Reviews::enabled()
+			? array_map( 'intval', (array) $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$table} WHERE status = 'confirmed' AND booking_date < %s", $today ) ) ) // phpcs:ignore
+			: array();
+
 		$done = (int) $wpdb->query(
 			$wpdb->prepare(
 				"UPDATE {$table} SET status = 'done' WHERE status = 'confirmed' AND booking_date < %s", // phpcs:ignore
@@ -164,6 +169,10 @@ class CMB_Cron {
 			cmb_log( sprintf( '%d نوبت گذشته خودکار «انجام شده» شد.', $done ) );
 		}
 
+		if ( $closing ) {
+			CMB_Reviews::queue_ids( $closing, 'auto' );
+		}
+
 		/* «انجام‌شده» یعنی «لغو نشده»: هزینه‌ی بلوکه‌ی نوبت‌های نمایندگی
 		   همین‌جا قطعی کسر می‌شود (US-4.4). شرطی است، پس اجرای دوباره
 		   کسر دوم نمی‌زند. */
@@ -178,6 +187,11 @@ class CMB_Cron {
 		CMB_OTP::cleanup();
 		self::auto_complete_past();
 		self::send_reminders();
+
+		// پیامک‌های نظرسنجی رسیده (تیک خودِ نظرسنجی هم روی هر بازدید هست)
+		if ( class_exists( 'CMB_Reviews' ) ) {
+			CMB_Reviews::send_due();
+		}
 
 		// جبران هر مرحله‌ی جاافتاده‌ی کیف پول نمایندگی‌ها
 		if ( class_exists( 'CMB_Branch_Wallet' ) ) {

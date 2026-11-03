@@ -411,6 +411,15 @@ class CMB_SMS {
 				'sample' => array( $name, '200,000', '350,000', 'بابت لغو نوبت ' . $code . ' به کیف پول شما برگشت' ),
 			),
 			array(
+				'key'    => 'pattern_review',
+				'label'  => 'نظرسنجی',
+				'to'     => 'مشتری',
+				'when'   => 'بعد از «انجام شد» (۲ ساعت بعد، یا ساعت ۱۰ برای تکمیل خودکار؛ بین ۹ تا ۲۱)',
+				'vars'   => array( 'نام مشتری', 'خدمت', 'مرکز یا نمایندگی', 'کد نظرسنجی (۵ رقم)' ),
+				'text'   => "{0} عزیز، {1} در {2} انجام شد.\nبه خدمت امروز از ۱ تا ۵ امتیاز دهید:\n" . ( class_exists( 'CMB_Reviews' ) ? preg_replace( '~^https?://(www\.)?~', '', CMB_Reviews::url() ) : 'checkmotor.ir/nazar' ) . "\nکد نظرسنجی: {3}\nچک موتور",
+				'sample' => array( $name, $svc, $title, '48217' ),
+			),
+			array(
 				'key'    => 'pattern_agency_wallet',
 				'label'  => 'کیف پول نمایندگی',
 				'to'     => 'نمایندگی',

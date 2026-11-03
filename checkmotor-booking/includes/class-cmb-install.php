@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CMB_Install {
 
-	const DB_VERSION = '1.11.0';
+	const DB_VERSION = '1.12.0';
 
 	public static function activate() {
 		global $wpdb;
@@ -288,6 +288,7 @@ class CMB_Install {
 		$ledger   = cmb_table( 'branch_ledger' );
 		$log      = cmb_table( 'log' );
 		$sms_log  = cmb_table( 'sms_log' );
+		$reviews  = cmb_table( 'reviews' );
 
 		$sql = array();
 
@@ -563,6 +564,45 @@ class CMB_Install {
 			KEY created_at (created_at),
 			KEY phone (phone),
 			KEY kind_created (kind,created_at)
+		) {$charset};";
+
+		/* 1.12.0: نظرسنجی بعد از خدمت؛ هر نوبت حداکثر یک ردیف. خود کد نظرسنجی
+		   ذخیره نمی‌شود، فقط hash_hmac(شماره|کد). همه‌ی زمان‌ها به وقت سایت. */
+		$sql[] = "CREATE TABLE {$reviews} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			booking_id BIGINT UNSIGNED NOT NULL,
+			branch_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			service_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			block_key VARCHAR(20) DEFAULT '' NOT NULL,
+			booking_date DATE NULL,
+			user_id BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			phone VARCHAR(20) DEFAULT '' NOT NULL,
+			status VARCHAR(12) DEFAULT 'queued' NOT NULL,
+			note VARCHAR(60) DEFAULT '' NOT NULL,
+			code_hash VARCHAR(64) DEFAULT '' NOT NULL,
+			expires_at DATETIME NULL,
+			code_attempts SMALLINT UNSIGNED DEFAULT 0 NOT NULL,
+			locked_until DATETIME NULL,
+			send_at DATETIME NULL,
+			sent_at DATETIME NULL,
+			opened_at DATETIME NULL,
+			answered_at DATETIME NULL,
+			rating TINYINT UNSIGNED DEFAULT 0 NOT NULL,
+			tags TEXT NULL,
+			comment TEXT NULL,
+			wants_call TINYINT(1) DEFAULT 0 NOT NULL,
+			follow_status VARCHAR(10) DEFAULT '' NOT NULL,
+			follow_note TEXT NULL,
+			follow_by BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			follow_at DATETIME NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY booking_id (booking_id),
+			KEY queue (status,send_at),
+			KEY phone (phone),
+			KEY branch_date (branch_id,booking_date),
+			KEY follow (follow_status)
 		) {$charset};";
 
 		foreach ( $sql as $statement ) {

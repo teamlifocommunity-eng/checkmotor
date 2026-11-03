@@ -1026,6 +1026,58 @@ class CMB_Admin {
 					</tr>
 				</table>
 
+				<h2 class="title" id="cmb-review-settings">نظرسنجی بعد از خدمت</h2>
+				<?php $cmb_rv_tags = class_exists( 'CMB_Reviews' ) ? CMB_Reviews::tags() : array( 'bad' => array(), 'good' => array() ); ?>
+				<table class="form-table">
+					<tr>
+						<th><label>نظرسنجی</label></th>
+						<td>
+							<label class="cmb-check"><input type="checkbox" name="review_enabled" value="1" <?php checked( (int) $s['review_enabled'], 1 ); ?> /> روشن باشد</label>
+							<p class="description">بعد از «انجام شد» یک پیامک با لینک ثابت و کد ۵ رقمی به مشتری می‌رود. پترن «نظرسنجی» را در بخش پیامک‌ها وارد کنید.</p>
+						</td>
+					</tr>
+					<tr>
+						<th><label>آدرس صفحه‌ی نظرسنجی</label></th>
+						<td>
+							<code dir="ltr"><?php echo esc_html( home_url( '/' ) ); ?></code><input type="text" name="review_path" dir="ltr" class="regular-text" style="max-width:160px" value="<?php echo esc_attr( $s['review_path'] ); ?>" />
+							<p class="description">باید دقیقاً همان لینکی باشد که در متن پترن ملی‌پیامک نوشته‌اید؛ بعد از تأیید پترن عوضش نکنید.</p>
+						</td>
+					</tr>
+					<tr>
+						<th><label>زمان ارسال</label></th>
+						<td>
+							<input type="number" name="review_delay_hours" min="0" max="48" class="small-text" value="<?php echo esc_attr( $s['review_delay_hours'] ); ?>" /> ساعت بعد از «انجام شد» در پنل
+							&nbsp;·&nbsp; تکمیل خودکار: ساعت <input type="number" name="review_auto_hour" min="0" max="23" class="small-text" value="<?php echo esc_attr( $s['review_auto_hour'] ); ?>" />
+							<br>ساعت سکوت (پیامک نرود): از <input type="number" name="review_quiet_start" min="0" max="23" class="small-text" value="<?php echo esc_attr( $s['review_quiet_start'] ); ?>" /> تا <input type="number" name="review_quiet_end" min="0" max="23" class="small-text" value="<?php echo esc_attr( $s['review_quiet_end'] ); ?>" />
+						</td>
+					</tr>
+					<tr>
+						<th><label>کد و امنیت</label></th>
+						<td>
+							اعتبار کد <input type="number" name="review_code_days" min="1" max="60" class="small-text" value="<?php echo esc_attr( $s['review_code_days'] ); ?>" /> روز
+							&nbsp;·&nbsp; نظر از «نوبت‌های من» تا <input type="number" name="review_window_days" min="1" max="120" class="small-text" value="<?php echo esc_attr( $s['review_window_days'] ); ?>" /> روز بعد از نوبت
+							<br>تلاش نادرست مجاز: <input type="number" name="review_max_attempts" min="1" max="20" class="small-text" value="<?php echo esc_attr( $s['review_max_attempts'] ); ?>" /> برای هر شماره و <input type="number" name="review_max_attempts_ip" min="1" max="100" class="small-text" value="<?php echo esc_attr( $s['review_max_attempts_ip'] ); ?>" /> از هر IP در ساعت؛ بعد یک ساعت قفل
+							<br><label class="cmb-check"><input type="checkbox" name="review_autologin" value="1" <?php checked( (int) $s['review_autologin'], 1 ); ?> /> کد درست، مشتری را وارد سایت هم کند</label>
+						</td>
+					</tr>
+					<tr>
+						<th><label>محدودیت و پیگیری</label></th>
+						<td>
+							هر شماره حداکثر یک پیامک نظرسنجی در <input type="number" name="review_min_gap_days" min="0" max="60" class="small-text" value="<?php echo esc_attr( $s['review_min_gap_days'] ); ?>" /> روز
+							&nbsp;·&nbsp; امتیاز <input type="number" name="review_follow_threshold" min="1" max="4" class="small-text" value="<?php echo esc_attr( $s['review_follow_threshold'] ); ?>" /> و کمتر به صف «پیگیری» برود
+						</td>
+					</tr>
+					<tr>
+						<th><label>برچسب‌ها</label></th>
+						<td>
+							<p><b>۱ تا ۳ ستاره (ایرادها)</b> — هر خط یک برچسب:</p>
+							<textarea name="review_tags_bad" rows="5" class="large-text"><?php echo esc_textarea( implode( "\n", $cmb_rv_tags['bad'] ) ); ?></textarea>
+							<p><b>۴ و ۵ ستاره (نکته‌های مثبت)</b>:</p>
+							<textarea name="review_tags_good" rows="4" class="large-text"><?php echo esc_textarea( implode( "\n", $cmb_rv_tags['good'] ) ); ?></textarea>
+						</td>
+					</tr>
+				</table>
+
 				<h2 class="title">محل سکونت مشتری (استان و شهر)</h2>
 				<table class="form-table">
 					<tr>
@@ -1426,6 +1478,7 @@ class CMB_Admin {
 			'pattern_admin_cancel',
 			'pattern_wallet',
 			'pattern_agency_wallet',
+			'pattern_review',
 			'admin_phones',
 			'confirm_note',
 			'ecu_note',
@@ -1476,6 +1529,36 @@ class CMB_Admin {
 
 		foreach ( $bool_keys as $key ) {
 			$values[ $key ] = isset( $_POST[ $key ] ) ? 1 : 0;
+		}
+
+		// نظرسنجی: فقط اگر بخشش در فرم بود
+		if ( isset( $_POST['review_path'] ) ) {
+			$values['review_enabled']   = isset( $_POST['review_enabled'] ) ? 1 : 0;
+			$values['review_autologin'] = isset( $_POST['review_autologin'] ) ? 1 : 0;
+			$path                       = trim( sanitize_title( wp_unslash( $_POST['review_path'] ) ), '/' );
+			$values['review_path']      = '' !== $path ? $path : 'nazar';
+
+			$ranges = array(
+				'review_delay_hours'      => array( 0, 48 ),
+				'review_auto_hour'        => array( 0, 23 ),
+				'review_quiet_start'      => array( 0, 23 ),
+				'review_quiet_end'        => array( 0, 23 ),
+				'review_code_days'        => array( 1, 60 ),
+				'review_window_days'      => array( 1, 120 ),
+				'review_max_attempts'     => array( 1, 20 ),
+				'review_max_attempts_ip'  => array( 1, 100 ),
+				'review_min_gap_days'     => array( 0, 60 ),
+				'review_follow_threshold' => array( 1, 4 ),
+			);
+
+			foreach ( $ranges as $key => $r ) {
+				$values[ $key ] = max( $r[0], min( $r[1], (int) cmb_en_num( wp_unslash( $_POST[ $key ] ?? $r[0] ) ) ) );
+			}
+
+			foreach ( array( 'review_tags_bad', 'review_tags_good' ) as $key ) {
+				$lines          = array_filter( array_map( 'sanitize_text_field', preg_split( '/\r?\n/', (string) wp_unslash( $_POST[ $key ] ?? '' ) ) ) );
+				$values[ $key ] = implode( "\n", array_slice( array_unique( $lines ), 0, 12 ) );
+			}
 		}
 
 		if ( isset( $_POST['neshan_web_key'] ) ) {

@@ -54,6 +54,7 @@ class CMB_SMS_Log {
 			'pattern_agency_low'      => 'هشدار موجودی نمایندگی',
 			'pattern_agency_topup'    => 'شارژ کیف پول نمایندگی',
 			'pattern_agency_active'   => 'فعال شدن نمایندگی',
+			'pattern_review'          => 'نظرسنجی',
 		);
 	}
 
@@ -153,6 +154,10 @@ class CMB_SMS_Log {
 	}
 
 	public static function otp_label( $purpose ) {
+		if ( 'review' === $purpose ) {
+			return 'کد نظرسنجی';
+		}
+
 		return 'panel' === $purpose ? 'کد ورود پنل' : 'کد ورود مشتری';
 	}
 

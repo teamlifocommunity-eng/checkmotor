@@ -1573,3 +1573,61 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
 @media (prefers-reduced-motion: reduce) { #cmb-panel .pn-agsvc__sw, #cmb-panel .pn-agsvc__sw::after { transition:none; } }
 /* ۱.۵۱.۲ — کمبود اطلاعات کارت مشتری */
 #cmb-panel .pn-agc__info .pn-agc__missing { color:#8d4e00; background:#fff6e5; border:1px solid #f4d9a6; border-radius:10px; padding:6px 10px; font-size:12px; line-height:1.9; margin-top:6px; }
+
+/* ═══ ۱.۵۲.۰ — نظرسنجی بعد از خدمت ═══ */
+#cmb-panel .pn-rvst { display:inline-flex; gap:2px; direction:ltr; vertical-align:middle; }
+#cmb-panel .pn-rvst i { width:16px; height:16px; color:#d8dee4; display:inline-block; }
+#cmb-panel .pn-rvst i.is-on { color:#F5A524; }
+#cmb-panel .pn-rvst svg { width:100%; height:100%; }
+#cmb-panel .pn-rvstats { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+#cmb-panel .pn-rvstat { background:#fff; border:1px solid #e7ebef; border-radius:14px; padding:14px 16px; display:grid; gap:4px; min-width:0; }
+#cmb-panel .pn-rvstat span { font-size:12px; color:#5b6772; font-weight:600; }
+#cmb-panel .pn-rvstat b { font-size:24px; font-weight:800; color:#13202b; line-height:1.3; }
+#cmb-panel .pn-rvstat small { font-size:12px; color:#64717d; min-height:18px; }
+#cmb-panel .pn-rvstat.is-alert { border-color:#f4c7c1; background:#fdedeb; }
+#cmb-panel .pn-rvstat.is-alert b { color:#d33a2c; }
+#cmb-panel .pn-rvgrid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start; }
+#cmb-panel .pn-rvgrid > .pn-card { margin-bottom:16px; }
+#cmb-panel .pn-rvbar { display:grid; grid-template-columns:44px minmax(0,1fr) 92px; align-items:center; gap:10px; margin:8px 0; font-size:13px; }
+#cmb-panel .pn-rvbar > span { display:inline-flex; align-items:center; gap:3px; font-weight:700; color:#264055; }
+#cmb-panel .pn-rvbar > span svg { width:13px; height:13px; color:#F5A524; }
+#cmb-panel .pn-rvbar > div { height:10px; border-radius:6px; background:#eef2f5; overflow:hidden; }
+#cmb-panel .pn-rvbar > div i { display:block; height:100%; background:#F5A524; border-radius:6px; }
+#cmb-panel .pn-rvbar.is-low > div i { background:#d33a2c; }
+#cmb-panel .pn-rvbar b { font-weight:700; color:#13202b; }
+#cmb-panel .pn-rvbar b small { color:#64717d; font-weight:500; }
+#cmb-panel .pn-rvtab td svg { display:inline-block; width:12px; height:12px; color:#F5A524; vertical-align:-1px; }
+#cmb-panel .pn-rvlist-h h2 { font-size:17px; font-weight:800; margin:8px 0 12px; color:#13202b; }
+#cmb-panel .pn-rvlist-h small { font-size:13px; font-weight:500; color:#64717d; }
+#cmb-panel .pn-rvi { margin-bottom:12px; }
+#cmb-panel .pn-rvi.is-low { border-inline-start:4px solid #d33a2c; }
+#cmb-panel .pn-rvi__hd { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+#cmb-panel .pn-rvi__l { font-size:14px; color:#13202b; }
+#cmb-panel .pn-rvi__t { margin-inline-start:auto; font-size:12px; color:#64717d; }
+#cmb-panel .pn-rvi__tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+#cmb-panel .pn-rvi__tags span { padding:3px 10px; border-radius:999px; background:#f1f5f9; color:#264055; font-size:12px; font-weight:600; }
+#cmb-panel .pn-rvi__c { margin:10px 0 0; font-size:14px; line-height:1.9; color:#13202b; overflow-wrap:anywhere; }
+#cmb-panel .pn-rvi__m { display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:10px; font-size:12px; color:#5b6772; }
+#cmb-panel .pn-rvi__m a { color:inherit; }
+#cmb-panel .pn-rvi__f { display:grid; grid-template-columns:200px minmax(0,1fr) auto; gap:10px; align-items:end; margin-top:12px; padding:12px; border-radius:12px; background:#f6f8fa; }
+#cmb-panel .pn-rvi__f .pn-hint { grid-column:1 / -1; margin:0; }
+#cmb-panel .pn-rvi .pn-svcacts { margin-top:12px; }
+#cmb-panel .pn-badge--bad { background:#fdedeb; color:#d33a2c; }
+#cmb-panel .pn-rvf--open { background:#fdf3e2; color:#8d4e00; }
+#cmb-panel .pn-rvf--called { background:#e8f0f7; color:#264055; }
+#cmb-panel .pn-rvf--resolved { background:#e6f6ed; color:#0e8a4f; }
+#cmb-panel .pn-rv-onlyf { align-self:end; min-height:44px; white-space:nowrap; }
+#cmb-panel .pn-pager { display:flex; align-items:center; justify-content:center; gap:12px; margin:12px 0; font-size:13px; }
+#cmb-panel .pn-rvbox { margin-top:14px; padding:12px 14px; border-radius:12px; background:#fff8ec; border:1px solid #f6e2bd; }
+#cmb-panel .pn-rvbox__h { display:flex; align-items:center; gap:6px; font-weight:800; font-size:13px; color:#8d4e00; margin-bottom:8px; }
+#cmb-panel .pn-rvbox__h svg { width:14px; height:14px; color:#F5A524; }
+@media (max-width: 980px) {
+  #cmb-panel .pn-rvstats { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  #cmb-panel .pn-rvgrid { grid-template-columns:minmax(0,1fr); }
+}
+@media (max-width: 600px) {
+  #cmb-panel .pn-rvstats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #cmb-panel .pn-rvstat:last-child { grid-column:1 / -1; }
+  #cmb-panel .pn-rvi__f { grid-template-columns:minmax(0,1fr); }
+  #cmb-panel .pn-rvbar { grid-template-columns:40px minmax(0,1fr) 84px; }
+}
