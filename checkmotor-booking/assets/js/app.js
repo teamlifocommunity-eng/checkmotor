@@ -547,7 +547,9 @@ function branchInfo(b) {
       '</div>' +
       '<ul class="cmb-brinfo__rows">' +
         (b.address ? '<li><span class="cmb-brinfo__ic">' + I.pin + '</span><span><small>نشانی</small>' + esc(b.address) + '</span></li>' : '') +
-        (b.phone ? '<li><span class="cmb-brinfo__ic">' + I.phone + '</span><span><small>تلفن</small><bdi dir="ltr">' + fa(esc(b.phone)) + '</bdi></span></li>' : '') +
+        (b.phone ? '<li><span class="cmb-brinfo__ic">' + I.phone + '</span><span><small>تلفن</small><bdi dir="ltr">' + fa(esc(b.phone)) + '</bdi></span></li>'
+          // نمایندگی: تلفن پیش از ثبت نوبت نشان داده نمی‌شود (۱.۵۲.۱)
+          : (b.type === 'agency' ? '<li><span class="cmb-brinfo__ic">' + I.phone + '</span><span><small>تلفن</small>بعد از ثبت نوبت نمایش داده می‌شود</span></li>' : '')) +
       '</ul>' +
       map +
       (b.map || b.phone ? '<div class="cmb-brinfo__acts">' +

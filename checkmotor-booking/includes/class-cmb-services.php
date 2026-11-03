@@ -132,7 +132,9 @@ class CMB_Services {
 		$key       = 'cmb_services_' . $branch_id;
 		$cached    = get_transient( $key );
 
-		if ( is_array( $cached ) && ( empty( $cached['branch'] ) || ! CMB_Branches::ready() || array_key_exists( 'photoAuto', $cached['branch'] ) ) ) {
+		/* کش با نسخه‌ی افزونه: بعد از هر به‌روزرسانی (مثلاً پنهان شدن تلفن نمایندگی در
+		   ۱.۵۲.۱) نسخه‌ی کهنه‌ی ۱۲ ساعته تحویل مشتری نمی‌شود. */
+		if ( is_array( $cached ) && isset( $cached['ver'] ) && CMB_VERSION === $cached['ver'] && ( empty( $cached['branch'] ) || ! CMB_Branches::ready() || array_key_exists( 'photoAuto', $cached['branch'] ) ) ) {
 			return $cached;
 		}
 
@@ -149,7 +151,7 @@ class CMB_Services {
 			$branch_out = array(
 				'id'      => (int) $branch->id,
 				'title'   => $branch->title,
-				'phone'   => $branch->phone,
+				'phone'   => CMB_Branches::ready() && CMB_Branches::is_agency( $branch ) ? '' : $branch->phone,
 				'address' => $branch->address,
 			);
 
@@ -171,6 +173,8 @@ class CMB_Services {
 				'outOfWindow' => CMB_Settings::get( 'out_of_window_note', '' ),
 			),
 		);
+
+		$payload['ver'] = CMB_VERSION;
 
 		set_transient( $key, $payload, 12 * HOUR_IN_SECONDS );
 

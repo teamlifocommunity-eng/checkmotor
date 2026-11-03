@@ -408,7 +408,9 @@ class CMB_Branches {
 			'province' => isset( $b->province ) ? (string) $b->province : '',
 			'city'     => isset( $b->city ) ? (string) $b->city : '',
 			'address'  => (string) $b->address,
-			'phone'    => (string) $b->phone,
+			/* شماره‌ی نمایندگی پیش از ثبت نوبت به مشتری نشان داده نمی‌شود (۱.۵۲.۱)؛ بعد از
+			   ثبت، در رسید، «نوبت‌های من» و پیامک‌ها از خود نوبت می‌آید (branchPhone). */
+			'phone'    => self::is_agency( $b ) ? '' : (string) $b->phone,
 			'photo'    => $photo['url'] ? $photo['url'] : $identity['url'],
 			'photoAuto' => ! $photo['url'],
 			'visualCode' => $identity['code'],
