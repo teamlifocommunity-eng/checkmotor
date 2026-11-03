@@ -358,6 +358,13 @@ class CMB_Reviews {
 			return 'skipped';
 		}
 
+		/* تا پترن «نظرسنجی» در ملی‌پیامک تأیید و در تنظیمات وارد نشده، بی‌سروصدا رد
+		   می‌شود (نه یک «ارسال ناموفق» در لاگ پیامک برای هر نوبت). در حالت متن ساده می‌رود. */
+		if ( '' === trim( (string) CMB_Settings::get( 'pattern_review', '' ) ) && 'simple' !== CMB_Settings::get( 'sms_api_mode', 'pattern' ) ) {
+			$set( array( 'status' => 'skipped', 'note' => 'no-pattern' ) );
+			return 'skipped';
+		}
+
 		$code    = (string) wp_rand( 10000, 99999 );
 		$service = CMB_Services::get_service( (int) $booking->service_id );
 		$branch  = class_exists( 'CMB_Branches' ) ? CMB_Branches::display_name( (int) $booking->branch_id ) : '';
