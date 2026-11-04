@@ -82,6 +82,184 @@ class CMB_Reviews {
 		return home_url( '/' . self::path() );
 	}
 
+	/* ---------------------------------------------------------------
+	 * پترن و تنظیمات پیامک نظرسنجی (پنل مدیر کل، ۱.۵۴.۰)
+	 * --------------------------------------------------------------- */
+
+	/** متغیرهای پترن، به همان ترتیبی که فرستاده می‌شوند. */
+	public static function pattern_vars() {
+		return array( 'نام مشتری', 'خدمت (چند خدمت با «+»)', 'مرکز یا نمایندگی', 'کد نظرسنجی (۵ رقم)' );
+	}
+
+	/**
+	 * متن پیشنهادی پترن برای ثبت در ملی‌پیامک.
+	 *
+	 * @param bool $with_link با نشانی ثابت صفحه‌ی نظرسنجی؛ false = نسخه‌ی بی‌لینک
+	 *                        برای وقتی که پترن لینک‌دار رد شد (مشتری از «نوبت‌های من» امتیاز می‌دهد).
+	 */
+	public static function pattern_text( $with_link = true ) {
+		if ( $with_link ) {
+			return "{0} عزیز، {1} در {2} انجام شد.\nبه خدمت امروز از ۱ تا ۵ امتیاز دهید:\n" . preg_replace( '~^https?://(www\.)?~', '', self::url() ) . "\nکد نظرسنجی: {3}\nچک موتور";
+		}
+
+		return "{0} عزیز، {1} در {2} انجام شد.\nلطفاً در سایت چک موتور، بخش «نوبت‌های من» به این خدمت امتیاز دهید.\nکد نظرسنجی: {3}\nچک موتور";
+	}
+
+	/** «بعد از انجام شد (۲ ساعت بعد…)» برای فهرست پترن‌ها، از روی تنظیمات فعلی. */
+	public static function timing_text() {
+		$d  = self::setting( 'review_delay_hours', 2 );
+		$qs = self::setting( 'review_quiet_start', 21 );
+		$qe = self::setting( 'review_quiet_end', 9 );
+
+		return sprintf(
+			'بعد از «انجام شد» (%s، یا ساعت %s برای تکمیل خودکار شبانه%s)',
+			$d ? cmb_fa_num( $d ) . ' ساعت بعد' : 'همان لحظه',
+			cmb_fa_num( self::setting( 'review_auto_hour', 10 ) ),
+			$qs === $qe ? '' : sprintf( '؛ فقط بین %s تا %s', cmb_fa_num( $qe ), cmb_fa_num( $qs ) )
+		);
+	}
+
+	/** «امروز ساعت ۱۶:۴۰» / «فردا ساعت ۹:۰۰» / تاریخ کامل. */
+	public static function when_fa( $local ) {
+		try {
+			$d = new DateTime( (string) $local, cmb_timezone() );
+		} catch ( Exception $e ) {
+			return '';
+		}
+
+		$day   = $d->format( 'Y-m-d' );
+		$today = cmb_today();
+		$tmrw  = cmb_now()->modify( '+1 day' )->format( 'Y-m-d' );
+		$label = $day === $today ? 'امروز' : ( $day === $tmrw ? 'فردا' : cmb_jalali_date( $day, 'numeric' ) );
+
+		return $label . ' ساعت ' . cmb_fa_num( $d->format( 'H:i' ) );
+	}
+
+	/** وضعیت و تنظیمات برای کارت «پیامک نظرسنجی» پنل. */
+	public static function settings_payload() {
+		global $wpdb;
+
+		$queued = 0;
+		$next   = '';
+
+		if ( self::ready() ) {
+			$queued = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . self::table() . " WHERE status = 'queued'" ); // phpcs:ignore
+			$first  = $queued ? (string) $wpdb->get_var( 'SELECT MIN(send_at) FROM ' . self::table() . " WHERE status = 'queued'" ) : ''; // phpcs:ignore
+			$next   = $first ? self::when_fa( $first ) : '';
+		}
+
+		$skipped = self::ready() ? (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . self::table() . " WHERE status = 'skipped' AND note = 'no-pattern'" ) : 0; // phpcs:ignore
+
+		return array(
+			'enabled'     => (int) CMB_Settings::get( 'review_enabled', 1 ) ? 1 : 0,
+			'delay'       => self::setting( 'review_delay_hours', 2 ),
+			'autoHour'    => self::setting( 'review_auto_hour', 10 ),
+			'quietStart'  => self::setting( 'review_quiet_start', 21 ),
+			'quietEnd'    => self::setting( 'review_quiet_end', 9 ),
+			'gapDays'     => self::setting( 'review_min_gap_days', 3 ),
+			'codeDays'    => self::setting( 'review_code_days', 14 ),
+			'pattern'     => trim( (string) CMB_Settings::get( 'pattern_review', '' ) ),
+			'simple'      => 'simple' === CMB_Settings::get( 'sms_api_mode', 'pattern' ),
+			'smsOn'       => class_exists( 'CMB_SMS' ) ? CMB_SMS::is_enabled() : true,
+			'vars'        => self::pattern_vars(),
+			'text'        => self::pattern_text( true ),
+			'textPlain'   => self::pattern_text( false ),
+			'url'         => self::url(),
+			'ifNow'       => self::when_fa( self::send_time( 'manual' ) ),
+			'now'         => cmb_now()->format( 'Y-m-d H:i' ),
+			'timing'      => self::timing_text(),
+			'queued'      => $queued,
+			'nextQueued'  => $next,
+			'noPattern'   => $skipped,
+		);
+	}
+
+	/**
+	 * ذخیره از پنل. فقط کلیدهای فرستاده‌شده عوض می‌شوند.
+	 *
+	 * @return array|WP_Error payload تازه
+	 */
+	public static function save_settings( array $p ) {
+		$map = array(
+			'enabled'    => array( 'review_enabled', 0, 1, '' ),
+			'delay'      => array( 'review_delay_hours', 0, 48, 'فاصله‌ی ارسال باید بین ۰ تا ۴۸ ساعت باشد.' ),
+			'autoHour'   => array( 'review_auto_hour', 0, 23, 'ساعت ارسال تکمیل خودکار باید بین ۰ تا ۲۳ باشد.' ),
+			'quietStart' => array( 'review_quiet_start', 0, 23, 'ساعت شروع سکوت باید بین ۰ تا ۲۳ باشد.' ),
+			'quietEnd'   => array( 'review_quiet_end', 0, 23, 'ساعت پایان سکوت باید بین ۰ تا ۲۳ باشد.' ),
+			'gapDays'    => array( 'review_min_gap_days', 0, 60, 'فاصله‌ی دو پیامک یک شماره باید بین ۰ تا ۶۰ روز باشد.' ),
+			'codeDays'   => array( 'review_code_days', 1, 60, 'اعتبار کد باید بین ۱ تا ۶۰ روز باشد.' ),
+		);
+		$clean = array();
+
+		foreach ( $map as $in => $rule ) {
+			if ( ! array_key_exists( $in, $p ) ) {
+				continue;
+			}
+
+			$raw = trim( cmb_en_num( (string) ( is_bool( $p[ $in ] ) ? (int) $p[ $in ] : $p[ $in ] ) ) );
+
+			if ( ! preg_match( '/^\d{1,3}$/', $raw ) || (int) $raw < $rule[1] || (int) $raw > $rule[2] ) {
+				return new WP_Error( 'cmb_review_setting', '' !== $rule[3] ? $rule[3] : 'مقدار نامعتبر است.', array( 'status' => 400 ) );
+			}
+
+			$clean[ $rule[0] ] = (int) $raw;
+		}
+
+		if ( array_key_exists( 'pattern', $p ) ) {
+			$id = trim( cmb_en_num( (string) $p['pattern'] ) );
+
+			if ( '' !== $id && ! preg_match( '/^[A-Za-z0-9_-]{1,40}$/', $id ) ) {
+				return new WP_Error( 'cmb_review_pattern', 'شناسه‌ی پترن فقط عدد (یا حروف و عدد انگلیسی) است؛ همان «کد پترن» که ملی‌پیامک بعد از تأیید می‌دهد.', array( 'status' => 400 ) );
+			}
+
+			$clean['pattern_review'] = $id;
+		}
+
+		if ( $clean ) {
+			CMB_Settings::update( $clean );
+			cmb_log( 'Review settings updated from panel', array( 'user' => get_current_user_id() ) + $clean );
+		}
+
+		return self::settings_payload();
+	}
+
+	/**
+	 * پیامک آزمایشی با همان پترن و مقادیر نمونه (کد نمونه کار نمی‌کند).
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function test_sms( $phone ) {
+		$phone = cmb_normalize_phone( (string) $phone );
+
+		if ( ! $phone ) {
+			return new WP_Error( 'cmb_review_test_phone', 'یک شماره موبایل معتبر وارد کنید.', array( 'status' => 400 ) );
+		}
+
+		$simple = 'simple' === CMB_Settings::get( 'sms_api_mode', 'pattern' );
+
+		if ( '' === trim( (string) CMB_Settings::get( 'pattern_review', '' ) ) && ! $simple ) {
+			return new WP_Error( 'cmb_review_test_pattern', 'اول شناسه‌ی پترن «نظرسنجی» را وارد و ذخیره کنید.', array( 'status' => 400 ) );
+		}
+
+		$lock = 'cmb_rv_test_' . get_current_user_id();
+		if ( get_transient( $lock ) ) {
+			return new WP_Error( 'cmb_review_test_wait', 'چند ثانیه صبر کنید و دوباره بفرستید.', array( 'status' => 429 ) );
+		}
+		set_transient( $lock, 1, 20 );
+
+		$branch = class_exists( 'CMB_Branches' ) ? CMB_Branches::display_name( CMB_Branches::center_id() ) : '';
+		$args   = array( 'رضا احمدی', 'تنظیم موتور', '' !== $branch ? $branch : 'چک موتور', '12345' );
+		$text   = str_replace( array( '{0}', '{1}', '{2}', '{3}' ), $args, self::pattern_text( true ) );
+
+		if ( class_exists( 'CMB_SMS_Log' ) ) {
+			CMB_SMS_Log::next( array( 'label' => 'نظرسنجی (آزمایشی)' ) );
+		}
+
+		$result = CMB_SMS::send_event( $phone, 'pattern_review', $args, $text );
+
+		return is_wp_error( $result ) ? new WP_Error( 'cmb_review_test_failed', 'ارسال نشد: ' . $result->get_error_message(), array( 'status' => 502 ) ) : true;
+	}
+
 	/** برچسب‌های منفی (۱ تا ۳) و مثبت (۴ و ۵) از تنظیمات. */
 	public static function tags() {
 		$split = function ( $raw, $default ) {

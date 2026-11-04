@@ -3088,6 +3088,157 @@ function rvTable(title, rows, withBranch) {
     }).join('') + '</tbody></table></div></div>';
 }
 
+/* ── پیامک نظرسنجی: زمان ارسال و پترن (۱.۵۴.۰، فقط مدیر کل) ── */
+function rvSmsCard(d) {
+  var chip = function (k, v, warn) { return '<div class="pn-rvsms__c' + (warn ? ' is-warn' : '') + '"><span>' + k + '</span><b>' + v + '</b></div>'; };
+  return '<div class="pn-card pn-rvsms">' +
+    '<div class="pn-rvsms__hd"><div><div class="pn-card__t">پیامک نظرسنجی</div><div class="pn-hint">' + esc(d.timing) + '</div></div>' +
+      '<button class="pn-btn pn-btn--soft" data-rv-sms>' + I.gear + ' تنظیم زمان و پترن</button></div>' +
+    '<div class="pn-rvsms__cs">' +
+      chip('وضعیت', d.enabled ? 'روشن' : 'خاموش', !d.enabled) +
+      chip('پترن', d.pattern ? '<bdi dir="ltr">' + esc(fa(d.pattern)) + '</bdi>' : (d.simple ? 'متن ساده' : 'وارد نشده'), !d.pattern && !d.simple) +
+      chip('اگر الان «انجام شد» بزنید', esc(d.ifNow)) +
+      chip('در صف ارسال', fa(d.queued) + (d.nextQueued ? ' <small>· اولی ' + esc(d.nextQueued) + '</small>' : '')) +
+    '</div>' +
+    (d.noPattern ? '<div class="pn-hint" style="margin-top:8px">' + fa(d.noPattern) + ' نوبت «انجام شد» به‌خاطر نبودن پترن پیامک نگرفته‌اند؛ بعد از واردکردن پترن می‌توانید از جزئیات هر نوبت «ارسال پیامک نظرسنجی» را بزنید.</div>' : '') +
+  '</div>';
+}
+
+function rvHourOpts(sel, list) {
+  if (list.indexOf(Number(sel)) === -1) { list = list.concat([Number(sel)]).sort(function (a, b) { return a - b; }); }
+  return list.map(function (h) { return '<option value="' + h + '"' + (Number(sel) === h ? ' selected' : '') + '>' + (h === 0 && list.length < 24 ? 'همان لحظه' : fa(h)) + '</option>'; }).join('');
+}
+
+function rvRange(n) { var out = []; for (var i = 0; i < n; i++) { out.push(i); } return out; }
+
+/** زمان ارسال اگر همین الان «انجام شد» زده شود؛ همان قاعده‌ی سرور (ساعت سکوت [شروع، پایان)). */
+function rvPreview(d) {
+  var p = String(d.now || '').split(/[- :]/).map(Number);
+  if (p.length < 5 || isNaN(p[3])) { return d.ifNow || ''; }
+  var mins = p[3] * 60 + p[4] + Number(d.delay) * 60;
+  var day = Math.floor(mins / 1440);
+  mins = mins % 1440;
+  var h = Math.floor(mins / 60), qe = Number(d.quietEnd);
+  if (rvIsQuiet(h, d)) {
+    if (qe * 60 <= mins) { day += 1; }
+    mins = qe * 60;
+  }
+  var hh = Math.floor(mins / 60), mm = mins % 60;
+  var label = day === 0 ? 'امروز' : day === 1 ? 'فردا' : day === 2 ? 'پس‌فردا' : fa(day) + ' روز بعد';
+  return label + ' ساعت ' + fa((hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm);
+}
+
+/** ساعت سکوت [شروع، پایان)؛ شروع = پایان یعنی بدون سکوت. */
+function rvIsQuiet(h, d) {
+  var qs = Number(d.quietStart), qe = Number(d.quietEnd);
+  return qs > qe ? (h >= qs || h < qe) : (h >= qs && h < qe);
+}
+
+function rvQuietText(d) {
+  return Number(d.quietStart) === Number(d.quietEnd) ? 'ساعت سکوت ندارد؛ هر ساعتی می‌رود.'
+    : 'از ساعت ' + fa(d.quietStart) + ' تا ' + fa(d.quietEnd) + ' پیامک نمی‌رود و به ساعت ' + fa(d.quietEnd) + ' منتقل می‌شود.';
+}
+
+function rvSmsModal() {
+  var m = S.modal, d = m.rvSms;
+  var hours = rvRange(24);
+  var sel = function (id, v, list) { return '<select class="pn-in" id="' + id + '">' + rvHourOpts(v, list) + '</select>'; };
+  var vars = (d.vars || []).map(function (v, i) { return '<li><code dir="ltr">{' + i + '}</code> ' + esc(v) + '</li>'; }).join('');
+
+  return '<div class="pn-modal__hd"><div><div class="pn-modal__t">پیامک نظرسنجی</div>' +
+      '<div style="font-size:12px;color:var(--ink-3);margin-top:3px">زمان ارسال، پترن ملی‌پیامک و ارسال آزمایشی</div></div>' +
+      '<button class="pn-modal__x" data-close>' + I.x + '</button></div>' +
+    '<div class="pn-rvsms-form">' +
+    (!d.smsOn ? note('warn', I.alert, 'ارسال پیامک در تنظیمات کلی پیامک خاموش است؛ هیچ پیامکی نمی‌رود.') : '') +
+    '<label class="pn-check" style="margin-bottom:14px"><input type="checkbox" id="rvs-on"' + (Number(d.enabled) ? ' checked' : '') + '> نظرسنجی روشن باشد (بعد از «انجام شد» پیامک برود)</label>' +
+
+    '<div class="pn-rvsms__sec">زمان ارسال</div>' +
+    '<div class="pn-grid pn-grid--2">' +
+      '<label class="pn-field"><span class="pn-field__l">چند ساعت بعد از «انجام شد»</span>' + sel('rvs-delay', d.delay, [0, 1, 2, 3, 4, 6, 8, 12, 24, 48]) + '</label>' +
+      '<label class="pn-field"><span class="pn-field__l">ساعت ارسال برای تکمیل خودکار شبانه</span>' + sel('rvs-auto', d.autoHour, hours) + '</label>' +
+      '<label class="pn-field"><span class="pn-field__l">ساعت سکوت از</span>' + sel('rvs-qs', d.quietStart, hours) + '</label>' +
+      '<label class="pn-field"><span class="pn-field__l">تا ساعت</span>' + sel('rvs-qe', d.quietEnd, hours) + '</label>' +
+    '</div>' +
+    '<div class="pn-rvsms__pv" id="rvs-preview">' + rvPvHtml(d) + '</div>' +
+
+    '<div class="pn-rvsms__sec">محدودیت‌ها</div>' +
+    '<div class="pn-grid pn-grid--2">' +
+      '<label class="pn-field"><span class="pn-field__l">حداقل فاصله‌ی دو پیامک به یک شماره (روز)</span><input class="pn-in num" id="rvs-gap" inputmode="numeric" dir="ltr" value="' + esc(d.gapDays) + '"></label>' +
+      '<label class="pn-field"><span class="pn-field__l">اعتبار کد نظرسنجی (روز)</span><input class="pn-in num" id="rvs-days" inputmode="numeric" dir="ltr" value="' + esc(d.codeDays) + '"></label>' +
+    '</div>' +
+    '<div class="pn-hint">اگر یک شماره در این فاصله پیامک نظرسنجی گرفته باشد، پیامک بعدی نمی‌رود (مزاحمت نشود). ۰ = بدون محدودیت.</div>' +
+
+    '<div class="pn-rvsms__sec">پترن ملی‌پیامک</div>' +
+    '<ol class="pn-rvsms__steps">' +
+      '<li>متن زیر را عیناً در پنل ملی‌پیامک (وب‌سرویس خدماتی ← پترن جدید) ثبت کنید. ترتیب متغیرها مهم است.</li>' +
+      '<li>بعد از تأیید، «کد پترن» را این‌جا وارد و ذخیره کنید.</li>' +
+      '<li>با «ارسال آزمایشی» به شماره‌ی خودتان امتحان کنید.</li>' +
+    '</ol>' +
+    '<div class="pn-rvsms__txt"><pre dir="rtl">' + esc(d.text) + '</pre><button type="button" class="pn-btn pn-btn--soft" data-rv-sms-copy="text">کپی متن</button></div>' +
+    '<ul class="pn-rvsms__vars">' + vars + '</ul>' +
+    '<details class="pn-rvsms__alt"><summary>اگر ملی‌پیامک پترن لینک‌دار را رد کرد</summary>' +
+      '<div class="pn-hint" style="margin:6px 0">این نسخه لینک ندارد؛ مشتری وارد سایت می‌شود و از «نوبت‌های من» امتیاز می‌دهد (بدون کد هم می‌شود).</div>' +
+      '<div class="pn-rvsms__txt"><pre dir="rtl">' + esc(d.textPlain) + '</pre><button type="button" class="pn-btn pn-btn--soft" data-rv-sms-copy="plain">کپی متن</button></div>' +
+    '</details>' +
+    '<label class="pn-field"><span class="pn-field__l">کد پترن (bodyId)</span><input class="pn-in num" id="rvs-pattern" dir="ltr" inputmode="numeric" placeholder="مثلاً 123456" value="' + esc(d.pattern) + '"></label>' +
+    (d.simple ? '<div class="pn-hint">حالت ارسال پیامک «متن ساده» است؛ بدون پترن هم همین متن (با لینک) فرستاده می‌شود.</div>' : '') +
+
+    '<div class="pn-rvsms__sec">ارسال آزمایشی</div>' +
+    '<div class="pn-rvsms__test"><input class="pn-in num" id="rvs-phone" inputmode="tel" dir="ltr" placeholder="09xxxxxxxxx" value="' + esc(m.phone || '') + '">' +
+      '<button type="button" class="pn-btn pn-btn--dark" data-rv-sms-test' + (S.busy ? ' disabled' : '') + '>بفرست</button></div>' +
+    '<div class="pn-hint">با پترن ذخیره‌شده و مقادیر نمونه فرستاده می‌شود؛ کد داخلش (۱۲۳۴۵) نمونه است.</div>' +
+    '</div>' +
+    '<div class="pn-modal__ft">' +
+      '<button class="pn-btn pn-btn--pri" data-rv-sms-save' + (S.busy ? ' disabled' : '') + '>ذخیره</button>' +
+      '<button class="pn-btn pn-btn--soft" data-close>انصراف</button>' +
+    '</div>';
+}
+
+function rvPvHtml(d) {
+  return I.clock + '<div><b>اگر همین الان «انجام شد» بزنید، پیامک ' + esc(rvPreview(d)) + ' می‌رود.</b>' +
+    '<small>' + esc(rvQuietText(d)) + ' تکمیل خودکار شبانه: ساعت ' + fa(d.autoHour) + ' صبح روز بعد' +
+    (rvIsQuiet(Number(d.autoHour), d) ? ' (داخل ساعت سکوت است؛ ساعت ' + fa(d.quietEnd) + ' می‌رود)' : '') + '.</small></div>';
+}
+
+/** خواندن فرم مودال در state (پیش از رنگ‌آمیزی دوباره و ذخیره). */
+function readRvSms() {
+  var m = S.modal; if (!m || !m.rvSms) { return null; }
+  var d = m.rvSms;
+  var num = function (id, def) { var v = en(val(id)).replace(/\D/g, ''); return v === '' ? def : Number(v); };
+  if ($('#rvs-on')) { d.enabled = $('#rvs-on').checked ? 1 : 0; }
+  d.delay = num('#rvs-delay', d.delay);
+  d.autoHour = num('#rvs-auto', d.autoHour);
+  d.quietStart = num('#rvs-qs', d.quietStart);
+  d.quietEnd = num('#rvs-qe', d.quietEnd);
+  d.gapDays = num('#rvs-gap', d.gapDays);
+  d.codeDays = num('#rvs-days', d.codeDays);
+  if ($('#rvs-pattern')) { d.pattern = en(val('#rvs-pattern')).trim(); }
+  m.phone = en(val('#rvs-phone')).trim();
+  return d;
+}
+
+function rvSmsSave() {
+  var d = readRvSms(); if (!d || S.busy) { return; }
+  S.busy = true; paintModal();
+  post('panel/review/settings/save', { enabled: d.enabled, delay: d.delay, autoHour: d.autoHour, quietStart: d.quietStart, quietEnd: d.quietEnd, gapDays: d.gapDays, codeDays: d.codeDays, pattern: d.pattern }).then(function (r) {
+    S.busy = false;
+    if (r.success === false) { toast(r.message || 'ذخیره نشد.', 'bad'); paintModal(); return; }
+    toast(r.message || 'ذخیره شد.', 'ok');
+    S.modal = null; paintModal();
+    rvReload();
+  });
+}
+
+function rvSmsTest() {
+  var d = readRvSms(); if (!d || S.busy) { return; }
+  if (!/^(\+98|0098|98|0)?9\d{9}$/.test(S.modal.phone.replace(/[\s-]/g, ''))) { toast('شماره موبایل را درست وارد کنید.', 'bad'); return; }
+  S.busy = true; paintModal();
+  post('panel/review/test-sms', { phone: S.modal.phone }).then(function (r) {
+    S.busy = false; paintModal();
+    toast(r.message || (r.success === false ? 'فرستاده نشد.' : 'فرستاده شد.'), r.success === false ? 'bad' : 'ok');
+  });
+}
+
 function rvTagCard(title, sub, list, kind) {
   list = list || [];
   var max = list.length ? list[0].count : 0;
@@ -3133,9 +3284,10 @@ function viewReviews() {
     '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>');
 
   if (R && (!R.enabled || !R.pattern) && admin) {
-    html += note('warn', I.alert, !R.enabled ? 'نظرسنجی در تنظیمات خاموش است؛ پیامکی نمی‌رود.'
-      : 'پترن «نظرسنجی» در تنظیمات پیامک وارد نشده؛ تا وارد نشود پیامک نظرسنجی نمی‌رود. لینک ثابت متن پترن: <bdi dir="ltr">' + esc(String(R.url || '').replace(/^https?:\/\/(www\.)?/, '')) + '</bdi>');
+    html += note('warn', I.alert, !R.enabled ? 'نظرسنجی خاموش است؛ پیامکی نمی‌رود. از «تنظیم زمان و پترن» روشنش کنید.'
+      : 'پترن «نظرسنجی» هنوز وارد نشده؛ تا وارد نشود پیامک نظرسنجی نمی‌رود. متن پترن و جای واردکردن شناسه در «تنظیم زمان و پترن» است.');
   }
+  if (R && R.sms && admin) { html += rvSmsCard(R.sms); }
 
   var scopes = [{ k: 'week', t: 'این هفته' }, { k: 'month', t: 'این ماه' }, { k: 'all', t: 'همه' }];
   var ranged = !!(f.from || f.to);
@@ -4254,7 +4406,8 @@ function paintModal() {
   var modalScroll = oldModal ? oldModal.scrollTop : 0;
   if (S.svcEdit) { readSvcForm(); }
   var m = S.modal || {};
-  var inner = m.agDelete ? agDeleteModal() : S.svcEdit ? svcModal()
+  if (m.rvSms) { readRvSms(); }
+  var inner = m.rvSms ? rvSmsModal() : m.agDelete ? agDeleteModal() : S.svcEdit ? svcModal()
     : (m.install ? installModal()
     : (m.wallet ? walletModal()
     : (m.agency ? agencyModal()
@@ -5900,6 +6053,19 @@ function bind() {
       return;
     }
     if (up('[data-rv-csv]')) { e.preventDefault(); rvExport(); return; }
+    if (up('[data-rv-sms]')) {
+      e.preventDefault();
+      if (S.rvData && S.rvData.sms) { S.modal = { rvSms: JSON.parse(JSON.stringify(S.rvData.sms)), phone: '' }; paintModal(); }
+      return;
+    }
+    if ((el = up('[data-rv-sms-copy]'))) {
+      e.preventDefault();
+      var dd = S.modal && S.modal.rvSms;
+      if (dd) { copyText(el.getAttribute('data-rv-sms-copy') === 'plain' ? dd.textPlain : dd.text); }
+      return;
+    }
+    if (up('[data-rv-sms-save]')) { e.preventDefault(); rvSmsSave(); return; }
+    if (up('[data-rv-sms-test]')) { e.preventDefault(); rvSmsTest(); return; }
     if ((el = up('[data-rv-send]'))) {
       e.preventDefault();
       S.busy = true; paintModal();
@@ -5979,6 +6145,11 @@ function bind() {
   });
 
   document.addEventListener('change', function (e) {
+    if (e.target && e.target.id && /^rvs-/.test(e.target.id) && S.modal && S.modal.rvSms) {
+      var dv = readRvSms();
+      if ($('#rvs-preview')) { $('#rvs-preview').innerHTML = rvPvHtml(dv); }
+      return;
+    }
     if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-ag-svc') && S.modal && S.modal.agency) {
       var fa1 = S.modal.agency; fa1.svcOn = fa1.svcOn || {};
       fa1.svcOn[e.target.getAttribute('data-ag-svc')] = e.target.checked;

@@ -414,9 +414,10 @@ class CMB_SMS {
 				'key'    => 'pattern_review',
 				'label'  => 'نظرسنجی',
 				'to'     => 'مشتری',
-				'when'   => 'بعد از «انجام شد» (۲ ساعت بعد، یا ساعت ۱۰ برای تکمیل خودکار؛ بین ۹ تا ۲۱)',
-				'vars'   => array( 'نام مشتری', 'خدمت', 'مرکز یا نمایندگی', 'کد نظرسنجی (۵ رقم)' ),
-				'text'   => "{0} عزیز، {1} در {2} انجام شد.\nبه خدمت امروز از ۱ تا ۵ امتیاز دهید:\n" . ( class_exists( 'CMB_Reviews' ) ? preg_replace( '~^https?://(www\.)?~', '', CMB_Reviews::url() ) : 'checkmotor.ir/nazar' ) . "\nکد نظرسنجی: {3}\nچک موتور",
+				'when'   => class_exists( 'CMB_Reviews' ) ? CMB_Reviews::timing_text() : 'بعد از «انجام شد»',
+				'vars'   => class_exists( 'CMB_Reviews' ) ? CMB_Reviews::pattern_vars() : array( 'نام مشتری', 'خدمت', 'مرکز یا نمایندگی', 'کد نظرسنجی (۵ رقم)' ),
+				'text'   => class_exists( 'CMB_Reviews' ) ? CMB_Reviews::pattern_text( true ) : '',
+				'note'   => class_exists( 'CMB_Reviews' ) ? 'اگر ملی‌پیامک پترن لینک‌دار را رد کرد، این نسخه‌ی بی‌لینک را ثبت کنید: ' . str_replace( "\n", ' / ', CMB_Reviews::pattern_text( false ) ) : '',
 				'sample' => array( $name, $svc, $title, '48217' ),
 			),
 			array(

@@ -195,6 +195,9 @@ class CMB_Panel_Api {
 			'panel/review/delete' => array( 'POST', 'review_delete', $admin ),
 			'panel/review/send-now' => array( 'POST', 'review_send_now', $admin ),
 			'panel/review/export' => array( 'GET', 'review_export', $admin ),
+			'panel/review/settings' => array( 'GET', 'review_settings', $admin ),
+			'panel/review/settings/save' => array( 'POST', 'review_settings_save', $admin ),
+			'panel/review/test-sms' => array( 'POST', 'review_test_sms', $admin ),
 			'panel/booking-item'  => array( 'GET', 'booking_item', $guard ),
 			'panel/geo-link'  => array( 'POST', 'geo_link', $guard ),
 			'panel/bookings'  => array( 'GET', 'bookings', $guard ),
@@ -1139,8 +1142,34 @@ class CMB_Panel_Api {
 				'enabled'  => CMB_Reviews::enabled(),
 				'pattern'  => '' !== trim( (string) CMB_Settings::get( 'pattern_review', '' ) ),
 				'url'      => CMB_Reviews::url(),
+				'sms'      => $admin ? CMB_Reviews::settings_payload() : null,
 			)
 		);
+	}
+
+	/** تنظیمات پیامک نظرسنجی (فقط مدیر کل). */
+	public function review_settings( WP_REST_Request $request ) {
+		return rest_ensure_response( array( 'settings' => CMB_Reviews::settings_payload() ) );
+	}
+
+	public function review_settings_save( WP_REST_Request $request ) {
+		$out = CMB_Reviews::save_settings( (array) $request->get_json_params() );
+
+		if ( is_wp_error( $out ) ) {
+			return $out;
+		}
+
+		return rest_ensure_response( array( 'success' => true, 'message' => 'تنظیمات پیامک نظرسنجی ذخیره شد؛ روی نوبت‌هایی اثر دارد که از این به بعد «انجام شد» می‌شوند.', 'settings' => $out ) );
+	}
+
+	public function review_test_sms( WP_REST_Request $request ) {
+		$r = CMB_Reviews::test_sms( (string) $request->get_param( 'phone' ) );
+
+		if ( is_wp_error( $r ) ) {
+			return $r;
+		}
+
+		return rest_ensure_response( array( 'success' => true, 'message' => 'پیامک آزمایشی فرستاده شد. کد داخل آن (۱۲۳۴۵) نمونه است و کار نمی‌کند.' ) );
 	}
 
 	/** ردیف نظر در دامنه‌ی کاربر جاری؟ */
