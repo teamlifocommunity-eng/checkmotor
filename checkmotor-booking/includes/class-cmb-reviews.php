@@ -980,13 +980,7 @@ class CMB_Reviews {
 			$by_block[] = $shape( $g, cmb_block_label( $g->k ) );
 		}
 
-		$by_branch = array();
-		if ( $compare ) {
-			foreach ( $group( 'branch_id' ) as $g ) {
-				$by_branch[] = $shape( $g, class_exists( 'CMB_Branches' ) ? CMB_Branches::display_name( (int) $g->k ) : '#' . $g->k );
-			}
-			usort( $by_branch, function ( $a, $b ) { return ( $b['avg'] ?? 0 ) <=> ( $a['avg'] ?? 0 ); } );
-		}
+		$by_branch = $compare ? self::compare_branches( $group( 'branch_id' ), self::done_counts( $f ), $shape ) : array();
 
 		/* برچسب‌ها: نقاط قوت (۴ و ۵ ستاره) و ایرادها (۱ تا ۳)، پرتکرارترین اول.
 		   مدیر کل هم ببیند مشتری‌های راضی چه چیزی را پسندیده‌اند، نه فقط ایرادها. */
@@ -1055,6 +1049,121 @@ class CMB_Reviews {
 			'page'      => $page,
 			'pages'     => max( 1, (int) ceil( $total / $per ) ),
 		);
+	}
+
+	/**
+	 * «مقایسه‌ی نمایندگی‌ها» برای مدیر کل: مرکز و همه‌ی نمایندگی‌ها، حتی آن‌هایی
+	 * که هنوز نظرسنجی ندارند (۱.۵۳.۱). قبلاً فقط شعبه‌هایی می‌آمدند که ردیف
+	 * نظرسنجی داشتند و مدیر خیال می‌کرد بقیه‌ی نمایندگی‌ها دیده نمی‌شوند.
+	 * ردیف شعبه‌های غیرنمایندگی (قدیمی) مثل دامنه‌ی پنل زیر مرکز می‌آید.
+	 *
+	 * @param object[] $groups گروه‌بندی ردیف‌های نظرسنجی بر اساس branch_id
+	 * @param int[]    $done   شمار نوبت‌های «انجام شد» هر شعبه در همان بازه
+	 */
+	protected static function compare_branches( array $groups, array $done, $shape ) {
+		$ready  = class_exists( 'CMB_Branches' ) && CMB_Branches::ready();
+		$center = $ready ? CMB_Branches::center_id() : 0;
+		$agency = $ready ? array_flip( CMB_Branches::agency_ids() ) : array();
+		$acc    = array();
+
+		$slot = function ( $id ) use ( &$acc ) {
+			$id = (int) $id;
+			if ( ! isset( $acc[ $id ] ) ) {
+				$acc[ $id ] = (object) array( 'k' => $id, 'n' => 0, 'sum' => 0.0, 'sent' => 0, 'answered_sent' => 0, 'low' => 0, 'done' => 0, 'pos' => count( $acc ) );
+			}
+			return $acc[ $id ];
+		};
+		$key = function ( $id ) use ( $ready, $center, $agency ) {
+			$id = (int) $id;
+			return ( $ready && $center && ! isset( $agency[ $id ] ) ) ? $center : $id;
+		};
+
+		if ( $ready ) {
+			if ( $center ) {
+				$slot( $center );
+			}
+			foreach ( CMB_Branches::all() as $b ) {
+				if ( CMB_Branches::is_agency( $b ) ) {
+					$slot( (int) $b->id );
+				}
+			}
+		}
+
+		foreach ( $groups as $g ) {
+			$m = $slot( $key( $g->k ) );
+			$m->n             += (int) $g->n;
+			$m->sum           += (float) $g->avg_rating * (int) $g->n;
+			$m->sent          += (int) $g->sent;
+			$m->answered_sent += (int) $g->answered_sent;
+			$m->low           += (int) $g->low;
+		}
+
+		foreach ( $done as $id => $n ) {
+			$slot( $key( $id ) )->done += (int) $n;
+		}
+
+		$out = array();
+		foreach ( $acc as $id => $m ) {
+			$m->avg_rating = $m->n ? $m->sum / $m->n : null;
+
+			$label = $ready ? CMB_Branches::display_name( $id ) : '';
+			$note  = '';
+			if ( $ready && $id === $center ) {
+				$note = 'مرکز';
+			} elseif ( $ready ) {
+				$st   = CMB_Branches::status( $id );
+				$note = 'active' === $st ? '' : CMB_Branches::status_label( $st );
+			}
+
+			$row         = $shape( $m, '' !== $label ? $label : ( $id ? '#' . $id : 'مرکز اصلی' ) );
+			$row['done'] = (int) $m->done;
+			$row['note'] = $note;
+			$row['pos']  = (int) $m->pos;
+			$out[]       = $row;
+		}
+
+		// اول امتیازدارها (بیشترین میانگین)، بعد پرنظرتر، بعد پرکارتر؛ هم‌سطح‌ها به ترتیب فهرست نمایندگی‌ها
+		usort(
+			$out,
+			function ( $a, $b ) {
+				$x = array( null === $a['avg'] ? 1 : 0, -( $a['avg'] ?: 0 ), -$a['count'], -$a['done'], $a['pos'] );
+				$y = array( null === $b['avg'] ? 1 : 0, -( $b['avg'] ?: 0 ), -$b['count'], -$b['done'], $b['pos'] );
+				return $x <=> $y;
+			}
+		);
+
+		foreach ( $out as $i => $row ) {
+			unset( $out[ $i ]['pos'] );
+		}
+
+		return $out;
+	}
+
+	/** شمار نوبت‌های «انجام شد» هر شعبه با همان فیلتر بازه، شیفت و خدمت گزارش. */
+	protected static function done_counts( array $f ) {
+		global $wpdb;
+
+		$w = array( "b.status = 'done'" );
+
+		if ( ! empty( $f['from'] ) ) {
+			$w[] = $wpdb->prepare( 'b.booking_date >= %s', $f['from'] );
+		}
+		if ( ! empty( $f['to'] ) ) {
+			$w[] = $wpdb->prepare( 'b.booking_date <= %s', $f['to'] );
+		}
+		if ( ! empty( $f['block'] ) ) {
+			$w[] = $wpdb->prepare( 'b.block_key = %s', $f['block'] );
+		}
+		if ( ! empty( $f['svc_title'] ) ) {
+			$w[] = $wpdb->prepare( 'b.service_id IN (SELECT id FROM ' . cmb_table( 'services' ) . ' WHERE title = %s)', (string) $f['svc_title'] );
+		}
+
+		$out = array();
+		foreach ( (array) $wpdb->get_results( 'SELECT b.branch_id AS k, COUNT(*) AS n FROM ' . cmb_table( 'bookings' ) . ' b WHERE ' . implode( ' AND ', $w ) . ' GROUP BY b.branch_id' ) as $r ) { // phpcs:ignore
+			$out[ (int) $r->k ] = (int) $r->n;
+		}
+
+		return $out;
 	}
 
 	public static function panel_item( $r ) {

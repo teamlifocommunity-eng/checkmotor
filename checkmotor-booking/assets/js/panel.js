@@ -3075,10 +3075,13 @@ function rvAvg(v) { return v === null || v === undefined ? '—' : fa(String(v).
 function rvTable(title, rows, withBranch) {
   if (!rows || !rows.length) { return ''; }
   return '<div class="pn-card pn-rvtab"><div class="pn-card__t">' + esc(title) + '</div>' +
-    '<div class="pn-tablewrap"><table class="pn-table"><thead><tr><th>' + (withBranch ? 'نمایندگی' : 'مورد') + '</th><th>میانگین</th><th>نظر</th><th>نرخ پاسخ</th><th>۱ و ۲ ستاره</th></tr></thead><tbody>' +
+    (withBranch ? '<div class="pn-hint" style="margin:-4px 0 10px">همه‌ی نمایندگی‌ها و مرکز. نمایندگی بی‌نظر یعنی در این بازه نوبت «انجام شد» نداشته یا پیامک نظرسنجی‌اش هنوز نرفته.</div>' : '') +
+    '<div class="pn-tablewrap"><table class="pn-table"><thead><tr><th>' + (withBranch ? 'نمایندگی' : 'مورد') + '</th>' + (withBranch ? '<th>انجام‌شده</th>' : '') + '<th>میانگین</th><th>نظر</th><th>نرخ پاسخ</th><th>۱ و ۲ ستاره</th></tr></thead><tbody>' +
     rows.map(function (x) {
-      return '<tr><td data-label="' + (withBranch ? 'نمایندگی' : 'مورد') + '"><div class="pn-table__b">' + esc(x.label) + '</div></td>' +
-        '<td class="num" data-label="میانگین">' + (x.avg ? '<b>' + rvAvg(x.avg) + '</b> ' + I.star : '—') + '</td>' +
+      return '<tr><td data-label="' + (withBranch ? 'نمایندگی' : 'مورد') + '"><div class="pn-table__b">' + esc(x.label) +
+          (x.note ? ' <span class="pn-rvnote">' + esc(x.note) + '</span>' : '') + '</div></td>' +
+        (withBranch ? '<td class="num" data-label="نوبت انجام‌شده">' + fa(x.done || 0) + '</td>' : '') +
+        '<td class="num" data-label="میانگین">' + (x.avg ? '<span class="pn-rvavg"><b>' + rvAvg(x.avg) + '</b>' + I.star + '</span>' : '—') + '</td>' +
         '<td class="num" data-label="نظر">' + fa(x.count) + '</td>' +
         '<td class="num" data-label="نرخ پاسخ">' + rvPct(x.response) + '</td>' +
         '<td class="num" data-label="۱ و ۲ ستاره">' + rvPct(x.lowPct) + '</td></tr>';
