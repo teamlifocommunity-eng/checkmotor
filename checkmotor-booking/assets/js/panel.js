@@ -298,7 +298,6 @@ var NAV = [
   { k: 'board',    t: 'تخته روزها',   ic: I.grid },
   { k: 'bookings', t: 'نوبت‌ها',      ic: I.list },
   { k: 'customers', t: 'مشتری‌ها',    ic: I.users },
-  { k: 'reviews',  t: 'نظرسنجی',      ic: I.star },
   { k: 'services', t: 'خدمات',        ic: I.tag },
   { k: 'closures', t: 'بستن روز',     ic: I.lock },
   { k: 'settings', t: 'تنظیمات شیفت', ic: I.cog }
@@ -329,6 +328,8 @@ function nav() {
     list.push({ k: 'report', t: 'گزارش نمایندگی‌ها', ic: I.gauge });
   }
 
+  // نظرسنجی فقط برای مدیر کل (نمایندگی‌ها نمی‌بینند)
+  if (c.isAdmin && c.ready) { list.splice(Math.min(4, list.length), 0, { k: 'reviews', t: 'نظرسنجی', ic: I.star }); }
   if (c.isAdmin) { list.push({ k: 'smslog', t: 'پیامک و کد تایید', ic: I.chat }); }
   if (c.isAdmin) { list.push({ k: 'debug', t: 'آزمون و عیب‌یابی', ic: I.bug }); }
 
@@ -849,7 +850,7 @@ function viewBookings() {
 
   S.list.items.forEach(function (b) {
     html += '<tr>' +
-      '<td class="num" data-label="تاریخ و ساعت"><div class="pn-table__b">' + fa(esc(b.dateFa)) + '</div>' +
+      '<td class="num" data-label="تاریخ و ساعت"><div class="pn-table__b">' + (b.weekday ? '<span class="pn-wd">' + esc(b.weekday) + '</span> ' : '') + fa(esc(b.dateFa)) + '</div>' +
         '<div class="pn-table__s">' + esc(b.blockLabel) + ' · ' + fa(esc(b.blockStart)) + '</div></td>' +
       '<td data-label="مشتری"><div class="pn-table__b">' + esc(b.name) + '</div>' +
         '<div class="pn-table__s num"><a href="tel:' + esc(b.phone) + '">' + fa(esc(b.phone)) + '</a>' +
@@ -874,7 +875,7 @@ function viewBookings() {
   html += '<div class="pn-bkl' + (S.fetching ? ' is-fetching' : '') + '">' + S.list.items.map(function (b) {
     var car = [b.carBrand, b.carModel ? 'موتور ' + b.carModel : ''].filter(Boolean).join(' · ');
     return '<div class="pn-bkc pn-bkc--' + esc(b.status) + '" data-open="' + b.id + '" role="button" tabindex="0" aria-label="' + esc('جزئیات نوبت ' + b.name + ' ' + b.dateFa) + '">' +
-      '<div class="pn-bkc__top"><span class="num"><b>' + fa(esc(b.dateFa)) + '</b> · ' + esc(String(b.blockLabel || '').replace(/^شیفت\s+/, '')) + ' ' + fa(esc(b.blockStart)) + '</span>' + badge(b.status, b.statusLabel) + '</div>' +
+      '<div class="pn-bkc__top"><span class="num">' + (b.weekday ? '<span class="pn-wd">' + esc(b.weekday) + '</span> ' : '') + '<b>' + fa(esc(b.dateFa)) + '</b> · ' + esc(String(b.blockLabel || '').replace(/^شیفت\s+/, '')) + ' ' + fa(esc(b.blockStart)) + '</span>' + badge(b.status, b.statusLabel) + '</div>' +
       '<div class="pn-bkc__who"><b>' + esc(b.name) + '</b><a class="num" href="tel:' + esc(b.phone) + '">' + fa(esc(b.phone)) + '</a></div>' +
       '<div class="pn-bkc__meta">' + esc([car, b.service].filter(Boolean).join(' · ')) + '</div>' +
       '<div class="pn-bkc__foot"><span class="pn-code">' + esc(b.code) + '</span>' +
@@ -3084,6 +3085,16 @@ function rvTable(title, rows, withBranch) {
     }).join('') + '</tbody></table></div></div>';
 }
 
+function rvTagCard(title, sub, list, kind) {
+  list = list || [];
+  var max = list.length ? list[0].count : 0;
+  return '<div class="pn-card pn-rvtags pn-rvtags--' + kind + '"><div class="pn-card__t">' + esc(title) + '</div>' +
+    '<div class="pn-hint" style="margin:-4px 0 10px">' + esc(sub) + '</div>' +
+    (list.length ? list.map(function (x) {
+      return '<div class="pn-rvbar"><span class="pn-rvtags__t">' + esc(x.tag) + '</span><div><i style="width:' + (max ? Math.round(100 * x.count / max) : 0) + '%"></i></div><b>' + fa(x.count) + '</b></div>';
+    }).join('') : '<div class="pn-hint">هنوز برچسبی انتخاب نشده.</div>') + '</div>';
+}
+
 function rvItem(x, admin) {
   var d = S.rvDraft[x.id] || { status: x.follow || 'open', note: x.followNote || '' };
   return '<article class="pn-card pn-rvi' + (x.rating <= 2 ? ' is-low' : '') + '">' +
@@ -3095,7 +3106,7 @@ function rvItem(x, admin) {
     (x.comment ? '<p class="pn-rvi__c">' + esc(x.comment) + '</p>' : '') +
     '<div class="pn-rvi__m"><span><b>' + esc(x.customer || 'مشتری') + '</b> · <a href="tel:' + esc(x.phone) + '" dir="ltr">' + fa(esc(x.phone)) + '</a></span>' +
       '<span>' + esc(x.service) + (S.rvF.branch === 'all' || admin ? ' · ' + esc(x.branch) : '') + '</span>' +
-      '<span>' + fa(esc(x.dateFa)) + ' · ' + esc(x.blockLabel) + '</span></div>' +
+      '<span>' + (x.weekday ? esc(x.weekday) + ' ' : '') + fa(esc(x.dateFa)) + ' · ' + esc(x.blockLabel) + '</span></div>' +
     (x.follow ? '<div class="pn-rvi__f">' +
         '<label class="pn-field"><span class="pn-field__l">وضعیت پیگیری</span><select class="pn-in" data-rvf-status="' + x.id + '">' +
           Object.keys(RV_FOLLOW).map(function (k) { return '<option value="' + k + '"' + (d.status === k ? ' selected' : '') + '>' + RV_FOLLOW[k] + '</option>'; }).join('') +
@@ -3168,6 +3179,12 @@ function viewReviews() {
     }).join('') + '</div>' +
     rvTable('به تفکیک شیفت', R.byBlock) + '</div>';
 
+  // نقاط قوت و ایرادها: پرتکرارترین برچسب‌های هر گروه
+  if ((R.tagsGood && R.tagsGood.length) || (R.tagsBad && R.tagsBad.length)) {
+    html += '<div class="pn-rvgrid">' + rvTagCard('نقاط قوت', '۴ و ۵ ستاره — چیزهایی که مشتری‌های راضی پسندیدند', R.tagsGood, 'good') +
+      rvTagCard('ایرادها', '۱ تا ۳ ستاره — چیزهایی که مشتری‌ها گفتند خوب نبود', R.tagsBad, 'bad') + '</div>';
+  }
+
   if (R.byBranch && R.byBranch.length) { html += rvTable('مقایسه‌ی نمایندگی‌ها', R.byBranch, true); }
   html += rvTable('به تفکیک خدمت', R.byService);
 
@@ -3185,7 +3202,7 @@ function viewReviews() {
     }
   }
 
-  html += '<div class="pn-hint">نظرها به تاریخ نوبت شمرده می‌شوند. نرخ پاسخ = نظرهای ثبت‌شده بعد از پیامک ÷ پیامک‌های رفته. نمایندگی نظر را نمی‌بیند که حذف یا ویرایش کند؛ حذف فقط با مدیر کل و در گزارش ثبت می‌شود.</div>';
+  html += '<div class="pn-hint">نظرها به تاریخ نوبت شمرده می‌شوند. نرخ پاسخ = نظرهای ثبت‌شده بعد از پیامک ÷ پیامک‌های رفته. این بخش فقط برای مدیر کل است؛ نمایندگی‌ها نظرها را در پنلشان نمی‌بینند. حذف نظر در گزارش ثبت می‌شود.</div>';
   return html;
 }
 
@@ -3317,6 +3334,11 @@ function bookingModal() {
     payHtml +
     feeHtml(b) +
     rvBookingHtml(b.review) +
+    // مدیر کل: فرستادن (دوباره‌ی) پیامک نظرسنجی برای نوبت انجام‌شده
+    (ctx().isAdmin && b.status === 'done' && !b.review
+      ? '<div style="margin-top:12px"><button class="pn-btn pn-btn--sm pn-btn--soft" data-rv-send="' + b.id + '"' + (S.busy ? ' disabled' : '') + '>' + I.star + ' ارسال پیامک نظرسنجی</button>' +
+        '<div class="pn-hint">کد تازه برای مشتری پیامک می‌شود (بی ساعت سکوت). برای آزمودن پترن یا وقتی پیامک قبلی نرسیده.</div></div>'
+      : '') +
 
     (b.status !== 'cancelled' ? '' :
       note('warn', I.alert, 'این نوبت لغو شده و ظرفیتش آزاد شده است.')) +
@@ -5875,6 +5897,15 @@ function bind() {
       return;
     }
     if (up('[data-rv-csv]')) { e.preventDefault(); rvExport(); return; }
+    if ((el = up('[data-rv-send]'))) {
+      e.preventDefault();
+      S.busy = true; paintModal();
+      post('panel/review/send-now', { booking: Number(el.getAttribute('data-rv-send')) }).then(function (r) {
+        S.busy = false; paintModal();
+        toast(r.message || (r.success === false ? 'فرستاده نشد.' : 'فرستاده شد.'), r.success === false ? 'bad' : 'ok');
+      });
+      return;
+    }
     if ((el = up('[data-rv-booking]'))) {
       e.preventDefault();
       get('panel/booking-item?id=' + Number(el.getAttribute('data-rv-booking'))).then(function (r) {

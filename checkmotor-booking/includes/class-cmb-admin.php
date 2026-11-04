@@ -1902,7 +1902,7 @@ class CMB_Admin {
 					cmb_jalali_date( $row->booking_date, 'numeric' ),
 					$row->booking_date,
 					cmb_block_label( $row->block_key ),
-					$service ? $service->title : '',
+					$service ? CMB_Booking_Services::label( $row ) : '',
 					$row->customer_name,
 					$row->phone,
 					isset( $row->province ) ? $row->province : '',

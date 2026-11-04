@@ -1443,3 +1443,42 @@ span.cmb-rv-chip { cursor: default; display: inline-flex; align-items: center; }
 .cmb-rv-mine { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: var(--s3); padding-top: var(--s3); border-top: 1px dashed var(--g4); font-size: var(--t-sb); color: var(--ink-2); }
 .cmb-mb3 { margin-bottom: var(--s3); }
 @media (prefers-reduced-motion: reduce) { .cmb-rv-pick { transition: none; } }
+
+/* ═══ چند خدمت در یک نوبت (۱.۵۳.۰) ═══ */
+.cmb-picks { display: grid; gap: var(--s2); }
+.cmb-pick {
+  position: relative; display: flex; align-items: center; gap: var(--s3); min-height: 64px; padding: 10px var(--s3);
+  background: var(--card); border: 1.5px solid var(--g4); border-radius: var(--r-md); cursor: pointer;
+  -webkit-tap-highlight-color: transparent; transition: border-color .12s ease, background .12s ease;
+}
+.cmb-pick input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.cmb-pick__box {
+  flex: 0 0 26px; width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--g3); background: #fff;
+  display: grid; place-items: center; color: transparent;
+}
+#cmb-app .cmb-pick__box svg { width: 16px; height: 16px; }
+.cmb-pick.is-on { border-color: var(--flame); background: var(--flame-50); }
+.cmb-pick.is-on .cmb-pick__box { background: var(--flame); border-color: var(--flame); color: #fff; }
+.cmb-pick input:focus-visible ~ .cmb-pick__box { outline: 3px solid #35566F; outline-offset: 2px; }
+.cmb-pick__img { flex: 0 0 56px; width: 56px; height: 56px; border-radius: var(--r-sm); object-fit: cover; background: var(--g6); }
+.cmb-pick__b { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.cmb-pick__b b { font-size: var(--t-bd); font-weight: 800; color: var(--ink); overflow-wrap: anywhere; }
+.cmb-pick__b small { font-size: var(--t-ft); color: var(--ink-2); line-height: 1.7; overflow-wrap: anywhere; }
+.cmb-picksum {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s2); flex-wrap: wrap;
+  margin-top: var(--s3); padding: 10px var(--s3); border-radius: var(--r-sm); background: var(--steel-50);
+  font-size: var(--t-sb); color: var(--steel-700);
+}
+.cmb-picksum b { font-weight: 800; color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .cmb-pick { transition: none; } }
+
+/* ═══ باکس تماس و آدرس بعد از رزرو (۱.۵۳.۰) ═══ */
+.cmb-contact__h { display:flex; align-items:center; gap:8px; padding:12px 16px 0; font-size:13px; font-weight:800; color:var(--flame-600); }
+#cmb-app .cmb-contact__h svg { width:18px; height:18px; }
+.cmb-contact .cmb-brinfo__hd { padding-top:10px; }
+.cmb-contact__tel { color:var(--ink); text-decoration:none; font-size:15px; font-weight:800; }
+.cmb-contact__tel:hover { color:var(--flame-600); }
+.cmb-contact--in { margin-top:var(--s3); box-shadow:none; }
+.cmb-contact--in .cmb-brinfo__hd { padding:8px 14px 8px; }
+.cmb-contact--in .cmb-brinfo__rows { padding:0 14px; }
+.cmb-contact--in .cmb-brinfo__acts { padding:10px 14px 14px; }

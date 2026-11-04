@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CMB_Install {
 
-	const DB_VERSION = '1.12.0';
+	const DB_VERSION = '1.13.0';
 
 	public static function activate() {
 		global $wpdb;
@@ -289,6 +289,7 @@ class CMB_Install {
 		$log      = cmb_table( 'log' );
 		$sms_log  = cmb_table( 'sms_log' );
 		$reviews  = cmb_table( 'reviews' );
+		$bsvc     = cmb_table( 'booking_services' );
 
 		$sql = array();
 
@@ -603,6 +604,19 @@ class CMB_Install {
 			KEY phone (phone),
 			KEY branch_date (branch_id,booking_date),
 			KEY follow (follow_status)
+		) {$charset};";
+
+		/* 1.13.0: چند خدمت در یک نوبت. خدمت اصلی همان bookings.service_id است؛
+		   هر خدمت اضافه یک ردیف اینجا (وضعیتش همان وضعیت نوبت). */
+		$sql[] = "CREATE TABLE {$bsvc} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			booking_id BIGINT UNSIGNED NOT NULL,
+			service_id BIGINT UNSIGNED NOT NULL,
+			price BIGINT UNSIGNED DEFAULT 0 NOT NULL,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY booking_service (booking_id,service_id),
+			KEY service_id (service_id)
 		) {$charset};";
 
 		foreach ( $sql as $statement ) {

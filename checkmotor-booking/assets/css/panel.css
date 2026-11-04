@@ -1631,3 +1631,15 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
   #cmb-panel .pn-rvi__f { grid-template-columns:minmax(0,1fr); }
   #cmb-panel .pn-rvbar { grid-template-columns:40px minmax(0,1fr) 84px; }
 }
+
+/* ۱.۵۳.۰ — نقاط قوت و ایرادهای نظرسنجی */
+#cmb-panel .pn-rvtags .pn-rvbar { grid-template-columns:minmax(0,160px) minmax(0,1fr) 40px; }
+#cmb-panel .pn-rvtags__t { font-weight:600 !important; color:#13202b !important; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block !important; }
+#cmb-panel .pn-rvtags--good .pn-rvbar > div i { background:#1f9d55; }
+#cmb-panel .pn-rvtags--bad .pn-rvbar > div i { background:#d33a2c; }
+#cmb-panel .pn-rvtags--good .pn-card__t { color:#0e8a4f; }
+#cmb-panel .pn-rvtags--bad .pn-card__t { color:#b42318; }
+@media (max-width: 600px) { #cmb-panel .pn-rvtags .pn-rvbar { grid-template-columns:minmax(0,1fr) 70px 32px; } }
+
+/* ۱.۵۳.۰ — روز هفته کنار تاریخ نوبت */
+#cmb-panel .pn-wd { font-weight:700; color:#264055; }

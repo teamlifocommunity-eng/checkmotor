@@ -189,9 +189,11 @@ class CMB_Panel_Api {
 			'panel/summary'   => array( 'GET', 'summary', $guard ),
 			'panel/board'     => array( 'GET', 'board', $guard ),
 			'panel/free'      => array( 'GET', 'free', $guard ),
-			'panel/reviews'   => array( 'GET', 'reviews', $guard ),
-			'panel/review/follow' => array( 'POST', 'review_follow', $guard ),
+			// نظرسنجی فقط برای مدیر کل (تصمیم کارفرما، ۱.۵۳.۰)؛ نمایندگی‌ها نمی‌بینند
+			'panel/reviews'   => array( 'GET', 'reviews', $admin ),
+			'panel/review/follow' => array( 'POST', 'review_follow', $admin ),
 			'panel/review/delete' => array( 'POST', 'review_delete', $admin ),
+			'panel/review/send-now' => array( 'POST', 'review_send_now', $admin ),
 			'panel/review/export' => array( 'GET', 'review_export', $admin ),
 			'panel/booking-item'  => array( 'GET', 'booking_item', $guard ),
 			'panel/geo-link'  => array( 'POST', 'geo_link', $guard ),
@@ -451,6 +453,20 @@ class CMB_Panel_Api {
 		$since    = gmdate( 'Y-m-d', strtotime( $today ) - 30 * DAY_IN_SECONDS );
 		$rows     = $wpdb->get_results( $wpdb->prepare( "SELECT service_id, COUNT(*) AS total FROM {$table} WHERE {$scope} AND booking_date >= %s AND status IN ('confirmed','done') GROUP BY service_id ORDER BY total DESC", $since ) ); // phpcs:ignore
 		$by_service = array();
+
+		// خدمت‌های اضافه‌ی نوبت‌های چندخدمتی هم در آمار خدمات (۱.۵۳.۰)
+		if ( CMB_Booking_Services::ready() ) {
+			$extra = $wpdb->get_results( $wpdb->prepare( 'SELECT e.service_id, COUNT(*) AS total FROM ' . CMB_Booking_Services::table() . " e INNER JOIN {$table} b ON b.id = e.booking_id WHERE " . CMB_Branches::scope_sql( $branch, 'b.branch_id' ) . " AND b.booking_date >= %s AND b.status IN ('confirmed','done') GROUP BY e.service_id", $since ) ); // phpcs:ignore
+			$merged = array();
+			foreach ( array_merge( (array) $rows, (array) $extra ) as $r ) {
+				$merged[ (int) $r->service_id ] = ( isset( $merged[ (int) $r->service_id ] ) ? $merged[ (int) $r->service_id ] : 0 ) + (int) $r->total;
+			}
+			arsort( $merged );
+			$rows = array();
+			foreach ( $merged as $sid => $n ) {
+				$rows[] = (object) array( 'service_id' => $sid, 'total' => $n );
+			}
+		}
 
 		foreach ( (array) $rows as $row ) {
 			$service = CMB_Services::get_service( $row->service_id );
@@ -819,6 +835,8 @@ class CMB_Panel_Api {
 
 		$out = array();
 
+		CMB_Booking_Services::ids_map( wp_list_pluck( (array) $rows, 'id' ) );
+
 		foreach ( (array) $rows as $row ) {
 			$out[ $row->booking_date ][ $row->block_key ][] = self::row_to_array( $row );
 		}
@@ -930,8 +948,15 @@ class CMB_Panel_Api {
 		}
 
 		if ( $service > 0 ) {
-			$where[]  = 'service_id = %d';
-			$params[] = $service;
+			// خدمت اصلی، یا یکی از خدمت‌های اضافه‌ی نوبت (۱.۵۳.۰)
+			if ( CMB_Booking_Services::ready() ) {
+				$where[]  = '( service_id = %d OR id IN ( SELECT booking_id FROM ' . CMB_Booking_Services::table() . ' WHERE service_id = %d ) )';
+				$params[] = $service;
+				$params[] = $service;
+			} else {
+				$where[]  = 'service_id = %d';
+				$params[] = $service;
+			}
 		}
 
 		if ( '' !== $q ) {
@@ -968,6 +993,8 @@ class CMB_Panel_Api {
 
 		$items = array();
 
+		CMB_Booking_Services::ids_map( wp_list_pluck( (array) $rows, 'id' ) );
+
 		foreach ( (array) $rows as $row ) {
 			$items[] = self::row_to_array( $row );
 		}
@@ -993,8 +1020,8 @@ class CMB_Panel_Api {
 			$services[] = array( 'id' => (int) $sv->id, 'title' => (string) $sv->title );
 		}
 
-		// نظرسنجی هر نوبت، با یک کوئری (۱.۵۲.۰)
-		if ( class_exists( 'CMB_Reviews' ) && $items ) {
+		// نظرسنجی هر نوبت، با یک کوئری (۱.۵۲.۰) — فقط برای مدیر کل
+		if ( class_exists( 'CMB_Reviews' ) && $items && current_user_can( 'manage_options' ) ) {
 			$rv = CMB_Reviews::for_bookings( wp_list_pluck( $items, 'id' ) );
 			foreach ( $items as $i => $it ) {
 				$items[ $i ]['review'] = isset( $rv[ (int) $it['id'] ] ) ? $rv[ (int) $it['id'] ] : null;
@@ -1157,6 +1184,37 @@ class CMB_Panel_Api {
 		return rest_ensure_response( array( 'success' => true, 'message' => 'پیگیری ذخیره شد.', 'item' => CMB_Reviews::panel_item( $fresh ) ) );
 	}
 
+	/** ارسال پیامک نظرسنجی همین حالا (مدیر کل، از جزئیات نوبت). */
+	public function review_send_now( WP_REST_Request $request ) {
+		$err = self::reviews_unready();
+
+		if ( $err ) {
+			return $err;
+		}
+
+		$res = CMB_Reviews::send_now( (int) $request->get_param( 'booking' ) );
+
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+
+		$row  = CMB_Reviews::row( (int) $request->get_param( 'booking' ) );
+		$note = $row ? (string) $row->note : '';
+		$map  = array(
+			'sent'      => array( true, 'پیامک نظرسنجی با کد تازه فرستاده شد. نتیجه‌ی ارسال در «پیامک و کد تایید» دیده می‌شود.' ),
+			'skipped'   => array( false, 'no-pattern' === $note ? 'پترن «نظرسنجی» در تنظیمات پیامک وارد نشده؛ پیامکی نرفت.' : 'پیامک فرستاده نشد.' ),
+			'failed'    => array( false, 'ارسال ناموفق بود؛ علت در «پیامک و کد تایید» ثبت شده است.' ),
+			'cancelled' => array( false, 'این نوبت دیگر «انجام شد» نیست.' ),
+		);
+		$m = isset( $map[ $res ] ) ? $map[ $res ] : array( false, 'پیامک فرستاده نشد.' );
+
+		if ( ! $m[0] ) {
+			return new WP_Error( 'cmb_review_send', $m[1], array( 'status' => 409 ) );
+		}
+
+		return rest_ensure_response( array( 'success' => true, 'message' => $m[1] ) );
+	}
+
 	/** حذف نظر: فقط مدیر کل، با ثبت در گزارش (سند بخش ۸). */
 	public function review_delete( WP_REST_Request $request ) {
 		global $wpdb;
@@ -1234,7 +1292,7 @@ class CMB_Panel_Api {
 		}
 
 		$item = self::row_to_array( $b );
-		$rv   = class_exists( 'CMB_Reviews' ) ? CMB_Reviews::for_bookings( array( (int) $b->id ) ) : array();
+		$rv   = class_exists( 'CMB_Reviews' ) && current_user_can( 'manage_options' ) ? CMB_Reviews::for_bookings( array( (int) $b->id ) ) : array();
 
 		$item['review'] = isset( $rv[ (int) $b->id ] ) ? $rv[ (int) $b->id ] : null;
 
@@ -1252,11 +1310,13 @@ class CMB_Panel_Api {
 			'code'        => $row->tracking_code,
 			'date'        => $row->booking_date,
 			'dateFa'      => cmb_jalali_date( $row->booking_date, 'numeric' ),
+			'weekday'     => cmb_weekday_name( $row->booking_date ),
 			'dateLong'    => cmb_jalali_date( $row->booking_date, 'full' ),
 			'block'       => $row->block_key,
 			'blockLabel'  => cmb_block_label( $row->block_key ),
 			'blockStart'  => cmb_block_start( $row->block_key, (int) $row->branch_id ),
-			'service'     => $service ? $service->title : '—',
+			'service'     => $service ? CMB_Booking_Services::label( $row ) : '—',
+			'services'    => CMB_Booking_Services::titles( $row ),
 			'serviceId'   => (int) $row->service_id,
 			'name'        => $row->customer_name,
 			'phone'       => $row->phone,

@@ -192,7 +192,7 @@ class CMB_Bookings_List_Table extends WP_List_Table {
 
 			case 'service_id':
 				$service = CMB_Services::get_service( $item->service_id );
-				return $service ? esc_html( $service->title ) : '—';
+				return $service ? esc_html( CMB_Booking_Services::label( $item ) ) : '—';
 
 			case 'customer_name':
 				$place = trim( ( ! empty( $item->province ) ? $item->province : '' ) . ( ! empty( $item->province ) && ! empty( $item->city ) ? ' / ' : '' ) . ( ! empty( $item->city ) ? $item->city : '' ) );

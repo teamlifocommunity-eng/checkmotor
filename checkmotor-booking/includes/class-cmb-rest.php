@@ -304,9 +304,11 @@ class CMB_Rest {
 			}
 		}
 
+		// چند خدمت (۱.۵۳.۰): extra=3,4
 		$calendar = CMB_Availability::get_calendar(
 			(int) $request->get_param( 'service_id' ),
-			$branch
+			$branch,
+			class_exists( 'CMB_Booking_Services' ) ? CMB_Booking_Services::parse_ids( $request->get_param( 'extra' ), (int) $request->get_param( 'service_id' ) ) : array()
 		);
 
 		if ( is_wp_error( $calendar ) ) {
@@ -362,6 +364,8 @@ class CMB_Rest {
 			'car_year'    => (string) $request->get_param( 'car_year' ),
 			'car_mileage' => (string) $request->get_param( 'car_mileage' ),
 			'note'        => (string) $request->get_param( 'note' ),
+			// چند خدمت در یک نوبت (۱.۵۳.۰)
+			'extra_services' => $request->get_param( 'extra_services' ),
 			// بیعانه: پذیرش قوانین، و همان قوانین و مبلغی که مشتری دید
 			'accept_terms' => (bool) $request->get_param( 'accept_terms' ),
 			'terms_hash'   => (string) $request->get_param( 'terms_hash' ),
@@ -409,12 +413,17 @@ class CMB_Rest {
 
 		/* این نقطه عمومی است؛ بخش کیف پول فقط برای کاربرِ واردشده و فقط
 		   موجودیِ خودش. */
-		$phone = is_user_logged_in() ? cmb_get_user_phone( get_current_user_id() ) : '';
+		$phone  = is_user_logged_in() ? cmb_get_user_phone( get_current_user_id() ) : '';
+		$extras = CMB_Booking_Services::resolve( $service, CMB_Booking_Services::parse_ids( $request->get_param( 'extra_services' ), (int) $service->id ) );
+
+		if ( is_wp_error( $extras ) ) {
+			return $extras;
+		}
 
 		return rest_ensure_response(
 			array(
 				'success' => true,
-				'quote'   => CMB_Payments::quote_for( $service, $date, $block, $phone ),
+				'quote'   => CMB_Payments::quote_for( $service, $date, $block, $phone, $extras ),
 			)
 		);
 	}

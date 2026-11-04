@@ -329,7 +329,46 @@ class CMB_Reviews {
 		return $out;
 	}
 
-	protected static function send_one( $row, DateTime $now ) {
+	/**
+	 * ارسال همین حالا از پنل (مدیر کل): بی ساعت سکوت و فاصله‌ی ۳ روزه؛ کد تازه.
+	 * برای آزمودن پترن و برای مشتری‌ای که پیامکش نرسیده.
+	 *
+	 * @return string|WP_Error sent | failed | skipped | cancelled
+	 */
+	public static function send_now( $booking_id ) {
+		global $wpdb;
+
+		if ( ! self::enabled() ) {
+			return new WP_Error( 'cmb_review_off', 'نظرسنجی در تنظیمات خاموش است.', array( 'status' => 409 ) );
+		}
+
+		$booking = CMB_Bookings::get( (int) $booking_id );
+
+		if ( ! $booking || 'done' !== $booking->status ) {
+			return new WP_Error( 'cmb_review_not_done', 'پیامک نظرسنجی فقط برای نوبت «انجام شد» فرستاده می‌شود.', array( 'status' => 409 ) );
+		}
+
+		$row = self::row( $booking->id );
+
+		if ( $row && 'answered' === $row->status ) {
+			return new WP_Error( 'cmb_review_answered', 'مشتری برای این نوبت نظرش را ثبت کرده است.', array( 'status' => 409 ) );
+		}
+
+		if ( ! $row ) {
+			self::queue( $booking, 'manual' );
+			$row = self::row( $booking->id );
+		}
+
+		if ( ! $row ) {
+			return new WP_Error( 'cmb_review_queue', 'ردیف نظرسنجی ساخته نشد (شماره‌ی مشتری معتبر نیست؟).', array( 'status' => 409 ) );
+		}
+
+		$wpdb->update( self::table(), array( 'status' => 'queued', 'send_at' => self::now(), 'note' => '', 'updated_at' => self::now() ), array( 'id' => (int) $row->id ) );
+
+		return self::send_one( self::row( $booking->id ), cmb_now(), true );
+	}
+
+	protected static function send_one( $row, DateTime $now, $force = false ) {
 		global $wpdb;
 
 		$t       = self::table();
@@ -344,7 +383,7 @@ class CMB_Reviews {
 			return 'cancelled';
 		}
 
-		if ( self::in_quiet( $now ) ) {
+		if ( ! $force && self::in_quiet( $now ) ) {
 			$set( array( 'send_at' => self::outside_quiet( clone $now )->format( 'Y-m-d H:i:s' ) ) );
 			return 'later';
 		}
@@ -353,7 +392,7 @@ class CMB_Reviews {
 		$gap  = max( 0, self::setting( 'review_min_gap_days', 3 ) );
 		$from = ( clone $now )->modify( '-' . $gap . ' days' )->format( 'Y-m-d H:i:s' );
 
-		if ( $gap && $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$t} WHERE phone = %s AND id <> %d AND sent_at IS NOT NULL AND sent_at >= %s LIMIT 1", $row->phone, (int) $row->id, $from ) ) ) { // phpcs:ignore
+		if ( ! $force && $gap && $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$t} WHERE phone = %s AND id <> %d AND sent_at IS NOT NULL AND sent_at >= %s LIMIT 1", $row->phone, (int) $row->id, $from ) ) ) { // phpcs:ignore
 			$set( array( 'status' => 'skipped', 'note' => 'gap' ) );
 			return 'skipped';
 		}
@@ -370,7 +409,7 @@ class CMB_Reviews {
 		$branch  = class_exists( 'CMB_Branches' ) ? CMB_Branches::display_name( (int) $booking->branch_id ) : '';
 		$args    = array(
 			$booking->customer_name,
-			$service ? $service->title : '',
+			$service ? CMB_Booking_Services::label( $booking ) : '',
 			$branch,
 			$code,
 		);
@@ -491,7 +530,7 @@ class CMB_Reviews {
 		return array(
 			'booking'    => (int) $booking->id,
 			'customer'   => (string) $booking->customer_name,
-			'service'    => $service ? $service->title : '',
+			'service'    => $service ? CMB_Booking_Services::label( $booking ) : '',
 			'branch'     => class_exists( 'CMB_Branches' ) ? CMB_Branches::display_name( (int) $booking->branch_id ) : '',
 			'dateFa'     => cmb_jalali_date( $booking->booking_date, 'full' ),
 			'blockLabel' => cmb_block_label( $booking->block_key ),
@@ -949,6 +988,31 @@ class CMB_Reviews {
 			usort( $by_branch, function ( $a, $b ) { return ( $b['avg'] ?? 0 ) <=> ( $a['avg'] ?? 0 ); } );
 		}
 
+		/* برچسب‌ها: نقاط قوت (۴ و ۵ ستاره) و ایرادها (۱ تا ۳)، پرتکرارترین اول.
+		   مدیر کل هم ببیند مشتری‌های راضی چه چیزی را پسندیده‌اند، نه فقط ایرادها. */
+		$tag_good = array();
+		$tag_bad  = array();
+		foreach ( (array) $wpdb->get_results( "SELECT r.rating, r.tags FROM {$t} r WHERE {$where} AND r.status = 'answered' AND r.tags IS NOT NULL AND r.tags <> '' AND r.tags <> '[]' LIMIT 5000" ) as $tg ) { // phpcs:ignore
+			$list = json_decode( (string) $tg->tags, true );
+			foreach ( is_array( $list ) ? $list : array() as $name ) {
+				$name = (string) $name;
+				if ( (int) $tg->rating >= 4 ) {
+					$tag_good[ $name ] = ( isset( $tag_good[ $name ] ) ? $tag_good[ $name ] : 0 ) + 1;
+				} else {
+					$tag_bad[ $name ] = ( isset( $tag_bad[ $name ] ) ? $tag_bad[ $name ] : 0 ) + 1;
+				}
+			}
+		}
+		arsort( $tag_good );
+		arsort( $tag_bad );
+		$tag_list = function ( $m ) {
+			$out = array();
+			foreach ( $m as $name => $n ) {
+				$out[] = array( 'tag' => $name, 'count' => (int) $n );
+			}
+			return $out;
+		};
+
 		// فهرست: فقط پاسخ‌داده‌ها، با فیلتر امتیاز و «فقط منتظر پیگیری»
 		$lw = $where . " AND r.status = 'answered'";
 		if ( ! empty( $f['rating'] ) ) {
@@ -984,6 +1048,8 @@ class CMB_Reviews {
 			'byService' => $by_service,
 			'byBlock'   => $by_block,
 			'byBranch'  => $by_branch,
+			'tagsGood'  => $tag_list( $tag_good ),
+			'tagsBad'   => $tag_list( $tag_bad ),
 			'items'     => $items,
 			'total'     => $total,
 			'page'      => $page,
@@ -1006,6 +1072,7 @@ class CMB_Reviews {
 			'branch'       => class_exists( 'CMB_Branches' ) ? CMB_Branches::display_name( (int) $r->branch_id ) : '',
 			'service'      => $svc ? $svc->title : '',
 			'dateFa'       => cmb_jalali_date( $r->booking_date, 'numeric' ),
+			'weekday'      => cmb_weekday_name( $r->booking_date ),
 			'blockLabel'   => cmb_block_label( $r->block_key ),
 			'rating'       => (int) $r->rating,
 			'ratingLabel'  => self::rating_label( (int) $r->rating ),

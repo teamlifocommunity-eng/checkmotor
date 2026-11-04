@@ -226,17 +226,25 @@ class CMB_Payments {
 	 *
 	 * @return array|null null یعنی این خدمت بیعانه ندارد.
 	 */
-	public static function quote( $service, $date, $block ) {
+	public static function quote( $service, $date, $block, array $extras = array() ) {
 		$deposit = self::service_deposit( $service );
+		$refund  = $deposit > 0 ? self::service_refund( $service, $deposit ) : 0;
+		$price   = (int) $service->price;
+
+		// چند خدمت در یک نوبت (۱.۵۳.۰): بیعانه، برگشتی و قیمت جمع همه‌ی خدمت‌ها
+		foreach ( $extras as $x ) {
+			$d        = self::service_deposit( $x );
+			$deposit += $d;
+			$refund  += $d > 0 ? self::service_refund( $x, $d ) : 0;
+			$price   += (int) $x->price;
+		}
 
 		if ( $deposit < 1 ) {
 			return null;
 		}
 
-		$refund = self::service_refund( $service, $deposit );
 		$hours  = max( 0, (int) CMB_Settings::get( 'cancel_deadline_hours', 24 ) );
 		$until  = self::cancel_until( $date, $block );
-		$price  = (int) $service->price;
 		$text   = self::terms_text( $deposit, $refund, $hours );
 
 		return array(
@@ -264,8 +272,8 @@ class CMB_Payments {
 	 * quote به‌علاوه‌ی بخش کیف پولِ همین مشتری (موجودی، چقدر از کیف پول،
 	 * چقدر با درگاه).
 	 */
-	public static function quote_for( $service, $date, $block, $phone ) {
-		$quote = self::quote( $service, $date, $block );
+	public static function quote_for( $service, $date, $block, $phone, array $extras = array() ) {
+		$quote = self::quote( $service, $date, $block, $extras );
 
 		if ( $quote && '' !== (string) $phone && CMB_Wallet::spend_on() ) {
 			$quote['wallet'] = CMB_Wallet::quote( $phone, $quote['deposit'] );
@@ -441,7 +449,7 @@ class CMB_Payments {
 		$res = self::gateway_request(
 			$pid,
 			self::callback_url( $booking ),
-			sprintf( 'بیعانه نوبت %s — %s', $booking->tracking_code, $service ? $service->title : 'چک موتور' ),
+			sprintf( 'بیعانه نوبت %s — %s', $booking->tracking_code, $service ? cmb_substr( CMB_Booking_Services::label( $booking ), 0, 120 ) : 'چک موتور' ),
 			array(
 				'mobile'   => $booking->phone,
 				'order_id' => $booking->tracking_code,

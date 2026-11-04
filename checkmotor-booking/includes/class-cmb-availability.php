@@ -17,15 +17,27 @@ class CMB_Availability {
 	 *
 	 * @return array|WP_Error
 	 */
-	public static function get_calendar( $service_id, $branch_id = 0 ) {
+	public static function get_calendar( $service_id, $branch_id = 0, array $extra_ids = array() ) {
 		$service = CMB_Services::get_service( $service_id );
 
 		if ( ! CMB_Services::bookable( $service ) ) {
 			return new WP_Error( 'cmb_service_not_found', 'خدمت انتخاب‌شده در دسترس نیست.', array( 'status' => 404 ) );
 		}
 
+		// چند خدمت در یک نوبت (۱.۵۳.۰): روز باید برای همه مجاز و شیفت برای همه جا داشته باشد
+		$extras = class_exists( 'CMB_Booking_Services' ) ? CMB_Booking_Services::resolve( $service, CMB_Booking_Services::parse_ids( $extra_ids, (int) $service->id ) ) : array();
+
+		if ( is_wp_error( $extras ) ) {
+			return $extras;
+		}
+
+		$combo     = array_merge( array( $service ), $extras );
 		$branch_id = $branch_id ? (int) $branch_id : (int) $service->branch_id;
 		$weekdays  = CMB_Services::allowed_weekdays( $service );
+
+		foreach ( $extras as $x ) {
+			$weekdays = array_values( array_intersect( $weekdays, CMB_Services::allowed_weekdays( $x ) ) );
+		}
 
 		$min_days = (int) CMB_Settings::get( 'min_days_ahead', 1 );
 		$window   = (int) CMB_Settings::get( 'window_days', 7 );
@@ -58,7 +70,7 @@ class CMB_Availability {
 
 			// روز برای این خدمت مجاز نیست (طبق جدول ۴.۱ سند اسپک).
 			if ( ! in_array( $weekday, $weekdays, true ) ) {
-				$day['reason'] = self::is_weekend( $weekday ) ? 'تعطیل' : 'این خدمت در این روز ارائه نمی‌شود';
+				$day['reason'] = self::is_weekend( $weekday ) ? 'تعطیل' : ( $extras ? 'همه‌ی خدمت‌های انتخاب‌شده در این روز ارائه نمی‌شوند' : 'این خدمت در این روز ارائه نمی‌شود' );
 				$days[]        = $day;
 				continue;
 			}
@@ -83,6 +95,17 @@ class CMB_Availability {
 				// خدمت جداگانه‌ای که در این شیفت سهمیه ندارد، اصلاً نمایش داده نمی‌شود.
 				if ( 0 === $capacity && null !== CMB_Services::own_capacity( $service ) ) {
 					continue;
+				}
+
+				// چند خدمت: جای خالی یعنی چند بار همین ترکیب در شیفت جا می‌شود
+				if ( $extras ) {
+					$st = self::combo_state( $combo, $branch_id, $ymd, $key );
+
+					if ( ! $st['offered'] ) {
+						continue;
+					}
+
+					$free = $st['free'];
 				}
 
 				// کمتر از «حداقل زمان تا نوبت» به شروع این شیفت مانده
@@ -229,9 +252,59 @@ class CMB_Availability {
 			$counts[ $row->block_key ] = (int) $row->total;
 		}
 
+		/* خدمت‌های اضافه‌ی نوبت‌های چندخدمتی (۱.۵۳.۰): هر کدام که از ظرفیت
+		   مشترک است، یک جای دیگر از همان شیفت می‌گیرد. */
+		foreach ( self::extra_counts( $branch_id, $date, $exclude, false ) as $block => $n ) {
+			$counts[ $block ] = ( isset( $counts[ $block ] ) ? $counts[ $block ] : 0 ) + $n;
+		}
+
 		self::$cache[ $key ] = $counts;
 
 		return $counts;
+	}
+
+	/**
+	 * شمارش خدمت‌های اضافه (cmb_booking_services) در شیفت‌های یک روز.
+	 *
+	 * @param int[] $ids     شناسه‌ی خدمت‌ها.
+	 * @param bool  $only_in true: فقط همین خدمت‌ها (سهمیه‌ی جداگانه)؛ false: همه به‌جز این‌ها (ظرفیت مشترک).
+	 *
+	 * @return array<string,int>
+	 */
+	protected static function extra_counts( $branch_id, $date, array $ids, $only_in ) {
+		global $wpdb;
+
+		if ( ! class_exists( 'CMB_Booking_Services' ) || ! CMB_Booking_Services::ready() || ( $only_in && ! $ids ) ) {
+			return array();
+		}
+
+		$bt     = cmb_table( 'bookings' );
+		$xt     = CMB_Booking_Services::table();
+		$busy   = cmb_occupying_sql( 'b.' );
+		$params = array( (int) $branch_id, $date );
+		$filter = '';
+
+		if ( $ids ) {
+			$filter = ' AND e.service_id ' . ( $only_in ? 'IN' : 'NOT IN' ) . ' (' . implode( ',', array_fill( 0, count( $ids ), '%d' ) ) . ')';
+			$params = array_merge( $params, array_map( 'intval', $ids ) );
+		}
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT b.block_key, COUNT(*) AS total FROM {$xt} e INNER JOIN {$bt} b ON b.id = e.booking_id
+				 WHERE b.branch_id = %d AND b.booking_date = %s AND {$busy}{$filter}
+				 GROUP BY b.block_key", // phpcs:ignore
+				$params
+			)
+		);
+
+		$out = array();
+
+		foreach ( (array) $rows as $row ) {
+			$out[ $row->block_key ] = (int) $row->total;
+		}
+
+		return $out;
 	}
 
 	/**
@@ -268,9 +341,68 @@ class CMB_Availability {
 			$counts[ $row->block_key ] = (int) $row->total;
 		}
 
+		// همین خدمت به‌عنوان خدمت اضافه‌ی نوبت‌های دیگر
+		foreach ( self::extra_counts( $branch_id, $date, array( (int) $service_id ), true ) as $block => $n ) {
+			$counts[ $block ] = ( isset( $counts[ $block ] ) ? $counts[ $block ] : 0 ) + $n;
+		}
+
 		self::$cache[ $key ] = $counts;
 
 		return $counts;
+	}
+
+	/**
+	 * استخر ظرفیت یک خدمت: سهمیه‌ی خودش یا ظرفیت مشترک شیفت.
+	 */
+	public static function pool_key( $service ) {
+		return null !== CMB_Services::own_capacity( $service ) ? 'own:' . (int) $service->id : 'shared';
+	}
+
+	/**
+	 * وضعیت یک شیفت برای مجموعه‌ای از خدمت‌ها (۱.۵۳.۰).
+	 *
+	 * هر خدمت یک جا از استخر خودش لازم دارد؛ پس دو خدمتِ ظرفیت مشترک
+	 * دو جای خالی در همان شیفت می‌خواهند.
+	 *
+	 * @param object[] $services همه‌ی خدمت‌ها (اصلی و اضافه).
+	 *
+	 * @return array { offered(bool), free(int: چند بار همین ترکیب جا می‌شود), short(string: عنوان خدمتی که جا ندارد) }
+	 */
+	public static function combo_state( array $services, $branch_id, $date, $block_key ) {
+		$need = array();
+		$pool = array();
+
+		foreach ( $services as $svc ) {
+			$k = self::pool_key( $svc );
+
+			if ( ! isset( $need[ $k ] ) ) {
+				$need[ $k ] = 0;
+				$pool[ $k ] = $svc;
+			}
+
+			$need[ $k ]++;
+
+			// خدمت با سهمیه‌ی جدا که در این شیفت سهمیه ندارد
+			if ( 0 === self::capacity_for( $svc, $block_key ) ) {
+				return array( 'offered' => false, 'free' => 0, 'short' => $svc->title );
+			}
+		}
+
+		$free  = PHP_INT_MAX;
+		$short = '';
+
+		foreach ( $need as $k => $n ) {
+			$svc  = $pool[ $k ];
+			$left = max( 0, self::capacity_for( $svc, $block_key ) - self::booked_for( $svc, $branch_id, $date, $block_key ) );
+			$fits = (int) floor( $left / $n );
+
+			if ( $fits < $free ) {
+				$free  = $fits;
+				$short = 'shared' === $k ? '' : $svc->title;
+			}
+		}
+
+		return array( 'offered' => true, 'free' => PHP_INT_MAX === $free ? 0 : $free, 'short' => $short );
 	}
 
 	/**
@@ -378,7 +510,7 @@ class CMB_Availability {
 	 *
 	 * @return true|WP_Error
 	 */
-	public static function validate_slot( $service, $date, $block_key, $branch_id = 0 ) {
+	public static function validate_slot( $service, $date, $block_key, $branch_id = 0, array $extras = array() ) {
 		if ( is_numeric( $service ) ) {
 			$service = CMB_Services::get_service( $service );
 		}
@@ -458,6 +590,31 @@ class CMB_Availability {
 
 		if ( self::remaining( $branch_id, $date, $block_key, $service ) < 1 ) {
 			return new WP_Error( 'cmb_block_full', 'ظرفیت این شیفت تکمیل شده است. شیفت دیگری انتخاب کنید.', array( 'status' => 409 ) );
+		}
+
+		// چند خدمت (۱.۵۳.۰): هر خدمت اضافه هم باید در همین روز و شیفت جا داشته باشد
+		if ( $extras ) {
+			foreach ( $extras as $x ) {
+				if ( ! in_array( $weekday, CMB_Services::allowed_weekdays( $x ), true ) ) {
+					return new WP_Error( 'cmb_bad_weekday', sprintf( 'خدمت «%s» در روز %s ارائه نمی‌شود؛ آن را از انتخاب‌ها بردارید یا روز دیگری انتخاب کنید.', $x->title, cmb_weekday_name( $date ) ), array( 'status' => 400 ) );
+				}
+			}
+
+			$st = self::combo_state( array_merge( array( $service ), $extras ), $branch_id, $date, $block_key );
+
+			if ( ! $st['offered'] ) {
+				return new WP_Error( 'cmb_block_not_offered', sprintf( 'خدمت «%s» در این شیفت ارائه نمی‌شود؛ آن را از انتخاب‌ها بردارید یا شیفت دیگری انتخاب کنید.', $st['short'] ), array( 'status' => 400 ) );
+			}
+
+			if ( $st['free'] < 1 ) {
+				return new WP_Error(
+					'cmb_block_full',
+					'' !== $st['short']
+						? sprintf( 'ظرفیت «%s» در این شیفت تکمیل است؛ آن را از انتخاب‌ها بردارید یا شیفت دیگری انتخاب کنید.', $st['short'] )
+						: 'برای همه‌ی خدمت‌های انتخاب‌شده در این شیفت جای کافی نیست؛ خدمتی را بردارید یا شیفت دیگری انتخاب کنید.',
+					array( 'status' => 409 )
+				);
+			}
 		}
 
 		return true;

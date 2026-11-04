@@ -30,6 +30,13 @@ class CMB_Bookings {
 		$date      = isset( $data['date'] ) ? sanitize_text_field( $data['date'] ) : '';
 		$block_key = isset( $data['block'] ) ? sanitize_key( $data['block'] ) : '';
 
+		/* چند خدمت در یک نوبت (۱.۵۳.۰): خدمت‌های اضافه‌ی همان مرکز، همان روز و شیفت. */
+		$extras = CMB_Booking_Services::resolve( $service, CMB_Booking_Services::parse_ids( isset( $data['extra_services'] ) ? $data['extra_services'] : array(), (int) $service->id ) );
+
+		if ( is_wp_error( $extras ) ) {
+			return $extras;
+		}
+
 		/* نمایندگیِ غیرفعال یا بی‌موجودی: حتی اگر فرم دور زده شود (US-2.2).
 		   دلیل مالی هرگز به مشتری گفته نمی‌شود. بررسی قطعی دوباره داخل قفل
 		   کیف پول انجام می‌شود. */
@@ -100,7 +107,7 @@ class CMB_Bookings {
 		}
 
 		// محدودیت نوبت‌های هم‌زمان (تعداد کل، و یکی از هر خدمت).
-		$limit = self::check_active_limits( $user_id, $service );
+		$limit = self::check_active_limits( $user_id, $service, 0, $extras );
 
 		if ( is_wp_error( $limit ) ) {
 			return $limit;
@@ -112,8 +119,13 @@ class CMB_Bookings {
 		$deposit = CMB_Payments::service_deposit( $service );
 		$quote   = null;
 
+		// چند خدمت: بیعانه جمع بیعانه‌ی همه‌ی خدمت‌هاست
+		foreach ( $extras as $x ) {
+			$deposit += CMB_Payments::service_deposit( $x );
+		}
+
 		if ( $deposit > 0 ) {
-			$quote = CMB_Payments::quote( $service, $date, $block_key );
+			$quote = CMB_Payments::quote( $service, $date, $block_key, $extras );
 
 			if ( empty( $data['accept_terms'] ) ) {
 				return new WP_Error( 'cmb_terms_required', 'برای ثبت نوبت، قوانین رزرو را بخوانید و تیک پذیرش را بزنید.', array( 'status' => 400, 'quote' => $quote ) );
@@ -151,7 +163,7 @@ class CMB_Bookings {
 					'موجودی کیف پولتان همین حالا تغییر کرد. مبلغ‌ها را دوباره ببینید و تأیید کنید.',
 					array(
 						'status' => 409,
-						'quote'  => CMB_Payments::quote_for( $service, $date, $block_key, $phone ),
+						'quote'  => CMB_Payments::quote_for( $service, $date, $block_key, $phone, $extras ),
 					)
 				);
 			}
@@ -173,7 +185,7 @@ class CMB_Bookings {
 		   هم‌زمان می‌توانند از سقف رد شوند. */
 		CMB_Availability::flush_cache();
 
-		$valid = CMB_Availability::validate_slot( $service, $date, $block_key, $branch_id );
+		$valid = CMB_Availability::validate_slot( $service, $date, $block_key, $branch_id, $extras );
 
 		if ( is_wp_error( $valid ) ) {
 			cmb_unlock( $lock_name, $locked );
@@ -215,7 +227,7 @@ class CMB_Bookings {
 		}
 
 		if ( CMB_Payments::schema_ready() ) {
-			$row['price_at_booking'] = (int) $service->price;
+			$row['price_at_booking'] = CMB_Booking_Services::price_sum( $service, $extras );
 
 			if ( $deposit > 0 ) {
 				$until = CMB_Payments::cancel_until( $date, $block_key );
@@ -275,6 +287,15 @@ class CMB_Bookings {
 		$inserted   = $wpdb->insert( $table, $row );
 		$booking_id = $inserted ? (int) $wpdb->insert_id : 0;
 
+		/* خدمت‌های اضافه داخل همان قفل شیفت ثبت می‌شوند تا رزرو هم‌زمان بعدی
+		   جای آن‌ها را هم ببیند. */
+		if ( $booking_id && $extras && ! CMB_Booking_Services::save( $booking_id, $extras ) ) {
+			CMB_Booking_Services::delete_for( $booking_id );
+			$wpdb->delete( $table, array( 'id' => $booking_id ) );
+			$booking_id = 0;
+			$inserted   = false;
+		}
+
 		if ( $fee > 0 ) {
 			$held = $booking_id
 				? CMB_Branch_Wallet::hold_fee( $booking_id, $branch_id, $fee )
@@ -285,6 +306,7 @@ class CMB_Bookings {
 
 				// بدون تراکنش (یا جدول غیر InnoDB) ردیف نیمه‌کاره دستی پاک می‌شود
 				if ( $booking_id ) {
+					CMB_Booking_Services::delete_for( $booking_id );
 					$wpdb->delete( $table, array( 'id' => $booking_id ) );
 				}
 
@@ -354,7 +376,7 @@ class CMB_Bookings {
 							'موجودی کیف پولتان همین حالا تغییر کرد و نوبت ثبت نشد. مبلغ‌ها را دوباره ببینید و تأیید کنید.',
 							array(
 								'status' => 409,
-								'quote'  => CMB_Payments::quote_for( $service, $date, $block_key, $phone ),
+								'quote'  => CMB_Payments::quote_for( $service, $date, $block_key, $phone, $extras ),
 							)
 						);
 					}
@@ -617,7 +639,7 @@ class CMB_Bookings {
 	 *
 	 * @return true|WP_Error
 	 */
-	public static function check_active_limits( $user_id, $service, $exclude_id = 0 ) {
+	public static function check_active_limits( $user_id, $service, $exclude_id = 0, array $extras = array() ) {
 		$max_active  = (int) CMB_Settings::get( 'max_active_per_user', 1 );
 		$per_service = (bool) CMB_Settings::get( 'one_per_service', 1 );
 
@@ -631,7 +653,7 @@ class CMB_Bookings {
 			return true;
 		}
 
-		$error = self::limit_error( $active, $user_id, $service, $max_active, $per_service );
+		$error = self::limit_error( $active, $user_id, $service, $max_active, $per_service, $extras );
 
 		if ( true === $error ) {
 			return true;
@@ -670,17 +692,28 @@ class CMB_Bookings {
 	/**
 	 * خطای سقف نوبت‌ها، یا true.
 	 */
-	protected static function limit_error( array $active, $user_id, $service, $max_active, $per_service ) {
+	protected static function limit_error( array $active, $user_id, $service, $max_active, $per_service, array $extras = array() ) {
 
 		if ( $per_service && $service ) {
+			// همه‌ی خدمت‌های درخواست، در برابر همه‌ی خدمت‌های نوبت‌های فعال (اصلی و اضافه)
+			$want = array( (int) $service->id => $service );
+			foreach ( $extras as $x ) {
+				$want[ (int) $x->id ] = $x;
+			}
+			CMB_Booking_Services::ids_map( wp_list_pluck( $active, 'id' ) );
+
 			foreach ( $active as $row ) {
-				if ( (int) $row->service_id !== (int) $service->id ) {
+				$hit = array_intersect( array_keys( $want ), CMB_Booking_Services::all_ids( $row ) );
+
+				if ( ! $hit ) {
 					continue;
 				}
 
+				$same = $want[ (int) reset( $hit ) ];
+
 				$message = sprintf(
 					'شما برای «%s» در %s (%s) نوبت فعال دارید. از هر خدمت هم‌زمان فقط یک نوبت می‌شود داشت؛',
-					$service->title,
+					$same->title,
 					cmb_fa_num( cmb_jalali_date( $row->booking_date, 'full' ) ),
 					cmb_block_label( $row->block_key )
 				);
@@ -1370,8 +1403,12 @@ class CMB_Bookings {
 		return array(
 			'id'           => (int) $booking->id,
 			'code'         => $booking->tracking_code,
-			'service'      => $service ? $service->title : '',
-			'servicePrice' => $service ? cmb_fa_num( number_format( (int) $service->price ) ) . ' تومان' : '',
+			'service'      => CMB_Booking_Services::label( $booking ),
+			'services'     => CMB_Booking_Services::titles( $booking ),
+			// چند خدمت: جمع قیمت‌ها (price_at_booking)، وگرنه قیمت خدمت
+			'servicePrice' => ( isset( $booking->price_at_booking ) && (int) $booking->price_at_booking > 0 )
+				? cmb_fa_num( number_format( (int) $booking->price_at_booking ) ) . ' تومان'
+				: ( $service && (int) $service->price ? cmb_fa_num( number_format( (int) $service->price ) ) . ' تومان' : '' ),
 			'branch'       => $branch ? CMB_Branches::display_name( $branch ) : '',
 			'branchPhone'  => $branch ? $branch->phone : '',
 			// آدرس و نقشه‌ی مرکزی که نوبت در آن است (مهم وقتی چند مرکز هست)
@@ -1719,9 +1756,8 @@ class CMB_Bookings {
 		return "نوبت جدید\n{0} {1}\n{2}، {3} {4}\n{5}\n{6} {7}";
 	}
 
-	protected static function service_title( $booking ) {
-		$service = CMB_Services::get_service( $booking->service_id );
-
-		return $service ? $service->title : '';
+	/** عنوان خدمت‌های نوبت؛ با چند خدمت «الف + ب» (۱.۵۳.۰). */
+	public static function service_title( $booking ) {
+		return class_exists( 'CMB_Booking_Services' ) ? CMB_Booking_Services::label( $booking ) : '';
 	}
 }

@@ -30,6 +30,7 @@ var S = {
   /* ویزارد رزرو */
   step: 1,                 // 1 خدمت · 2 زمان · 3 ورود · 4 مشخصات · 5 قوانین و پرداخت (فقط با بیعانه)
   service: null,
+  extras: [],              // چند خدمت در یک نوبت (۱.۵۳.۰): شناسه‌ی خدمت‌های اضافه کنار S.service
   cal: null, calCache: {}, day: null, block: null,
   form: { name: '', province: '', city: '', brand: '', model: '', year: '', mileage: '', note: '' },
   cityOther: false,        // در حالت انتخاب از فهرست: «شهر دیگر (تایپ می‌کنم)» انتخاب شده؟
@@ -396,6 +397,29 @@ function branchActs(phone, map, label, compact, title) {
     '</div>';
 }
 
+/* باکس «تماس و آدرس مرکز» بعد از ثبت نوبت (۱.۵۳.۰): نام مرکز، نشانی، تلفن با
+   دکمه‌ی تماس، و نقشه/مسیریابی. شماره‌ی نمایندگی فقط همین‌جا (بعد از رزرو) دیده می‌شود. */
+function contactBox(r, compact) {
+  if (!r || (!r.branch && !r.branchPhone && !r.branchAddress && !r.branchMap)) { return ''; }
+  var pt = mapPoint(r.branchMap);
+  var map = pt && window.CMBLocation ? window.CMBLocation.html({ lat: pt.lat, lng: pt.lng, title: r.branch }) : '';
+  return '<section class="cmb-brinfo cmb-contact' + (compact ? ' cmb-contact--in' : ' cmb-mt4') + '" aria-label="تماس و آدرس مرکز">' +
+    '<div class="cmb-contact__h">' + I.pin + '<span>تماس و آدرس مرکز</span></div>' +
+    (r.branch ? '<div class="cmb-brinfo__hd"><span class="cmb-brinfo__ph" aria-hidden="true">' + I.engine + '</span>' +
+      '<div class="cmb-brinfo__name"><b>' + esc(r.branch) + '</b>' + (r.branchCity ? '<small>' + esc(r.branchCity) + '</small>' : '') + '</div></div>' : '') +
+    '<ul class="cmb-brinfo__rows">' +
+      (r.branchAddress ? '<li><span class="cmb-brinfo__ic">' + I.pin + '</span><span><small>نشانی</small>' + esc(r.branchAddress) + '</span></li>' : '') +
+      (r.branchPhone ? '<li><span class="cmb-brinfo__ic">' + I.phone + '</span><span><small>شماره تماس</small><a class="cmb-contact__tel" href="tel:' + esc(r.branchPhone) + '"><bdi dir="ltr">' + fa(esc(r.branchPhone)) + '</bdi></a></span></li>' : '') +
+      (!r.branchMap ? '<li><span class="cmb-brinfo__ic">' + I.nav + '</span><span><small>موقعیت</small>موقعیت این مرکز هنوز روی نقشه ثبت نشده است</span></li>' : '') +
+    '</ul>' +
+    map +
+    (r.branchMap || r.branchPhone ? '<div class="cmb-brinfo__acts">' +
+      (r.branchPhone ? '<a class="cmb-btn cmb-brinfo__call" href="tel:' + esc(r.branchPhone) + '" aria-label="تماس با ' + esc(r.branch || 'مرکز') + '">' + I.phone + '<span>تماس</span></a>' : '') +
+      (r.branchMap ? mapLink(r.branchMap, r.branch, 'cmb-btn cmb-brinfo__go', I.nav + '<span>مسیریابی</span>') : '') +
+    '</div>' : '') +
+  '</section>';
+}
+
 // زدن روی نقشه‌ی نشان (location.js) همان برگه‌ی انتخاب برنامه‌ی نقشه را باز می‌کند
 document.addEventListener('cmb:mapopen', function (e) {
   var d = e.detail || {};
@@ -736,6 +760,7 @@ function chooseBranch(id, quiet) {
   S.branchPick = false;
   S.branchChosen = true;
   S.service = null;
+  S.extras = [];
   S.cal = null; S.day = null; S.block = null;
   S.quote = null; S.quoteFor = '';
   S.servicesError = '';
@@ -782,6 +807,7 @@ function branchUnavailable(msg) {
   toast(msg || 'این مرکز فعلاً نوبت نمی‌گیرد. لطفاً مرکز دیگری انتخاب کنید.', 'bad');
 
   S.service = null;
+  S.extras = [];
   S.step = 1;
 
   if (BR.picker) {
@@ -832,9 +858,28 @@ function svcCard(s) {
 
 /* ═══ ویزارد رزرو ═══ */
 
-/** آیا خدمت انتخاب‌شده بیعانه دارد؟ (گام پنجم: قوانین و پرداخت) */
+/* ── چند خدمت در یک نوبت (۱.۵۳.۰) ── */
+function svcById(id) { return S.services.filter(function (x) { return x.id === Number(id); })[0] || null; }
+function picked() { return S.service ? [S.service].concat(S.extras.map(svcById).filter(Boolean)) : []; }
+function pickKey() { return S.service ? S.service.id + (S.extras.length ? ':' + S.extras.join(',') : '') : ''; }
+function extraQs(name) { return S.extras.length ? '&' + name + '=' + S.extras.join(',') : ''; }
+function pickTitles() { return picked().map(function (x) { return x.title; }).join(' + '); }
+/** روزهای هفته‌ای که همه‌ی خدمت‌های انتخاب‌شده ارائه می‌شوند */
+function pickWeekdays() {
+  var list = picked(), out = null;
+  list.forEach(function (x) {
+    var w = (x.weekdays || []).map(Number);
+    out = out === null ? w : out.filter(function (d) { return w.indexOf(d) !== -1; });
+  });
+  return out || [];
+}
+function pickPrice() { return picked().reduce(function (a, x) { return a + (Number(x.price) || 0); }, 0); }
+function pickDeposit() { return picked().reduce(function (a, x) { return a + (Number(x.deposit) || 0); }, 0); }
+function resetSlot() { S.cal = null; S.day = null; S.block = null; S.quote = null; S.quoteFor = ''; }
+
+/** آیا خدمت(های) انتخاب‌شده بیعانه دارند؟ (گام پنجم: قوانین و پرداخت) */
 function needsDeposit() {
-  return !!(S.pay.on && S.service && Number(S.service.deposit) > 0);
+  return !!(S.pay.on && S.service && pickDeposit() > 0);
 }
 
 function steps() {
@@ -854,7 +899,7 @@ function viewBook() {
   if (S.receipt) { return viewReceipt(); }
 
   // با چند مرکز، مرکز انتخابی هم بالای ویزارد دیده شود
-  var sub = [BR.picker && S.branch ? S.branch.title : '', S.service ? S.service.title : ''].filter(Boolean).join(' · ');
+  var sub = [BR.picker && S.branch ? S.branch.title : '', S.service ? pickTitles() : ''].filter(Boolean).join(' · ');
   var head = topBar('رزرو نوبت', sub, true) + steps();
 
   if (S.step === 1) { return head + stepService(); }
@@ -872,6 +917,25 @@ function viewBook() {
  * کار هستیم، هم صفحه بی‌جهت بلند نمی‌شود.
  */
 function svcChosen(s) {
+  // چند خدمت: یک خلاصه برای همه، با جمع قیمت
+  if (S.extras.length) {
+    var all = picked(), sum = pickPrice(), dep = pickDeposit();
+    return '<div class="cmb-chosen">' +
+      '<div class="cmb-chosen__hd">' +
+        '<span class="cmb-chosen__tick">' + I.check + '</span>' +
+        '<div class="cmb-chosen__grow">' +
+          '<div class="cmb-chosen__k">' + fa(all.length) + ' خدمت در این نوبت</div>' +
+          '<div class="cmb-chosen__t">' + esc(pickTitles()) + '</div>' +
+        '</div>' +
+        '<button class="cmb-chosen__edit" data-change-svc>تغییر</button>' +
+      '</div>' +
+      '<div class="cmb-chosen__meta">' +
+        (sum ? '<div class="cmb-chosen__row">' + I.tag + 'جمع: ' + fa(sum.toLocaleString('en-US')) + ' تومان</div>' : '') +
+        '<div class="cmb-chosen__row">' + I.cal + 'روزهایی نشان داده می‌شود که همه‌ی این خدمت‌ها انجام می‌شوند و جای همه هست</div>' +
+        (S.pay.on && dep > 0 ? '<div class="cmb-chosen__row">' + I.card + 'بیعانه ' + fa(dep.toLocaleString('en-US')) + ' تومان — از هزینه کسر می‌شود</div>' : '') +
+      '</div></div>';
+  }
+
   return '<div class="cmb-chosen">' +
     '<div class="cmb-chosen__hd">' +
       '<span class="cmb-chosen__tick">' + I.check + '</span>' +
@@ -921,10 +985,35 @@ function svcBox(s) {
 function stepService() {
   var html = '<div class="cmb-page cmb-mt3">';
 
-  // انتخاب که انجام شد، فهرست جای خودش را به خلاصه می‌دهد
-  if (S.service) {
+  // انتخاب که انجام شد: با یک خدمت خلاصه؛ با چند خدمت، فهرست تیک‌دار (۱.۵۳.۰)
+  if (S.service && S.services.length < 2) {
     html += svcChosen(S.service) +
       '<button class="cmb-btn cmb-btn--pri cmb-mt5" data-next-slot>ادامه — انتخاب تاریخ</button>' +
+      '</div>';
+    return html;
+  }
+
+  if (S.service) {
+    var ids = picked().map(function (x) { return x.id; });
+    var common = pickWeekdays();
+    var sum = pickPrice();
+    html += '<div class="cmb-sec" style="margin-top:0"><div class="cmb-sec__t">خدمت‌های این نوبت</div></div>' +
+      '<p class="cmb-hint cmb-mb3">خدمتی که انتخاب کردید تیک خورده. اگر می‌خواهید در همین نوبت کار دیگری هم انجام شود، آن را هم تیک بزنید؛ زمان‌هایی نشان داده می‌شود که برای همه جا باشد.</p>' +
+      '<div class="cmb-picks" role="group" aria-label="خدمت‌های این نوبت">' +
+      S.services.map(function (x) {
+        var on = ids.indexOf(x.id) !== -1;
+        return '<label class="cmb-pick' + (on ? ' is-on' : '') + '">' +
+          '<input type="checkbox" data-svc-toggle="' + x.id + '"' + (on ? ' checked' : '') + '>' +
+          '<span class="cmb-pick__box" aria-hidden="true">' + I.check + '</span>' +
+          (x.poster ? '<img class="cmb-pick__img" src="' + esc(x.poster) + '" alt="" width="56" height="56" loading="lazy">' : '') +
+          '<span class="cmb-pick__b"><b>' + esc(x.title) + (x.test ? ' <span class="cmb-testtag">آزمایشی</span>' : '') + '</b>' +
+            '<small>' + [x.priceLabel, x.weekdayText].filter(Boolean).map(esc).join(' · ') + '</small></span>' +
+        '</label>';
+      }).join('') + '</div>' +
+      '<div class="cmb-picksum" aria-live="polite"><span>' + fa(ids.length) + ' خدمت انتخاب شده</span>' +
+        (sum ? '<b>جمع: ' + fa(sum.toLocaleString('en-US')) + ' تومان</b>' : '') + '</div>' +
+      (common.length ? '' : note('warn', I.alert, 'این خدمت‌ها روز مشترکی ندارند؛ یکی را بردارید تا بشود زمان انتخاب کرد.')) +
+      '<button class="cmb-btn cmb-btn--pri cmb-mt4" data-next-slot' + (common.length ? '' : ' disabled') + '>ادامه — انتخاب تاریخ</button>' +
       '</div>';
     return html;
   }
@@ -1104,10 +1193,12 @@ function stepDetails() {
   var html = '<div class="cmb-page cmb-mt4">';
 
   html += '<div class="cmb-card cmb-card--flat">' +
-    kv('خدمت', S.service ? S.service.title : '') +
+    kv(S.extras.length ? 'خدمت‌ها' : 'خدمت', S.service ? pickTitles() : '') +
     kv('تاریخ', S.day ? fa(S.day.jalaliFull) : '') +
     kv('ساعت', (bl.label || '') + ' — ' + fa(bl.start || '')) +
-    (S.service && S.service.priceLabel ? kv('هزینه', S.service.priceLabel) : '') +
+    (S.extras.length
+      ? (pickPrice() > 0 ? kv('جمع هزینه', fa(pickPrice().toLocaleString('en-US')) + ' تومان') : '')
+      : (S.service && S.service.priceLabel ? kv('هزینه', S.service.priceLabel) : '')) +
     '</div>';
 
   html += '<div class="cmb-card">' +
@@ -1193,7 +1284,7 @@ function stepPay() {
   var html = '<div class="cmb-page cmb-mt4">';
 
   html += '<div class="cmb-card cmb-card--flat">' +
-    kv('خدمت', S.service ? S.service.title : '') +
+    kv(S.extras.length ? 'خدمت‌ها' : 'خدمت', S.service ? pickTitles() : '') +
     kv('تاریخ', S.day ? fa(S.day.jalaliFull) : '') +
     kv('ساعت', (bl.label || '') + ' — ' + fa(bl.start || '')) +
     '</div>';
@@ -1408,10 +1499,8 @@ function viewReceipt() {
         '<div class="cmb-receipt__code">' + esc(r.code) + '</div>' +
       '</div>' +
       '<div class="cmb-receipt__body">' +
-        kv('خدمت', r.service) +
+        kv(r.services && r.services.length > 1 ? 'خدمت‌ها' : 'خدمت', r.service) +
         (r.branch ? kv('مرکز', r.branch + (r.branchCity ? ' — ' + r.branchCity : '')) : '') +
-        (r.branchAddress ? kv('نشانی', r.branchAddress) : '') +
-        (r.branch && r.branchPhone ? kv('تلفن مرکز', fa(r.branchPhone)) : '') +
         kv('تاریخ', fa(r.dateFa)) +
         kv('ساعت', r.blockLabel + ' — ' + fa(r.blockStart)) +
         kv('خودرو', r.car) +
@@ -1426,7 +1515,7 @@ function viewReceipt() {
       '</div>' +
     '</div>';
 
-  html += branchActs(r.branchPhone, r.branchMap, 'تماس با مرکز', false, r.branch);
+  html += contactBox(r, false);
 
   if (r.pay && r.pay.status === 'paid' && r.cancelHint) { html += note('info', I.info, fa(r.cancelHint)); }
   if (r.note) { html += note('warn', I.alert, r.note); }
@@ -1642,10 +1731,9 @@ function viewMine() {
         '<div class="cmb-bk__row">' + I.cal + '<b>' + fa(esc(b.dateFa)) + '</b></div>' +
         '<div class="cmb-bk__row">' + I.clock + esc(b.blockLabel) + ' — ساعت ' + fa(esc(b.blockStart)) + '</div>' +
         '<div class="cmb-bk__row">' + I.car + esc(b.car) + '</div>' +
-        (b.branch ? '<div class="cmb-bk__row">' + I.pin + '<span><b>' + esc(b.branch) + '</b>' + (b.branchAddress ? ' — ' + esc(b.branchAddress) : '') + '</span></div>' : '') +
-        (b.branch && b.branchPhone ? '<div class="cmb-bk__row">' + I.phone + '<span>تلفن مرکز: <bdi dir="ltr">' + fa(esc(b.branchPhone)) + '</bdi></span></div>' : '') +
         payLine(b) +
-        (b.branch ? branchActs(b.branchPhone, b.branchMap, 'تماس با مرکز', true, b.branch) : '') +
+        // تماس، نشانی و موقعیت مرکز (۱.۵۳.۰) — برای نوبت‌های لغوشده لازم نیست
+        (['cancelled', 'expired'].indexOf(b.status) === -1 ? contactBox(b, true) : '') +
       '</div>' +
       pendingBox(b) +
       cancelBox(b) +
@@ -1706,6 +1794,8 @@ function rvCodeForm(intro) {
     (R.err ? '<div class="cmb-hint" role="alert" style="color:var(--bad)">' + esc(R.err) + '</div>' : '') +
     '<button class="cmb-btn cmb-btn--pri cmb-mt5" data-rv-verify' + (R.busy ? ' disabled' : '') + '>' +
       (R.busy ? '<span class="cmb-spin"></span> در حال بررسی…' : 'ادامه') + '</button>' +
+    '<p class="cmb-hint cmb-mt3">کد نظرسنجی بعد از انجام خدمت، همراه لینک همین صفحه پیامک می‌شود.</p>' +
+    (S.logged && S.hasPhone ? '' : '<button class="cmb-link cmb-mt3" data-rv-login>کد نظرسنجی ندارید؟ با کد ورود پیامکی وارد شوید</button>') +
   '</div>';
 }
 
@@ -1796,6 +1886,13 @@ function viewReview() {
       '<div class="cmb-empty__ic" style="margin:0 auto var(--s3)">' + I.star + '</div>' +
       '<div class="cmb-svc__t">نظرسنجی فعالی ندارید</div>' +
       '<p class="cmb-hint">اگر پیامک نظرسنجی برای شماره‌ی دیگری آمده، شماره و کد را وارد کنید.</p></div>';
+  }
+
+  // بی کد نظرسنجی: ورود عادی با کد پیامکی؛ بعد نظرسنجی‌های باز همان شماره دیده می‌شود
+  if (R.login && !(S.logged && S.hasPhone)) {
+    html += authCard('شماره‌ای را که با آن نوبت گرفته‌اید وارد کنید؛ بعد از ورود، نظرسنجی‌های باز شما نشان داده می‌شود.') +
+      '<button class="cmb-link cmb-mt3" data-rv-login="0">کد نظرسنجی دارم</button>';
+    return html + '</div>';
   }
 
   html += rvCodeForm(R.other ? 'شماره‌ای که پیامک نظرسنجی را گرفته و کد آن را وارد کنید.' : '');
@@ -2407,7 +2504,7 @@ function load(page) {
  * @param quiet اگر true باشد فقط در پس‌زمینه می‌گیرد و چیزی رندر نمی‌کند.
  */
 function loadCalendar(quiet) {
-  var id = S.service.id;
+  var id = pickKey();
   var branchId = S.branch && S.branch.id;
 
   /* اگر قبلاً گرفته‌ایم، بدون هیچ انتظاری نشان بده. ولی نه برای همیشه:
@@ -2428,10 +2525,10 @@ function loadCalendar(quiet) {
     paint();
   }
 
-  get('availability?service_id=' + id).then(function (r) {
+  get('availability?service_id=' + S.service.id + extraQs('extra')).then(function (r) {
     if (r.success !== false) { r._at = Date.now(); S.calCache[id] = r; }
 
-    if (quiet || !S.service || S.service.id !== id || (S.branch && S.branch.id) !== branchId) { return; }
+    if (quiet || !S.service || pickKey() !== id || (S.branch && S.branch.id) !== branchId) { return; }
     (function (r) {
       if (r.success === false && r.code === 'cmb_branch_unavailable') {
         branchUnavailable(r.message);
@@ -2579,7 +2676,7 @@ function submitBooking() {
 
 /** مبلغ و قوانین همین شیفت. */
 function loadQuote(force) {
-  var key = S.service.id + '|' + S.day.date + '|' + S.block;
+  var key = pickKey() + '|' + S.day.date + '|' + S.block;
 
   if (!force && S.quote && S.quoteFor === key) { return; }
 
@@ -2590,10 +2687,10 @@ function loadQuote(force) {
   S.useWallet = true;
   paint();
 
-  get('bookings/quote?service_id=' + S.service.id + '&date=' + encodeURIComponent(S.day.date) + '&block=' + encodeURIComponent(S.block)).then(function (r) {
+  get('bookings/quote?service_id=' + S.service.id + extraQs('extra_services') + '&date=' + encodeURIComponent(S.day.date) + '&block=' + encodeURIComponent(S.block)).then(function (r) {
     // این خدمت دیگر بیعانه ندارد (تنظیمات همین حالا عوض شده): ثبت رایگان
     if (r.success !== false && !r.quote) {
-      S.service.deposit = 0;
+      picked().forEach(function (x) { x.deposit = 0; });
       S.quoteFor = '';
       goStep(4);
       sendBooking({});
@@ -2637,6 +2734,7 @@ function sendBooking(extra) {
 
   var body = {
     service_id: S.service.id,
+    extra_services: S.extras.slice(),
     date: S.day.date,
     block: S.block,
     name: f.name,
@@ -2659,10 +2757,11 @@ function sendBooking(extra) {
       if (r.code === 'cmb_terms_changed' || r.code === 'cmb_terms_required') {
         if (r.data && r.data.quote) {
           S.quote = r.data.quote;
-          S.quoteFor = S.service.id + '|' + S.day.date + '|' + S.block;
+          S.quoteFor = pickKey() + '|' + S.day.date + '|' + S.block;
           // فهرست خدماتِ کش‌شده هنوز «بدون بیعانه» می‌گفت
           S.pay.on = true;
-          S.service.deposit = r.data.quote.deposit;
+          // بیعانه‌ی تازه جمع همه‌ی خدمت‌هاست؛ روی خدمت اصلی می‌نشیند
+          picked().forEach(function (x, i) { x.deposit = i ? 0 : r.data.quote.deposit; });
         }
         S.termsOk = false;
         toast(r.message, 'bad');
@@ -2673,7 +2772,7 @@ function sendBooking(extra) {
       // موجودی کیف پول بین دیدن و زدن دکمه عوض شد: تقسیم تازه
       if (r.code === 'cmb_wallet_changed' && r.data && r.data.quote) {
         S.quote = r.data.quote;
-        S.quoteFor = S.service.id + '|' + S.day.date + '|' + S.block;
+        S.quoteFor = pickKey() + '|' + S.day.date + '|' + S.block;
         S.walletFresh = false;
         toast(r.message, 'bad');
         paint();
@@ -2697,7 +2796,7 @@ function sendBooking(extra) {
       // ظرفیت پر شده یا روز بسته شده: کاربر باید دوباره زمان انتخاب کند
       if (['cmb_block_full', 'cmb_block_closed', 'cmb_day_closed', 'cmb_too_soon', 'cmb_too_far'].indexOf(r.code) !== -1) {
         // تقویم کش‌شده همان است که این انتخاب را نشان داده بود
-        delete S.calCache[S.service.id];
+        delete S.calCache[pickKey()];
         S.step = 2;
         loadCalendar();
         return;
@@ -3041,6 +3140,7 @@ function bind() {
     }
     if (up('[data-rv-list]')) { e.preventDefault(); S.rv.sel = null; S.rv.thanks = ''; var nx = S.rv.items.filter(function (x) { return !x.answered; })[0]; if (nx) { rvOpen(nx); } else { paint(); } return; }
     if (up('[data-rv-other]')) { e.preventDefault(); S.rv.other = true; S.rv.err = ''; paint(); return; }
+    if ((el = up('[data-rv-login]'))) { e.preventDefault(); S.rv.login = el.getAttribute('data-rv-login') !== '0'; S.rv.err = ''; paint(); return; }
 
     if (up('[data-services-retry]')) { e.preventDefault(); S.servicesTried = false; S.servicesError = ''; load('home'); return; }
     if ((el = up('[data-map-open]'))) {
@@ -3164,6 +3264,8 @@ function bind() {
       if (!svc) { return; }
 
       S.service = svc;
+      S.extras = [];
+      resetSlot();
 
       if (S.page !== 'book') { startBooking(); return; }
 
@@ -3178,7 +3280,10 @@ function bind() {
 
     if (up('[data-change-svc]')) {
       e.preventDefault();
+      // با چند خدمت، «تغییر» به همان فهرست تیک‌دار برمی‌گردد
+      if (S.services.length > 1 && S.service) { resetSlot(); goStep(1); return; }
       S.service = null;
+      S.extras = [];
       S.cal = null;
       S.day = null;
       S.block = null;
@@ -3307,6 +3412,22 @@ function bind() {
   /* مقادیر فرم قبل از رندر مجدد از بین نروند */
   document.addEventListener('change', function (e) {
     if (e.target && e.target.id === 'cmb-rv-call') { S.rv.form.wantsCall = !!e.target.checked; return; }
+    /* چند خدمت در یک نوبت (۱.۵۳.۰): تیک خدمت‌های دیگر کنار خدمت انتخاب‌شده */
+    if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-svc-toggle') && S.service) {
+      var tid = Number(e.target.getAttribute('data-svc-toggle'));
+      var now = picked().map(function (x) { return x.id; });
+      if (e.target.checked) {
+        if (now.length >= 6) { e.target.checked = false; toast('در یک نوبت حداکثر ۶ خدمت می‌شود انتخاب کرد.', 'bad'); return; }
+        if (now.indexOf(tid) === -1) { S.extras.push(tid); }
+      } else {
+        if (now.length <= 1) { e.target.checked = true; toast('دست‌کم یک خدمت باید انتخاب شده باشد.', 'bad'); return; }
+        if (tid === S.service.id) { S.service = svcById(S.extras.shift()); } else { S.extras = S.extras.filter(function (x) { return x !== tid; }); }
+      }
+      resetSlot();
+      paint();
+      loadCalendar(true);
+      return;
+    }
     /* استان/شهر کشویی: با تغییرِ استان فهرستِ شهر و با انتخابِ «شهر دیگر»
        ورودیِ متنی باید دوباره رندر شوند، پس اینجا paint لازم است. */
     if (e.target.id === 'cmb-f-province' || e.target.id === 'cmb-f-city-sel') {
