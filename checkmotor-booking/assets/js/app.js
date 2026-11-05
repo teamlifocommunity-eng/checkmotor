@@ -1216,8 +1216,9 @@ function stepDetails() {
         : field('year', 'سال ساخت', 'tel', '۱۴۰۰', f.year, true)) +
       field('mileage', 'کارکرد (کیلومتر)', 'tel', '۱۲۰۰۰۰', f.mileage, false) +
     '</div>' +
-    '<label class="cmb-field"><span class="cmb-field__l">توضیحات (اختیاری)</span>' +
-    '<textarea class="cmb-in" id="cmb-f-note" autocomplete="cmb-note" placeholder="ECU خودرو چیست؟">' + esc(f.note) + '</textarea></label>' +
+    /* ۱.۵۴.۲: به‌جای «توضیحات (اختیاری)»؛ پر کردنش اختیاری است */
+    '<label class="cmb-field"><span class="cmb-field__l">عیب ماشین چیست؟ (اختیاری)</span>' +
+    '<textarea class="cmb-in cmb-in--fault" id="cmb-f-note" autocomplete="cmb-note" placeholder="مثلاً چراغ چک روشن است یا موتور در دور آرام می‌لرزد؛ اگر نوع ECU را می‌دانید، بنویسید.">' + esc(f.note) + '</textarea></label>' +
     '</div>';
 
   if (S.notes.ecu) { html += note('info', I.info, S.notes.ecu); }

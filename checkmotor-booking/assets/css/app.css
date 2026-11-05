@@ -453,6 +453,8 @@ body.cmb-body > *:not(#cmb-app):not(#cmb-panel):not(#cmb-dbg):not(script):not(st
 }
 .cmb-in::placeholder { color: var(--g2); }
 textarea.cmb-in { min-height: 88px; resize: vertical; line-height: 1.8; padding-top: var(--s3); }
+/* ۱.۵۴.۲: «عیب ماشین چیست؟» — راهنمای سه‌خطی کامل دیده شود */
+textarea.cmb-in.cmb-in--fault { min-height: 124px; }
 select.cmb-in {
   background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238B96A1' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: left 12px center; background-size: 16px;

@@ -284,7 +284,7 @@ class CMB_Bookings_List_Table extends WP_List_Table {
 			$links[] = '<p class="description">بیعانه ' . esc_html( $pay['depositFa'] ) . ( $pay['statusLabel'] ? ' — ' . esc_html( $pay['statusLabel'] ) : '' ) . '</p>';
 		}
 
-		$note = $item->note ? '<p class="description">یادداشت: ' . esc_html( $item->note ) . '</p>' : '';
+		$note = $item->note ? '<p class="description">عیب ماشین: ' . esc_html( $item->note ) . '</p>' : '';
 
 		return '<div class="cmb-row-actions">' . implode( ' ', $links ) . '</div>' . $note;
 	}

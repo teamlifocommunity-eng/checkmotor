@@ -3484,7 +3484,7 @@ function bookingModal() {
     '<div class="pn-kv"><span class="pn-kv__k">نوع موتور</span><span class="pn-kv__v">' + esc(b.carModel) + '</span></div>' +
     '<div class="pn-kv"><span class="pn-kv__k">سال ساخت</span><span class="pn-kv__v num">' + fa(esc(b.carYear)) + '</span></div>' +
     (b.carMileage ? '<div class="pn-kv"><span class="pn-kv__k">کارکرد</span><span class="pn-kv__v num">' + money(b.carMileage) + ' کیلومتر</span></div>' : '') +
-    (b.note ? '<div class="pn-kv"><span class="pn-kv__k">توضیحات</span><span class="pn-kv__v">' + esc(b.note) + '</span></div>' : '') +
+    (b.note ? '<div class="pn-kv"><span class="pn-kv__k">عیب ماشین</span><span class="pn-kv__v">' + esc(b.note) + '</span></div>' : '') +
     '<div class="pn-kv"><span class="pn-kv__k">زمان ثبت</span><span class="pn-kv__v num">' + esc(J.formatTime(b.createdAt, FA_DIGITS) || fa(b.createdAt)) + '</span></div>' +
     payHtml +
     feeHtml(b) +
