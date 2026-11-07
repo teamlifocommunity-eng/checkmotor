@@ -1777,7 +1777,7 @@ function rvStars(n, big) {
 
 function rvHead(it) {
   return '<div class="cmb-rv-head">' +
-    '<div class="cmb-rv-head__t">' + esc(it.service) + '</div>' +
+    '<div class="cmb-rv-head__t">' + esc(it.service) + (it.test ? ' <span class="cmb-testtag">آزمایشی</span>' : '') + '</div>' +
     '<div class="cmb-rv-head__s">' + I.pin + '<span>' + esc(it.branch) + '</span></div>' +
     '<div class="cmb-rv-head__s">' + I.cal + '<span>' + fa(esc(it.dateFa)) + (it.blockLabel ? ' · ' + esc(it.blockLabel) : '') + '</span></div>' +
   '</div>';

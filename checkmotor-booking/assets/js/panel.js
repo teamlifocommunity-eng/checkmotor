@@ -3183,15 +3183,83 @@ function rvSmsModal() {
     '<label class="pn-field"><span class="pn-field__l">کد پترن (bodyId)</span><input class="pn-in num" id="rvs-pattern" dir="ltr" inputmode="numeric" placeholder="مثلاً 123456" value="' + esc(d.pattern) + '"></label>' +
     (d.simple ? '<div class="pn-hint">حالت ارسال پیامک «متن ساده» است؛ بدون پترن هم همین متن (با لینک) فرستاده می‌شود.</div>' : '') +
 
-    '<div class="pn-rvsms__sec">ارسال آزمایشی</div>' +
+    '<div class="pn-rvsms__sec" id="rvs-test">آزمون کامل نظرسنجی (بدون ثبت نوبت)</div>' +
+    '<div class="pn-hint" style="margin:-4px 0 10px">یک نظرسنجی آزمایشی با کد واقعی برای شماره‌ی شما ساخته می‌شود. نوبت، مشتری یا هزینه‌ای ثبت نمی‌شود و نتیجه در آمار، صف پیگیری و «نوبت‌های من» نمی‌آید.</div>' +
     '<div class="pn-rvsms__test"><input class="pn-in num" id="rvs-phone" inputmode="tel" dir="ltr" placeholder="09xxxxxxxxx" value="' + esc(m.phone || '') + '">' +
-      '<button type="button" class="pn-btn pn-btn--dark" data-rv-sms-test' + (S.busy ? ' disabled' : '') + '>بفرست</button></div>' +
-    '<div class="pn-hint">با پترن ذخیره‌شده و مقادیر نمونه فرستاده می‌شود؛ کد داخلش (۱۲۳۴۵) نمونه است.</div>' +
+      '<button type="button" class="pn-btn pn-btn--dark" data-rv-test-start' + (S.busy ? ' disabled' : '') + '>شروع آزمون</button></div>' +
+    '<label class="pn-check" style="margin-top:10px"><input type="checkbox" id="rvs-nosms"' + (m.noSms ? ' checked' : '') + '> پیامک نفرست؛ کد را همین‌جا نشان بده (برای امتحان صفحه پیش از تأیید پترن)</label>' +
+    '<div class="pn-hint">با پیامک، از همان پترن ذخیره‌شده استفاده می‌شود؛ تغییرهای بالا را اول ذخیره کنید.</div>' +
+    rvTestBox() +
     '</div>' +
     '<div class="pn-modal__ft">' +
       '<button class="pn-btn pn-btn--pri" data-rv-sms-save' + (S.busy ? ' disabled' : '') + '>ذخیره</button>' +
       '<button class="pn-btn pn-btn--soft" data-close>انصراف</button>' +
     '</div>';
+}
+
+/** پیشرفت آزمون کامل: ۱ پیامک، ۲ باز شدن صفحه، ۳ ثبت نظر. */
+function rvTestBox() {
+  var T = S.rvTest; if (!T) { return ''; }
+  var st = T.status || {};
+  var step = function (on, title, sub) {
+    return '<li class="' + (on ? 'is-on' : '') + '"><span class="pn-rvtest__dot">' + (on ? I.check : '') + '</span><div><b>' + title + '</b>' + (sub ? '<small>' + sub + '</small>' : '') + '</div></li>';
+  };
+  var stars = st.rating ? new Array(st.rating + 1).join('★') + new Array(6 - st.rating).join('☆') : '';
+  var result = st.answered ? fa(st.rating) + ' ستاره ' + stars + (st.ratingLabel ? ' — ' + esc(st.ratingLabel) : '') +
+    (st.tags && st.tags.length ? '<br>برچسب‌ها: ' + st.tags.map(esc).join('، ') : '') +
+    (st.comment ? '<br>توضیح: ' + esc(st.comment) : '') +
+    (st.wantsCall ? '<br>«با من تماس بگیرید» زده شد' : '') +
+    (st.follow ? '<br>در کار واقعی این نظر به صف «پیگیری» می‌رفت.' : '') : 'هنوز نظری ثبت نشده.';
+  return '<div class="pn-rvtest">' +
+    '<div class="pn-rvtest__hd"><b>آزمون برای <bdi dir="ltr">' + esc(fa(T.phone)) + '</bdi></b>' +
+      (T.code ? '<span class="pn-rvtest__code">کد: <bdi dir="ltr">' + esc(fa(T.code)) + '</bdi></span>' : '') + '</div>' +
+    '<ol class="pn-rvtest__steps">' +
+      step(!!st.sentFa, T.sms ? 'پیامک فرستاده شد' : 'کد ساخته شد (بدون پیامک)', st.sentFa ? esc(fa(st.sentFa)) + (T.sms ? ' · نتیجه‌ی ارسال در «پیامک و کد تایید»' : '') : '') +
+      step(!!st.openedFa, 'صفحه‌ی نظرسنجی باز و کد پذیرفته شد', st.openedFa ? esc(fa(st.openedFa)) : (st.attempts ? fa(st.attempts) + ' بار کد نادرست زده شد' : 'شماره و کد را در صفحه‌ی نظرسنجی بزنید')) +
+      step(!!st.answered, 'نظر ثبت شد', result) +
+    '</ol>' +
+    '<div class="pn-rvtest__acts">' +
+      '<a class="pn-btn pn-btn--soft" href="' + esc(T.url) + '" target="_blank" rel="noopener">باز کردن صفحه‌ی نظرسنجی</a>' +
+      '<button type="button" class="pn-btn pn-btn--soft" data-rv-test-refresh' + (S.busy ? ' disabled' : '') + '>' + I.refresh + ' بررسی وضعیت</button>' +
+      '<button type="button" class="pn-btn pn-btn--soft" data-rv-test-clear' + (S.busy ? ' disabled' : '') + '>پاک کردن آزمون</button>' +
+    '</div>' +
+    '<div class="pn-hint">کد آزمون تا ' + esc(fa(st.expiresFa || '')) + ' معتبر است. آزمون‌ها بعد از دو روز خودکار پاک می‌شوند.</div>' +
+  '</div>';
+}
+
+function rvTestStart() {
+  var d = readRvSms(); if (!d || S.busy) { return; }
+  var m = S.modal;
+  if (!/^(\+98|0098|98|0)?9\d{9}$/.test(m.phone.replace(/[\s-]/g, ''))) { toast('شماره موبایل را درست وارد کنید.', 'bad'); return; }
+  S.busy = true; paintModal();
+  post('panel/review/test-start', { phone: m.phone, noSms: m.noSms ? 1 : 0 }).then(function (r) {
+    S.busy = false;
+    if (r.success === false) { toast(r.message || 'آزمون شروع نشد.', 'bad'); paintModal(); return; }
+    S.rvTest = { id: r.id, phone: r.phone, code: r.code || '', sms: !!r.sms, url: r.url, status: r.status || {} };
+    toast(r.message || 'آزمون شروع شد.', 'ok');
+    paintModal();
+    var box = document.querySelector('.pn-rvtest'); if (box && box.scrollIntoView) { box.scrollIntoView({ block: 'nearest' }); }
+  });
+}
+
+function rvTestRefresh() {
+  var T = S.rvTest; if (!T || S.busy) { return; }
+  S.busy = true; paintModal();
+  get('panel/review/test-status?id=' + Number(T.id)).then(function (r) {
+    S.busy = false;
+    if (r.success === false || !r.status) { toast(r.message || 'وضعیت آزمون پیدا نشد.', 'bad'); S.rvTest = null; paintModal(); return; }
+    T.status = r.status;
+    paintModal();
+  });
+}
+
+function rvTestClear() {
+  if (S.busy) { return; }
+  S.busy = true; paintModal();
+  post('panel/review/test-clear', {}).then(function (r) {
+    S.busy = false; S.rvTest = null; paintModal();
+    toast(r.message || 'پاک شد.', r.success === false ? 'bad' : 'ok');
+  });
 }
 
 function rvPvHtml(d) {
@@ -3214,6 +3282,7 @@ function readRvSms() {
   d.codeDays = num('#rvs-days', d.codeDays);
   if ($('#rvs-pattern')) { d.pattern = en(val('#rvs-pattern')).trim(); }
   m.phone = en(val('#rvs-phone')).trim();
+  if ($('#rvs-nosms')) { m.noSms = $('#rvs-nosms').checked; }
   return d;
 }
 
@@ -3226,16 +3295,6 @@ function rvSmsSave() {
     toast(r.message || 'ذخیره شد.', 'ok');
     S.modal = null; paintModal();
     rvReload();
-  });
-}
-
-function rvSmsTest() {
-  var d = readRvSms(); if (!d || S.busy) { return; }
-  if (!/^(\+98|0098|98|0)?9\d{9}$/.test(S.modal.phone.replace(/[\s-]/g, ''))) { toast('شماره موبایل را درست وارد کنید.', 'bad'); return; }
-  S.busy = true; paintModal();
-  post('panel/review/test-sms', { phone: S.modal.phone }).then(function (r) {
-    S.busy = false; paintModal();
-    toast(r.message || (r.success === false ? 'فرستاده نشد.' : 'فرستاده شد.'), r.success === false ? 'bad' : 'ok');
   });
 }
 
@@ -6065,7 +6124,9 @@ function bind() {
       return;
     }
     if (up('[data-rv-sms-save]')) { e.preventDefault(); rvSmsSave(); return; }
-    if (up('[data-rv-sms-test]')) { e.preventDefault(); rvSmsTest(); return; }
+    if (up('[data-rv-test-start]')) { e.preventDefault(); rvTestStart(); return; }
+    if (up('[data-rv-test-refresh]')) { e.preventDefault(); rvTestRefresh(); return; }
+    if (up('[data-rv-test-clear]')) { e.preventDefault(); rvTestClear(); return; }
     if ((el = up('[data-rv-send]'))) {
       e.preventDefault();
       S.busy = true; paintModal();

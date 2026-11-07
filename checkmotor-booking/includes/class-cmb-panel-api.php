@@ -198,6 +198,9 @@ class CMB_Panel_Api {
 			'panel/review/settings' => array( 'GET', 'review_settings', $admin ),
 			'panel/review/settings/save' => array( 'POST', 'review_settings_save', $admin ),
 			'panel/review/test-sms' => array( 'POST', 'review_test_sms', $admin ),
+			'panel/review/test-start' => array( 'POST', 'review_test_start', $admin ),
+			'panel/review/test-status' => array( 'GET', 'review_test_status', $admin ),
+			'panel/review/test-clear' => array( 'POST', 'review_test_clear', $admin ),
 			'panel/booking-item'  => array( 'GET', 'booking_item', $guard ),
 			'panel/geo-link'  => array( 'POST', 'geo_link', $guard ),
 			'panel/bookings'  => array( 'GET', 'bookings', $guard ),
@@ -1170,6 +1173,29 @@ class CMB_Panel_Api {
 		}
 
 		return rest_ensure_response( array( 'success' => true, 'message' => 'پیامک آزمایشی فرستاده شد. کد داخل آن (۱۲۳۴۵) نمونه است و کار نمی‌کند.' ) );
+	}
+
+	/** آزمون کامل نظرسنجی، بدون ثبت نوبت (فقط مدیر کل). */
+	public function review_test_start( WP_REST_Request $request ) {
+		$r = CMB_Reviews::start_test( (string) $request->get_param( 'phone' ), (bool) $request->get_param( 'noSms' ) );
+
+		return is_wp_error( $r ) ? $r : rest_ensure_response( array( 'success' => true ) + $r );
+	}
+
+	public function review_test_status( WP_REST_Request $request ) {
+		$st = CMB_Reviews::test_status( (int) $request->get_param( 'id' ) );
+
+		if ( ! $st ) {
+			return new WP_Error( 'cmb_review_test_gone', 'این آزمون پیدا نشد (پاک شده یا آزمون تازه‌تری برای همین شماره شروع شده).', array( 'status' => 404 ) );
+		}
+
+		return rest_ensure_response( array( 'success' => true, 'status' => $st ) );
+	}
+
+	public function review_test_clear( WP_REST_Request $request ) {
+		$n = CMB_Reviews::clear_tests();
+
+		return rest_ensure_response( array( 'success' => true, 'message' => $n ? 'آزمون‌های نظرسنجی پاک شدند.' : 'آزمونی برای پاک کردن نبود.' ) );
 	}
 
 	/** ردیف نظر در دامنه‌ی کاربر جاری؟ */

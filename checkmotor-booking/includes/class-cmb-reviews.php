@@ -27,6 +27,14 @@ class CMB_Reviews {
 
 	const LOCK = 'cmb_review_lock';
 
+	/**
+	 * «آزمون کامل نظرسنجی» (۱.۵۵.۰): ردیف آزمایشی به یک نوبت مجازی با شناسه‌ی
+	 * از این عدد به بالا وصل است. هیچ نوبت، مشتری یا هزینه‌ای ساخته نمی‌شود
+	 * و این ردیف‌ها در گزارش، صف پیگیری، فاصله‌ی پیامک و «نوبت‌های من» نمی‌آیند.
+	 * (زیر سقف عدد صحیح ۳۲ بیتی؛ شناسه‌ی نوبت واقعی هرگز به این‌جا نمی‌رسد.)
+	 */
+	const TEST_BASE = 2000000000;
+
 	public static function init() {
 		add_action( 'cmb_booking_status_changed', array( __CLASS__, 'on_status' ), 10, 3 );
 		add_action( 'cmb_booking_deleted', array( __CLASS__, 'on_deleted' ), 10, 1 );
@@ -258,6 +266,192 @@ class CMB_Reviews {
 		$result = CMB_SMS::send_event( $phone, 'pattern_review', $args, $text );
 
 		return is_wp_error( $result ) ? new WP_Error( 'cmb_review_test_failed', 'ارسال نشد: ' . $result->get_error_message(), array( 'status' => 502 ) ) : true;
+	}
+
+	/* ---------------------------------------------------------------
+	 * آزمون کامل نظرسنجی، بدون ثبت نوبت (۱.۵۵.۰)
+	 * --------------------------------------------------------------- */
+
+	public static function is_test_id( $booking_id ) {
+		return (int) $booking_id >= self::TEST_BASE;
+	}
+
+	/** نوبت واقعی، یا برای ردیف آزمون یک نوبت مجازی «انجام شد». */
+	public static function booking( $booking_id ) {
+		$booking_id = (int) $booking_id;
+
+		if ( ! self::is_test_id( $booking_id ) ) {
+			return CMB_Bookings::get( $booking_id );
+		}
+
+		$row = self::row( $booking_id );
+
+		if ( ! $row || 'test' !== (string) $row->note ) {
+			return null;
+		}
+
+		return (object) array(
+			'id'            => $booking_id,
+			'status'        => 'done',
+			'branch_id'     => (int) $row->branch_id,
+			'service_id'    => (int) $row->service_id,
+			'booking_date'  => (string) $row->booking_date,
+			'block_key'     => (string) $row->block_key,
+			'customer_name' => 'آزمون نظرسنجی',
+			'phone'         => (string) $row->phone,
+			'user_id'       => 0,
+			'tracking_code' => 'TEST',
+		);
+	}
+
+	/**
+	 * یک نظرسنجی آزمایشی با کد واقعی برای یک شماره.
+	 *
+	 * @param bool $no_sms پیامک نرود و کد در پاسخ برگردد (امتحان صفحه پیش از تأیید پترن)
+	 * @return array|WP_Error
+	 */
+	public static function start_test( $phone, $no_sms = false ) {
+		global $wpdb;
+
+		if ( ! self::ready() ) {
+			return new WP_Error( 'cmb_review_schema', 'جدول نظرسنجی هنوز ساخته نشده؛ یک بار پیشخوان وردپرس را باز کنید.', array( 'status' => 503 ) );
+		}
+
+		if ( ! self::enabled() ) {
+			return new WP_Error( 'cmb_review_off', 'نظرسنجی خاموش است؛ اول روشنش کنید و ذخیره کنید.', array( 'status' => 400 ) );
+		}
+
+		$phone = cmb_normalize_phone( (string) $phone );
+
+		if ( ! $phone ) {
+			return new WP_Error( 'cmb_review_test_phone', 'یک شماره موبایل معتبر وارد کنید.', array( 'status' => 400 ) );
+		}
+
+		$simple = 'simple' === CMB_Settings::get( 'sms_api_mode', 'pattern' );
+
+		if ( ! $no_sms && '' === trim( (string) CMB_Settings::get( 'pattern_review', '' ) ) && ! $simple ) {
+			return new WP_Error( 'cmb_review_test_pattern', 'شناسه‌ی پترن «نظرسنجی» هنوز وارد نشده. یا اول آن را ذخیره کنید، یا «پیامک نفرست» را بزنید تا کد همین‌جا نشان داده شود.', array( 'status' => 400 ) );
+		}
+
+		if ( ! $no_sms ) {
+			$lock = 'cmb_rv_full_' . get_current_user_id();
+			if ( get_transient( $lock ) ) {
+				return new WP_Error( 'cmb_review_test_wait', 'چند ثانیه صبر کنید و دوباره شروع کنید.', array( 'status' => 429 ) );
+			}
+			set_transient( $lock, 1, 30 );
+		}
+
+		$t = self::table();
+
+		// آزمون‌های قدیمی (بیش از دو روز) و آزمون قبلی همین شماره پاک می‌شوند
+		$wpdb->query( $wpdb->prepare( "DELETE FROM {$t} WHERE booking_id >= %d AND ( phone = %s OR created_at < %s )", (int) self::TEST_BASE, $phone, ( clone cmb_now() )->modify( '-2 days' )->format( 'Y-m-d H:i:s' ) ) ); // phpcs:ignore
+
+		/* شمارنده‌ی همیشه‌رو‌به‌جلو: شناسه‌ی آزمون پاک‌شده دوباره داده نمی‌شود، تا
+		   توکن یا وضعیتِ آزمون قبلی به آزمون تازه نرسد. */
+		$max = (int) $wpdb->get_var( $wpdb->prepare( "SELECT MAX(booking_id) FROM {$t} WHERE booking_id >= %d", (int) self::TEST_BASE ) ); // phpcs:ignore
+		$seq = max( (int) get_option( 'cmb_review_test_seq', 0 ), $max - (int) self::TEST_BASE ) + 1;
+		update_option( 'cmb_review_test_seq', $seq, false );
+		$id  = (int) self::TEST_BASE + $seq;
+
+		$branch = class_exists( 'CMB_Branches' ) ? CMB_Branches::center_id() : 0;
+		$list   = CMB_Services::get_services( $branch, true );
+		$svc    = $list ? reset( $list ) : null;
+		$blocks = array_keys( (array) cmb_blocks( $branch ) );
+		$code   = (string) wp_rand( 10000, 99999 );
+		$now    = cmb_now();
+
+		$wpdb->insert(
+			$t,
+			array(
+				'booking_id'   => $id,
+				'branch_id'    => (int) $branch,
+				'service_id'   => $svc ? (int) $svc->id : 0,
+				'block_key'    => $blocks ? (string) $blocks[0] : 'morning',
+				'booking_date' => cmb_today(),
+				'user_id'      => 0,
+				'phone'        => $phone,
+				'status'       => 'sent',
+				'send_at'      => $now->format( 'Y-m-d H:i:s' ),
+				'sent_at'      => $now->format( 'Y-m-d H:i:s' ),
+				'code_hash'    => self::code_hash( $phone, $code ),
+				'expires_at'   => ( clone $now )->modify( '+1 day' )->format( 'Y-m-d H:i:s' ),
+				'code_attempts' => 0,
+				'note'         => 'test',
+				'created_at'   => $now->format( 'Y-m-d H:i:s' ),
+				'updated_at'   => $now->format( 'Y-m-d H:i:s' ),
+			)
+		);
+
+		if ( ! self::row( $id ) ) {
+			return new WP_Error( 'cmb_review_test_db', 'ساخت نظرسنجی آزمایشی ممکن نشد.', array( 'status' => 500 ) );
+		}
+
+		$branch_name = class_exists( 'CMB_Branches' ) ? CMB_Branches::display_name( (int) $branch ) : '';
+
+		if ( ! $no_sms ) {
+			$args = array( 'آزمون نظرسنجی', $svc ? (string) $svc->title : 'خدمت نمونه', '' !== $branch_name ? $branch_name : 'چک موتور', $code );
+			$text = str_replace( array( '{0}', '{1}', '{2}', '{3}' ), $args, self::pattern_text( true ) );
+
+			if ( class_exists( 'CMB_SMS_Log' ) ) {
+				CMB_SMS_Log::next( array( 'label' => 'نظرسنجی (آزمون کامل)', 'secret' => $code ) );
+			}
+
+			$result = CMB_SMS::send_event( $phone, 'pattern_review', $args, $text );
+
+			if ( is_wp_error( $result ) ) {
+				$wpdb->delete( $t, array( 'booking_id' => $id ) );
+				return new WP_Error( 'cmb_review_test_failed', 'پیامک نرفت: ' . $result->get_error_message() . ' — برای امتحان صفحه بدون پیامک، «پیامک نفرست» را بزنید.', array( 'status' => 502 ) );
+			}
+		}
+
+		cmb_log( 'Survey test started', array( 'user' => get_current_user_id(), 'booking' => $id, 'sms' => ! $no_sms ) );
+
+		return array(
+			'id'      => $id,
+			'phone'   => $phone,
+			'code'    => $no_sms ? $code : '',
+			'sms'     => ! $no_sms,
+			'url'     => self::url(),
+			'status'  => self::test_status( $id ),
+			'message' => $no_sms
+				? 'نظرسنجی آزمایشی ساخته شد. صفحه‌ی نظرسنجی را باز کنید و شماره و کد را بزنید.'
+				: 'پیامک نظرسنجی آزمایشی با کد واقعی فرستاده شد. با همان پیامک وارد صفحه شوید و نظر بدهید.',
+		);
+	}
+
+	/** پیشرفت آزمون: پیامک، باز شدن صفحه، نظر. */
+	public static function test_status( $booking_id ) {
+		$row = self::is_test_id( $booking_id ) ? self::row( (int) $booking_id ) : null;
+
+		if ( ! $row || 'test' !== (string) $row->note ) {
+			return null;
+		}
+
+		$tags = $row->tags ? json_decode( (string) $row->tags, true ) : array();
+
+		return array(
+			'id'         => (int) $row->booking_id,
+			'phone'      => (string) $row->phone,
+			'sentFa'     => $row->sent_at ? self::local_fa( $row->sent_at ) : '',
+			'openedFa'   => $row->opened_at ? self::local_fa( $row->opened_at ) : '',
+			'answered'   => 'answered' === $row->status,
+			'answeredFa' => $row->answered_at ? self::local_fa( $row->answered_at ) : '',
+			'rating'     => (int) $row->rating,
+			'ratingLabel' => $row->rating ? self::rating_label( (int) $row->rating ) : '',
+			'tags'       => is_array( $tags ) ? array_values( $tags ) : array(),
+			'comment'    => (string) $row->comment,
+			'wantsCall'  => (bool) $row->wants_call,
+			'follow'     => in_array( (string) $row->follow_status, array( 'open', 'called' ), true ),
+			'attempts'   => (int) $row->code_attempts,
+			'expiresFa'  => $row->expires_at ? self::local_fa( $row->expires_at ) : '',
+		);
+	}
+
+	/** پاک کردن همه‌ی آزمون‌ها. */
+	public static function clear_tests() {
+		global $wpdb;
+
+		return self::ready() ? (int) $wpdb->query( $wpdb->prepare( 'DELETE FROM ' . self::table() . ' WHERE booking_id >= %d', (int) self::TEST_BASE ) ) : 0; // phpcs:ignore
 	}
 
 	/** برچسب‌های منفی (۱ تا ۳) و مثبت (۴ و ۵) از تنظیمات. */
@@ -570,7 +764,7 @@ class CMB_Reviews {
 		$gap  = max( 0, self::setting( 'review_min_gap_days', 3 ) );
 		$from = ( clone $now )->modify( '-' . $gap . ' days' )->format( 'Y-m-d H:i:s' );
 
-		if ( ! $force && $gap && $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$t} WHERE phone = %s AND id <> %d AND sent_at IS NOT NULL AND sent_at >= %s LIMIT 1", $row->phone, (int) $row->id, $from ) ) ) { // phpcs:ignore
+		if ( ! $force && $gap && $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$t} WHERE phone = %s AND id <> %d AND booking_id < %d AND sent_at IS NOT NULL AND sent_at >= %s LIMIT 1", $row->phone, (int) $row->id, (int) self::TEST_BASE, $from ) ) ) { // phpcs:ignore
 			$set( array( 'status' => 'skipped', 'note' => 'gap' ) );
 			return 'skipped';
 		}
@@ -719,6 +913,7 @@ class CMB_Reviews {
 			'comment'    => $row ? (string) $row->comment : '',
 			'wantsCall'  => $row ? (bool) $row->wants_call : false,
 			'editUntil'  => $row && $row->answered_at ? self::local_fa( $row->answered_at, '+1 day' ) : '',
+			'test'       => self::is_test_id( (int) $booking->id ),
 		);
 	}
 
@@ -948,7 +1143,7 @@ class CMB_Reviews {
 
 		delete_transient( $phkey );
 
-		$booking = CMB_Bookings::get( (int) $match->booking_id );
+		$booking = self::booking( (int) $match->booking_id );
 
 		if ( ! $booking || 'cancelled' === $match->status || 'done' !== $booking->status ) {
 			return new WP_Error( 'cmb_review_gone', 'این نظرسنجی دیگر فعال نیست.', array( 'status' => 410 ) );
@@ -961,7 +1156,7 @@ class CMB_Reviews {
 		// ورود خودکار (سند تصمیم ۶) فقط وقتی کسی وارد نیست؛ کوکی شماره‌ی دیگر عوض نمی‌شود
 		$logged = false;
 
-		if ( ! get_current_user_id() && (int) CMB_Settings::get( 'review_autologin', 1 ) && method_exists( 'CMB_OTP', 'login_phone' ) ) {
+		if ( ! self::is_test_id( (int) $booking->id ) && ! get_current_user_id() && (int) CMB_Settings::get( 'review_autologin', 1 ) && method_exists( 'CMB_OTP', 'login_phone' ) ) {
 			$uid    = CMB_OTP::login_phone( $phone, (string) $booking->customer_name );
 			$logged = ! is_wp_error( $uid ) && $uid > 0;
 		}
@@ -985,7 +1180,7 @@ class CMB_Reviews {
 			return self::off();
 		}
 
-		$booking = CMB_Bookings::get( (int) $request->get_param( 'booking' ) );
+		$booking = self::booking( (int) $request->get_param( 'booking' ) );
 		$row     = $booking ? self::row( $booking->id ) : null;
 		$ok      = self::can_rate( $booking, $row, (string) $request->get_param( 'token' ) );
 
@@ -1005,7 +1200,7 @@ class CMB_Reviews {
 			return self::off();
 		}
 
-		$booking = CMB_Bookings::get( (int) $request->get_param( 'booking' ) );
+		$booking = self::booking( (int) $request->get_param( 'booking' ) );
 		$row     = $booking ? self::row( $booking->id ) : null;
 		$ok      = self::can_rate( $booking, $row, (string) $request->get_param( 'token' ) );
 
@@ -1072,7 +1267,7 @@ class CMB_Reviews {
 	public static function report_where( array $f ) {
 		global $wpdb;
 
-		$w = array( "r.status <> 'cancelled'" );
+		$w = array( "r.status <> 'cancelled'", 'r.booking_id < ' . (int) self::TEST_BASE );
 
 		// دامنه‌ی شعبه‌ی جاری پنل (نمایندگی فقط نوبت‌های خودش)
 		if ( ! empty( $f['scope_sql'] ) ) {

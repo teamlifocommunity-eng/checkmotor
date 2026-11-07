@@ -1683,3 +1683,17 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
   #cmb-panel .pn-rvsms__txt pre { width:100%; box-sizing:border-box; }
   #cmb-panel .pn-rvsms__txt .pn-btn { align-self:flex-start; }
 }
+
+/* ۱.۵۵.۰: آزمون کامل نظرسنجی */
+#cmb-panel .pn-rvtest { margin-top:14px; padding:14px; border-radius:14px; border:1px solid var(--g5); background:var(--card); }
+#cmb-panel .pn-rvtest__hd { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+#cmb-panel .pn-rvtest__code { font-weight:800; font-size:18px; letter-spacing:2px; padding:4px 12px; border-radius:10px; background:#fff4e5; color:#9a3412; }
+#cmb-panel .pn-rvtest__steps { list-style:none; margin:0 0 12px; padding:0; display:grid; gap:10px; }
+#cmb-panel .pn-rvtest__steps li { display:flex; gap:10px; align-items:flex-start; color:var(--ink-3); }
+#cmb-panel .pn-rvtest__steps li b { display:block; font-size:14px; }
+#cmb-panel .pn-rvtest__steps li small { display:block; font-size:var(--t-cp); line-height:1.8; margin-top:2px; }
+#cmb-panel .pn-rvtest__steps li.is-on { color:var(--ink); }
+#cmb-panel .pn-rvtest__dot { flex:0 0 22px; width:22px; height:22px; border-radius:50%; border:2px solid var(--g4); display:flex; align-items:center; justify-content:center; margin-top:1px; }
+#cmb-panel .pn-rvtest__steps li.is-on .pn-rvtest__dot { background:#1f9d55; border-color:#1f9d55; color:#fff; }
+#cmb-panel .pn-rvtest__dot svg { width:13px; height:13px; }
+#cmb-panel .pn-rvtest__acts { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px; }
