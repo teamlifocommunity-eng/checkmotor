@@ -490,6 +490,7 @@ class CMB_Panel_Api {
 			'counts'    => $counts,
 			'byService' => $by_service,
 			'free'      => self::free_days( $branch, $today, 7 ),
+			'week'      => self::booked_days( $branch, $today, 7 ),
 			'branch'    => $branch_row ? array(
 				'id'    => (int) $branch_row->id,
 				'title' => $branch_row->title,
@@ -504,6 +505,101 @@ class CMB_Panel_Api {
 				'date'   => $today,
 				'jalali' => cmb_jalali_date( $today, 'full' ),
 			),
+		);
+	}
+
+	/**
+	 * «رزروهای ۷ روز آینده» برای خلاصه (۱.۵۶.۰): هر روز، شمار نوبت‌های قطعی،
+	 * تفکیک شیفت و خدمت‌های رزروشده (خدمت‌های اضافه‌ی نوبت چندخدمتی هم)، و جمع
+	 * هفته به تفکیک خدمت. همان دامنه‌ی شعبه‌ی بقیه‌ی خلاصه.
+	 *
+	 * @return array
+	 */
+	public static function booked_days( $branch, $today, $n = 7 ) {
+		global $wpdb;
+
+		$n     = max( 1, min( 14, (int) $n ) );
+		$table = cmb_table( 'bookings' );
+		$end   = gmdate( 'Y-m-d', strtotime( $today ) + ( $n - 1 ) * DAY_IN_SECONDS );
+		$rows  = (array) $wpdb->get_results( $wpdb->prepare( "SELECT id, booking_date, block_key, service_id FROM {$table} WHERE " . CMB_Branches::scope_sql( $branch ) . " AND booking_date BETWEEN %s AND %s AND status IN ('confirmed','done') ORDER BY booking_date ASC, id ASC", $today, $end ) ); // phpcs:ignore
+		$extra = CMB_Booking_Services::ids_map( wp_list_pluck( $rows, 'id' ) );
+
+		$titles = array();
+		$title  = function ( $sid ) use ( &$titles ) {
+			$sid = (int) $sid;
+			if ( ! isset( $titles[ $sid ] ) ) {
+				$svc            = CMB_Services::get_service( $sid );
+				$titles[ $sid ] = $svc ? (string) $svc->title : 'خدمت حذف‌شده';
+			}
+			return $titles[ $sid ];
+		};
+
+		$block_keys = array_keys( (array) cmb_blocks( $branch ) );
+		$days       = array();
+
+		for ( $i = 0; $i < $n; $i++ ) {
+			$d          = gmdate( 'Y-m-d', strtotime( $today ) + $i * DAY_IN_SECONDS );
+			$days[ $d ] = array( 'count' => 0, 'blocks' => array_fill_keys( $block_keys, 0 ), 'services' => array() );
+		}
+
+		$week = array();
+
+		foreach ( $rows as $r ) {
+			$d = (string) $r->booking_date;
+			if ( ! isset( $days[ $d ] ) ) {
+				continue;
+			}
+
+			$days[ $d ]['count']++;
+			$bk                          = (string) $r->block_key;
+			$days[ $d ]['blocks'][ $bk ] = ( isset( $days[ $d ]['blocks'][ $bk ] ) ? $days[ $d ]['blocks'][ $bk ] : 0 ) + 1;
+
+			$sids = array_merge( array( (int) $r->service_id ), isset( $extra[ (int) $r->id ] ) ? $extra[ (int) $r->id ] : array() );
+
+			foreach ( array_unique( $sids ) as $sid ) {
+				$t                              = $title( $sid );
+				$days[ $d ]['services'][ $t ] = ( isset( $days[ $d ]['services'][ $t ] ) ? $days[ $d ]['services'][ $t ] : 0 ) + 1;
+				$week[ $t ]                   = ( isset( $week[ $t ] ) ? $week[ $t ] : 0 ) + 1;
+			}
+		}
+
+		$pairs = function ( array $m, $k1, $k2 ) {
+			arsort( $m );
+			$out = array();
+			foreach ( $m as $k => $v ) {
+				$out[] = array( $k1 => (string) $k, $k2 => (int) $v );
+			}
+			return $out;
+		};
+
+		$tomorrow = self::day_after( $today );
+		$out      = array();
+
+		foreach ( $days as $d => $x ) {
+			$blocks = array();
+			foreach ( $x['blocks'] as $k => $v ) {
+				if ( $v ) {
+					$blocks[] = array( 'k' => (string) $k, 'label' => cmb_block_label( $k ), 'n' => (int) $v );
+				}
+			}
+
+			$out[] = array(
+				'date'     => $d,
+				'weekday'  => cmb_weekday_name( $d ),
+				'short'    => cmb_jalali_date( $d, 'short' ),
+				'rel'      => $d === $today ? 'امروز' : ( $d === $tomorrow ? 'فردا' : '' ),
+				'count'    => (int) $x['count'],
+				'blocks'   => $blocks,
+				'services' => $pairs( $x['services'], 't', 'n' ),
+			);
+		}
+
+		return array(
+			'from'     => $today,
+			'to'       => $end,
+			'total'    => count( $rows ),
+			'days'     => $out,
+			'services' => $pairs( $week, 't', 'n' ),
 		);
 	}
 

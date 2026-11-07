@@ -479,6 +479,8 @@ function viewSummary() {
     stat('لغو شده (۳۰ روز)', c.cancelled, I.x, 'bad') +
     '</div>';
 
+  html += weekCard(s.week);
+
   if (s.byService && s.byService.length) {
     var max = Math.max.apply(null, s.byService.map(function (x) { return x.total; })) || 1;
 
@@ -509,6 +511,42 @@ function viewSummary() {
     '</div></div>';
 
   return html;
+}
+
+/**
+ * «رزروهای ۷ روز آینده» (۱.۵۶.۰): هر روز یک ردیف با شمار نوبت، تفکیک شیفت و
+ * خدمت‌های رزروشده؛ زدن روز، نوبت‌های همان روز را در «نوبت‌ها» باز می‌کند.
+ */
+function weekCard(w) {
+  if (!w || !w.days || !w.days.length) { return ''; }
+  var chip = function (x) { return '<span class="pn-week__chip">' + esc(x.t) + (x.n > 1 ? ' <i class="num">×' + fa(x.n) + '</i>' : '') + '</span>'; };
+  var html = '<div class="pn-card pn-week">' +
+    '<div class="pn-week__hd"><div class="pn-card__t">' + I.cal + ' رزروهای ۷ روز آینده</div>' +
+      '<span class="pn-week__all"><b class="num">' + fa(w.total) + '</b> نوبت</span></div>' +
+    '<ul class="pn-week__days">';
+
+  w.days.forEach(function (d) {
+    var head = '<div class="pn-week__d"><b>' + esc(d.weekday) + '</b><small>' + esc(fa(d.short)) + '</small>' +
+      (d.rel ? '<span class="pn-week__rel">' + esc(d.rel) + '</span>' : '') + '</div>';
+    if (!d.count) {
+      html += '<li><div class="pn-week__day is-empty">' + head + '<div class="pn-week__body"><span class="pn-week__none">بدون رزرو</span></div></div></li>';
+      return;
+    }
+    var bl = (d.blocks || []).map(function (b) { return esc(String(b.label || b.k).replace(/^شیفت\s*/, '')) + ' ' + fa(b.n); }).join(' · ');
+    html += '<li><button type="button" class="pn-week__day" data-free-date="' + esc(d.date) + '" aria-label="نوبت‌های ' + esc(d.weekday + ' ' + d.short) + '">' + head +
+      '<div class="pn-week__body">' +
+        '<div class="pn-week__n"><b class="num">' + fa(d.count) + '</b> نوبت' + (bl ? '<span class="pn-week__bl">' + bl + '</span>' : '') + '</div>' +
+        '<div class="pn-week__svcs">' + (d.services || []).map(chip).join('') + '</div>' +
+      '</div>' +
+      '<span class="pn-week__go" aria-hidden="true">' + I.chevL + '</span>' +
+    '</button></li>';
+  });
+
+  html += '</ul>';
+  if (w.services && w.services.length) {
+    html += '<div class="pn-week__tot"><span>جمع ۷ روز:</span>' + w.services.map(chip).join('') + '</div>';
+  }
+  return html + '</div>';
 }
 
 /**

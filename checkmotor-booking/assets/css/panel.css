@@ -1697,3 +1697,29 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
 #cmb-panel .pn-rvtest__steps li.is-on .pn-rvtest__dot { background:#1f9d55; border-color:#1f9d55; color:#fff; }
 #cmb-panel .pn-rvtest__dot svg { width:13px; height:13px; }
 #cmb-panel .pn-rvtest__acts { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px; }
+
+/* ۱.۵۶.۰: رزروهای ۷ روز آینده در خلاصه */
+#cmb-panel .pn-week__hd { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px; }
+#cmb-panel .pn-week__hd .pn-card__t { margin-bottom:0; }
+#cmb-panel .pn-week__all { font-size:var(--t-sb); color:var(--ink-3); white-space:nowrap; }
+#cmb-panel .pn-week__all b { font-size:18px; color:var(--ink); }
+#cmb-panel .pn-week__days { list-style:none; margin:0; padding:0; }
+#cmb-panel .pn-week__days li + li { border-top:1px solid var(--g5); }
+#cmb-panel .pn-week__day { display:flex; align-items:flex-start; gap:12px; width:100%; padding:12px 2px; background:none; border:0; text-align:start; font:inherit; color:inherit; cursor:pointer; border-radius:10px; }
+#cmb-panel button.pn-week__day:hover { background:var(--g6); }
+#cmb-panel .pn-week__day.is-empty { cursor:default; color:var(--ink-3); }
+#cmb-panel .pn-week__d { flex:0 0 86px; display:flex; flex-direction:column; gap:2px; }
+#cmb-panel .pn-week__d b { font-size:14px; }
+#cmb-panel .pn-week__d small { font-size:var(--t-cp); color:var(--ink-3); }
+#cmb-panel .pn-week__rel { align-self:flex-start; margin-top:2px; padding:0 8px; border-radius:999px; background:#fff1e8; color:#c2410c; font-size:11px; font-weight:700; }
+#cmb-panel .pn-week__body { flex:1 1 auto; min-width:0; }
+#cmb-panel .pn-week__n { font-size:var(--t-sb); color:var(--ink-2); display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; }
+#cmb-panel .pn-week__n b { font-size:16px; color:var(--ink); }
+#cmb-panel .pn-week__bl { font-size:var(--t-cp); color:var(--ink-3); }
+#cmb-panel .pn-week__svcs { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+#cmb-panel .pn-week__chip { display:inline-flex; align-items:center; gap:4px; padding:2px 10px; border-radius:999px; background:var(--g6); border:1px solid var(--g5); font-size:12px; font-weight:600; color:var(--ink-2); }
+#cmb-panel .pn-week__chip i { font-style:normal; color:var(--ink-3); }
+#cmb-panel .pn-week__none { font-size:var(--t-sb); }
+#cmb-panel .pn-week__go { flex:0 0 auto; align-self:center; color:var(--ink-3); }
+#cmb-panel .pn-week__go svg { width:16px; height:16px; }
+#cmb-panel .pn-week__tot { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:10px; padding-top:12px; border-top:1px dashed var(--g4); font-size:var(--t-sb); color:var(--ink-2); font-weight:700; }
