@@ -1683,59 +1683,89 @@ html.cmb-html.cmb-has-dialog,body.cmb-body.cmb-has-dialog { overflow:hidden !imp
 #cmb-panel .pn-rvtest__dot svg { width:13px; height:13px; }
 #cmb-panel .pn-rvtest__acts { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px; }
 
-/* ۱.۵۶.۰: رزروهای ۷ روز آینده در خلاصه */
-#cmb-panel .pn-week__hd { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px; }
-#cmb-panel .pn-week__hd .pn-card__t { margin-bottom:0; }
-#cmb-panel .pn-week__all { font-size:var(--t-sb); color:var(--ink-3); white-space:nowrap; }
-#cmb-panel .pn-week__all b { font-size:18px; color:var(--ink); }
-#cmb-panel .pn-week__days { list-style:none; margin:0; padding:0; }
-#cmb-panel .pn-week__days li + li { border-top:1px solid var(--g5); }
-#cmb-panel .pn-week__day { display:flex; align-items:flex-start; gap:12px; width:100%; padding:12px 2px; background:none; border:0; text-align:start; font:inherit; color:inherit; cursor:pointer; border-radius:10px; }
-#cmb-panel button.pn-week__day:hover { background:var(--g6); }
-#cmb-panel .pn-week__day.is-empty { cursor:default; color:var(--ink-3); }
-#cmb-panel .pn-week__d { flex:0 0 86px; display:flex; flex-direction:column; gap:2px; }
-#cmb-panel .pn-week__d b { font-size:14px; }
-#cmb-panel .pn-week__d small { font-size:var(--t-cp); color:var(--ink-3); }
-#cmb-panel .pn-week__rel { align-self:flex-start; margin-top:2px; padding:0 8px; border-radius:999px; background:#fff1e8; color:#c2410c; font-size:11px; font-weight:700; }
-#cmb-panel .pn-week__body { flex:1 1 auto; min-width:0; }
-#cmb-panel .pn-week__n { font-size:var(--t-sb); color:var(--ink-2); display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; }
-#cmb-panel .pn-week__n b { font-size:16px; color:var(--ink); }
-#cmb-panel .pn-week__bl { font-size:var(--t-cp); color:var(--ink-3); }
-#cmb-panel .pn-week__svcs { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
-#cmb-panel .pn-week__chip { display:inline-flex; align-items:center; gap:4px; padding:2px 10px; border-radius:999px; background:var(--g6); border:1px solid var(--g5); font-size:12px; font-weight:600; color:var(--ink-2); }
-#cmb-panel .pn-week__chip i { font-style:normal; color:var(--ink-3); }
-#cmb-panel .pn-week__none { font-size:var(--t-sb); }
-#cmb-panel .pn-week__go { flex:0 0 auto; align-self:center; color:var(--ink-3); }
-#cmb-panel .pn-week__go svg { width:16px; height:16px; }
-#cmb-panel .pn-week__tot { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:10px; padding-top:12px; border-top:1px dashed var(--g4); font-size:var(--t-sb); color:var(--ink-2); font-weight:700; }
+/* ═══ ۱.۵۸.۰: خلاصه‌ی آرام‌تر — اعداد در یک کارت، میان‌برهای کم‌ارتفاع، نوار هفت روز ═══ */
+#cmb-panel .pn-dash .pn-head { flex-wrap:nowrap; align-items:flex-start; }
+#cmb-panel .pn-dash .pn-head__act { width:auto; flex:0 0 auto; }
+#cmb-panel .pn-dash .pn-card { margin-bottom:var(--s3); }
+#cmb-panel .pn-dash .pn-card__t { margin-bottom:var(--s3); font-size:15px; }
 
-/* ۱.۵۷.۰: کارت‌های آمار قابل لمس و «میان‌برها» در خلاصه */
-#cmb-panel .pn-stat--link { position:relative; display:block; width:100%; border:0; text-align:start; font:inherit; color:inherit; cursor:pointer; transition:transform .15s ease, box-shadow .15s ease; }
-#cmb-panel .pn-stat--link:hover { box-shadow:var(--sh-3, var(--sh-2)); transform:translateY(-1px); }
-#cmb-panel .pn-stat--link:active { transform:scale(.98); }
-#cmb-panel .pn-stat__go { position:absolute; inset-inline-end:12px; bottom:14px; color:var(--g2); }
-#cmb-panel .pn-stat__go svg { width:16px; height:16px; }
-#cmb-panel .pn-scs__hd { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+/* اعداد */
+#cmb-panel .pn-kpis { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:1px; background:var(--g5); border-radius:var(--r-md); overflow:hidden; box-shadow:var(--sh-2); margin-bottom:var(--s3); }
+#cmb-panel .pn-kpi { display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:14px 16px; background:var(--card); border:0; font:inherit; color:inherit; text-align:start; cursor:pointer; min-width:0; transition:background .15s ease; }
+#cmb-panel .pn-kpi:hover { background:var(--g6); }
+#cmb-panel .pn-kpi__v { font-size:24px; font-weight:800; line-height:1.15; color:var(--ink); font-variant-numeric:tabular-nums; }
+#cmb-panel .pn-kpi__k { font-size:12px; font-weight:600; color:var(--ink-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+#cmb-panel .pn-kpi__k small { display:block; font-weight:500; font-size:11px; color:var(--g1); }
+/* برچسب‌های کوتاه خلاصه وسط کلمه نشکنند (قاعده‌ی کلی کارت‌ها overflow-wrap:anywhere است) */
+#cmb-panel :is(.pn-sc__t,.pn-kpi__k,.pn-week__day,.pn-week__svc,.pn-scs .pn-card__t,.pn-week .pn-card__t) { overflow-wrap:normal; word-break:normal; }
+#cmb-panel .pn-kpi.is-zero .pn-kpi__v { color:var(--g3); }
+#cmb-panel .pn-kpi--hot .pn-kpi__v { color:var(--flame-600); }
+#cmb-panel .pn-kpi--ok .pn-kpi__v { color:var(--ok); }
+#cmb-panel .pn-kpi--bad .pn-kpi__v { color:var(--bad); }
+
+/* میان‌برها */
+#cmb-panel .pn-scs__hd { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:var(--s3); }
 #cmb-panel .pn-scs__hd .pn-card__t { margin-bottom:0; }
-#cmb-panel .pn-scs__edit { padding:6px 12px; min-height:0; font-size:var(--t-sb); }
-#cmb-panel .pn-scs__grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
-#cmb-panel .pn-scs__g { font-weight:800; font-size:13px; color:var(--ink-2); margin:12px 0 8px; }
-#cmb-panel .pn-sc { position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:8px; min-height:92px; padding:12px; border-radius:14px; border:1px solid var(--g5); background:var(--card); color:var(--ink); text-decoration:none; font:inherit; text-align:start; cursor:pointer; transition:background .15s ease, border-color .15s ease; }
-#cmb-panel .pn-sc:hover { background:var(--g6); border-color:var(--g4); }
-#cmb-panel .pn-sc__ic { width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; background:var(--g6); color:var(--ink-2); }
-#cmb-panel .pn-sc--r .pn-sc__ic { background:#fff1e8; color:#c2410c; }
+#cmb-panel .pn-scs__edit { display:inline-flex; align-items:center; gap:5px; padding:4px 6px; border:0; background:none; font:inherit; font-size:12px; font-weight:700; color:var(--ink-3); cursor:pointer; border-radius:8px; }
+#cmb-panel .pn-scs__edit:hover { color:var(--ink); background:var(--g6); }
+#cmb-panel .pn-scs__edit svg { width:15px; height:15px; }
+#cmb-panel .pn-scs__grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px; }
+#cmb-panel .pn-scs__g { font-weight:800; font-size:12px; color:var(--ink-3); margin:14px 0 8px; }
+#cmb-panel .pn-sc { display:flex; align-items:center; gap:10px; min-height:50px; padding:8px 12px; border-radius:12px; border:0; background:var(--g6); color:var(--ink); text-decoration:none; font:inherit; text-align:start; cursor:pointer; transition:background .15s ease; position:relative; }
+#cmb-panel .pn-sc:hover { background:var(--g5); }
+#cmb-panel .pn-sc__ic { flex:0 0 auto; display:flex; color:var(--g1); }
+#cmb-panel .pn-sc--r .pn-sc__ic { color:var(--flame-600); }
 #cmb-panel .pn-sc__ic svg { width:18px; height:18px; }
-#cmb-panel .pn-sc__t { font-size:13px; font-weight:700; line-height:1.6; }
-#cmb-panel .pn-sc__n { position:absolute; inset-inline-end:10px; top:10px; padding:0 8px; border-radius:999px; background:var(--ok-bg); color:var(--ok); font-size:12px; font-weight:800; line-height:1.9; white-space:nowrap; }
-#cmb-panel .pn-sc--edit { min-height:76px; opacity:.6; }
-#cmb-panel .pn-sc--edit.is-on { opacity:1; border-color:var(--flame); box-shadow:0 0 0 1px var(--flame) inset; }
-#cmb-panel .pn-sc__tick { position:absolute; inset-inline-end:10px; top:10px; width:20px; height:20px; border-radius:50%; border:2px solid var(--g4); display:flex; align-items:center; justify-content:center; color:#fff; }
+#cmb-panel .pn-sc__t { flex:1 1 auto; min-width:0; font-size:13px; font-weight:600; line-height:1.5; }
+#cmb-panel .pn-sc__n { flex:0 0 auto; padding:0 7px; border-radius:999px; background:var(--card); color:var(--ok); font-size:11px; font-weight:800; line-height:1.9; white-space:nowrap; }
+#cmb-panel .pn-sc--edit { background:var(--card); box-shadow:0 0 0 1px var(--g5) inset; color:var(--ink-3); }
+#cmb-panel .pn-sc--edit.is-on { color:var(--ink); box-shadow:0 0 0 1.5px var(--flame) inset; background:#fff8f3; }
+#cmb-panel .pn-sc__tick { flex:0 0 auto; width:18px; height:18px; border-radius:50%; border:1.5px solid var(--g3); display:flex; align-items:center; justify-content:center; color:#fff; }
 #cmb-panel .pn-sc--edit.is-on .pn-sc__tick { background:var(--flame); border-color:var(--flame); }
-#cmb-panel .pn-sc__tick svg { width:12px; height:12px; }
+#cmb-panel .pn-sc__tick svg { width:11px; height:11px; }
 #cmb-panel .pn-scs__ft { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
-#cmb-panel .pn-scs__install { margin-top:12px; width:100%; }
-@media (max-width:520px) {
-  #cmb-panel .pn-scs__grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-  #cmb-panel .pn-sc { min-height:84px; padding:10px; }
+#cmb-panel .pn-scs__install { margin-top:10px; width:100%; }
+
+/* هفت روز آینده */
+#cmb-panel .pn-week__hd { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:var(--s3); }
+#cmb-panel .pn-week__hd .pn-card__t { margin-bottom:0; }
+#cmb-panel .pn-week__all { font-size:12px; color:var(--ink-3); white-space:nowrap; }
+#cmb-panel .pn-week__all b { font-size:15px; color:var(--ink); }
+#cmb-panel .pn-week__strip { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; }
+#cmb-panel .pn-week__cell { display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0 9px; border-radius:12px; background:var(--g6); border:0; font:inherit; color:var(--ink-3); min-width:0; }
+#cmb-panel button.pn-week__cell { cursor:pointer; }
+#cmb-panel .pn-week__cell.has { background:#fff4ec; color:var(--ink); }
+#cmb-panel button.pn-week__cell.has:hover { background:#ffe9db; }
+#cmb-panel .pn-week__cell.is-today { box-shadow:0 0 0 1.5px var(--flame) inset; }
+#cmb-panel .pn-week__wd { font-size:11px; font-weight:700; color:var(--ink-3); }
+#cmb-panel .pn-week__dn { font-size:14px; font-weight:800; }
+#cmb-panel .pn-week__c { min-width:22px; padding:0 6px; border-radius:999px; font-size:12px; font-weight:800; line-height:1.7; text-align:center; color:var(--g3); }
+#cmb-panel .pn-week__cell.has .pn-week__c { background:var(--flame); color:#fff; }
+#cmb-panel .pn-week__list { list-style:none; margin:10px 0 0; padding:0; }
+#cmb-panel .pn-week__list li + li { border-top:1px solid var(--g5); }
+#cmb-panel .pn-week__row { display:flex; align-items:center; gap:12px; width:100%; padding:10px 2px; border:0; background:none; font:inherit; color:inherit; text-align:start; cursor:pointer; border-radius:10px; }
+#cmb-panel .pn-week__row:hover { background:var(--g6); }
+#cmb-panel .pn-week__day { flex:0 0 92px; display:flex; flex-direction:column; line-height:1.4; }
+#cmb-panel .pn-week__day b { font-size:13px; }
+#cmb-panel .pn-week__day small { font-size:11px; color:var(--ink-3); white-space:nowrap; }
+#cmb-panel .pn-week__svc { flex:1 1 auto; min-width:0; font-size:12px; line-height:1.7; color:var(--ink-2); overflow:hidden; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+#cmb-panel .pn-week__n { flex:0 0 auto; min-width:26px; padding:0 8px; border-radius:999px; background:var(--g6); font-size:12px; font-weight:800; line-height:1.9; text-align:center; }
+#cmb-panel .pn-week__empty { margin-top:10px; font-size:13px; color:var(--ink-3); text-align:center; padding:6px 0 2px; }
+
+/* خدمات پرتقاضا */
+#cmb-panel .pn-dash__svc { margin-bottom:12px; }
+#cmb-panel .pn-dash__svc:last-child { margin-bottom:0; }
+#cmb-panel .pn-dash .pn-bar { height:4px; }
+
+@media (max-width:760px) {
+  #cmb-panel .pn-dash__reload { padding:0; width:42px; height:42px; min-height:0; justify-content:center; }
+  #cmb-panel .pn-dash__reload span { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  #cmb-panel .pn-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  #cmb-panel .pn-kpi { padding:12px; }
+  #cmb-panel .pn-kpi__v { font-size:22px; }
+  #cmb-panel .pn-scs__grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #cmb-panel .pn-sc { min-height:46px; padding:8px 10px; gap:8px; }
+  #cmb-panel .pn-week__strip { gap:4px; }
+  #cmb-panel .pn-week__day { flex-basis:78px; }
 }
-@media (prefers-reduced-motion:reduce) { #cmb-panel .pn-stat--link, #cmb-panel .pn-sc { transition:none; } #cmb-panel .pn-stat--link:hover, #cmb-panel .pn-stat--link:active { transform:none; } }
+@media (prefers-reduced-motion:reduce) { #cmb-panel .pn-kpi, #cmb-panel .pn-sc { transition:none; } }

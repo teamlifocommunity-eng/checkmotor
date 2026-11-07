@@ -450,8 +450,8 @@ function viewSummary() {
   var s = S.summary;
   var c = s.counts;
 
-  var html = head('خلاصه وضعیت', s.today ? fa(s.today.jalali) : '',
-    '<button class="pn-btn pn-btn--soft" data-reload>' + I.refresh + ' تازه‌سازی</button>');
+  var html = '<div class="pn-dash">' + head('خلاصه وضعیت', s.today ? fa(s.today.jalali) : '',
+    '<button class="pn-btn pn-btn--soft pn-dash__reload" data-reload aria-label="تازه‌سازی">' + I.refresh + '<span>تازه‌سازی</span></button>');
 
   if (s.setup && !s.setup.ready) {
     html += note('warn', I.alert,
@@ -470,14 +470,14 @@ function viewSummary() {
 
   html += agencyBanner();
 
-  // هر کارت آمار، گزارش همان عدد را باز می‌کند (۱.۵۷.۰)
-  html += '<div class="pn-stats pn-stats--count">' +
-    statLink('امروز', c.today, I.cal, 'hot', 'r:today') +
-    statLink('فردا', c.tomorrow, I.cal, '', 'r:tomorrow') +
-    statLink('نوبت‌های پیش‌رو', c.upcoming, I.list, 'ok', 'r:upcoming') +
-    statLink('ثبت ۷ روز اخیر', c.week, I.gauge, '', 'r:recent') +
-    statLink('عدم مراجعه (۳۰ روز)', c.no_show, I.alert, '', 'r:noshow') +
-    statLink('لغو شده (۳۰ روز)', c.cancelled, I.x, 'bad', 'r:cancelled') +
+  // هر عدد، گزارش همان عدد را باز می‌کند (۱.۵۷.۰)؛ ۱.۵۸.۰: یک کارت جمع‌وجور به‌جای شش کارت
+  html += '<div class="pn-kpis">' +
+    kpi('امروز', '', c.today, 'hot', 'r:today') +
+    kpi('فردا', '', c.tomorrow, '', 'r:tomorrow') +
+    kpi('پیش‌رو', '', c.upcoming, 'ok', 'r:upcoming') +
+    kpi('ثبت ۷ روز اخیر', '', c.week, '', 'r:recent') +
+    kpi('عدم مراجعه', '۳۰ روز', c.no_show, '', 'r:noshow') +
+    kpi('لغو شده', '۳۰ روز', c.cancelled, 'bad', 'r:cancelled') +
     '</div>';
 
   html += shortcutsCard();
@@ -488,8 +488,8 @@ function viewSummary() {
 
     html += '<div class="pn-card"><div class="pn-card__t">' + I.tag + ' خدمات پرتقاضا — ۳۰ روز گذشته</div>';
 
-    s.byService.forEach(function (x) {
-      html += '<div style="margin-bottom:14px">' +
+    s.byService.slice(0, 5).forEach(function (x) {
+      html += '<div class="pn-dash__svc">' +
         '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">' +
         '<span style="font-weight:600">' + esc(x.title) + '</span>' +
         '<span class="num" style="color:var(--ink-3)">' + fa(x.total) + ' نوبت</span></div>' +
@@ -500,7 +500,15 @@ function viewSummary() {
     html += '</div>';
   }
 
-  return html;
+  return html + '</div>';
+}
+
+/** یک عدد خلاصه که گزارش خودش را باز می‌کند؛ صفر کم‌رنگ است تا توجه نگیرد. */
+function kpi(label, sub, value, kind, key) {
+  var v = Number(value) || 0;
+  return '<button type="button" class="pn-kpi' + (v && kind ? ' pn-kpi--' + kind : '') + (v ? '' : ' is-zero') + '" data-sc="' + key + '" aria-label="' + esc(label + (sub ? ' (' + sub + ')' : '') + ': ' + fa(v) + ' — دیدن فهرست') + '">' +
+    '<span class="pn-kpi__v num">' + fa(v) + '</span>' +
+    '<span class="pn-kpi__k">' + esc(label) + (sub ? ' <small>' + esc(sub) + '</small>' : '') + '</span></button>';
 }
 
 /* ═══ میان‌برهای خلاصه (۱.۵۷.۰) ═══
@@ -536,7 +544,7 @@ function shortcutCatalog() {
   if (PAY.used) { out.push({ k: 'r:pending', g: 'r', t: 'در انتظار پرداخت', ic: I.wallet, f: { scope: 'all', status: 'pending' } }); }
 
   var V = [
-    ['board', 'تخته‌ی روزها'], ['free', 'نوبت‌های خالی ۷ روز'], ['bookings', 'فهرست نوبت‌ها'], ['customers', 'مشتری‌ها'],
+    ['board', 'تخته‌ی روزها'], ['free', 'نوبت‌های خالی'], ['bookings', 'فهرست نوبت‌ها'], ['customers', 'مشتری‌ها'],
     ['services', 'خدمات'], ['closures', 'بستن یک روز'], ['settings', 'تنظیمات شیفت'], ['refunds', 'بیعانه و کیف پول'],
     ['bwallet', 'کیف پول نمایندگی'], ['profile', 'پروفایل نمایندگی'], ['reviews', 'نظرسنجی'], ['agencies', 'نمایندگی‌ها'],
     ['report', 'گزارش نمایندگی‌ها'], ['smslog', 'پیامک و کد تایید'], ['debug', 'آزمون و عیب‌یابی']
@@ -605,7 +613,7 @@ function shortcutsCard() {
   var mine = shortcutKeys().map(function (k) { return byKey[k]; }).filter(Boolean);
   return '<div class="pn-card pn-scs">' +
     '<div class="pn-scs__hd"><div class="pn-card__t">' + I.grid + ' میان‌برها</div>' +
-      '<button class="pn-btn pn-btn--soft pn-scs__edit" data-sc-edit>' + I.gear + ' ویرایش</button></div>' +
+      '<button type="button" class="pn-scs__edit" data-sc-edit>' + I.gear + '<span>ویرایش</span></button></div>' +
     (mine.length ? '<div class="pn-scs__grid">' + mine.map(function (x) { return scTile(x, false); }).join('') + '</div>'
       : '<div class="pn-hint">میان‌بری انتخاب نشده؛ «ویرایش» را بزنید و بخش‌ها و گزارش‌هایی را که لازم دارید اضافه کنید.</div>') +
     installBtn('pn-btn pn-btn--soft pn-scs__install', 'نصب پنل روی گوشی') +
@@ -626,33 +634,38 @@ function openShortcut(key) {
  */
 function weekCard(w) {
   if (!w || !w.days || !w.days.length) { return ''; }
-  var chip = function (x) { return '<span class="pn-week__chip">' + esc(x.t) + (x.n > 1 ? ' <i class="num">×' + fa(x.n) + '</i>' : '') + '</span>'; };
+  var AB = { 'شنبه': 'ش', 'یکشنبه': 'ی', 'دوشنبه': 'د', 'سه‌شنبه': 'س', 'چهارشنبه': 'چ', 'پنجشنبه': 'پ', 'جمعه': 'ج' };
+  var busy = w.days.filter(function (d) { return d.count; });
   var html = '<div class="pn-card pn-week">' +
     '<div class="pn-week__hd"><div class="pn-card__t">' + I.cal + ' رزروهای ۷ روز آینده</div>' +
       '<span class="pn-week__all"><b class="num">' + fa(w.total) + '</b> نوبت</span></div>' +
-    '<ul class="pn-week__days">';
+    '<div class="pn-week__strip">' +
+    w.days.map(function (d) {
+      var dn = fa(String(d.short || '').split(' ')[0]);
+      var inner = '<span class="pn-week__wd">' + esc(AB[d.weekday] || d.weekday) + '</span>' +
+        '<span class="pn-week__dn num">' + esc(dn) + '</span>' +
+        '<span class="pn-week__c num">' + (d.count ? fa(d.count) : '–') + '</span>';
+      var cls = 'pn-week__cell' + (d.count ? ' has' : '') + (d.rel === 'امروز' ? ' is-today' : '');
+      var lbl = esc(d.weekday + ' ' + fa(d.short) + ': ' + (d.count ? fa(d.count) + ' نوبت' : 'بدون رزرو'));
+      return d.count ? '<button type="button" class="' + cls + '" data-free-date="' + esc(d.date) + '" aria-label="' + lbl + '">' + inner + '</button>'
+        : '<div class="' + cls + '" aria-label="' + lbl + '">' + inner + '</div>';
+    }).join('') +
+    '</div>';
 
-  w.days.forEach(function (d) {
-    var head = '<div class="pn-week__d"><b>' + esc(d.weekday) + '</b><small>' + esc(fa(d.short)) + '</small>' +
-      (d.rel ? '<span class="pn-week__rel">' + esc(d.rel) + '</span>' : '') + '</div>';
-    if (!d.count) {
-      html += '<li><div class="pn-week__day is-empty">' + head + '<div class="pn-week__body"><span class="pn-week__none">بدون رزرو</span></div></div></li>';
-      return;
-    }
-    var bl = (d.blocks || []).map(function (b) { return esc(String(b.label || b.k).replace(/^شیفت\s*/, '')) + ' ' + fa(b.n); }).join(' · ');
-    html += '<li><button type="button" class="pn-week__day" data-free-date="' + esc(d.date) + '" aria-label="نوبت‌های ' + esc(d.weekday + ' ' + d.short) + '">' + head +
-      '<div class="pn-week__body">' +
-        '<div class="pn-week__n"><b class="num">' + fa(d.count) + '</b> نوبت' + (bl ? '<span class="pn-week__bl">' + bl + '</span>' : '') + '</div>' +
-        '<div class="pn-week__svcs">' + (d.services || []).map(chip).join('') + '</div>' +
-      '</div>' +
-      '<span class="pn-week__go" aria-hidden="true">' + I.chevL + '</span>' +
-    '</button></li>';
-  });
-
-  html += '</ul>';
-  if (w.services && w.services.length) {
-    html += '<div class="pn-week__tot"><span>جمع ۷ روز:</span>' + w.services.map(chip).join('') + '</div>';
+  if (!busy.length) {
+    html += '<div class="pn-week__empty">در ۷ روز آینده هنوز نوبتی ثبت نشده است.</div>';
+  } else {
+    html += '<ul class="pn-week__list">' + busy.map(function (d) {
+      var svc = (d.services || []).map(function (x) { return esc(x.t) + (x.n > 1 ? ' ×' + fa(x.n) : ''); }).join('، ');
+      var bl = (d.blocks || []).map(function (b) { return String(b.label || b.k).replace(/^شیفت\s*/, '') + ' ' + fa(b.n); }).join('، ');
+      return '<li><button type="button" class="pn-week__row" data-free-date="' + esc(d.date) + '" title="' + esc(bl) + '">' +
+        '<span class="pn-week__day"><b>' + esc(d.rel || d.weekday) + '</b><small>' + esc((d.rel ? d.weekday + ' ' : '') + fa(d.short)) + '</small></span>' +
+        '<span class="pn-week__svc">' + svc + '</span>' +
+        '<span class="pn-week__n num">' + fa(d.count) + '</span>' +
+      '</button></li>';
+    }).join('') + '</ul>';
   }
+
   return html + '</div>';
 }
 
@@ -770,14 +783,6 @@ function stat(label, value, icon, kind, text) {
   return '<div class="pn-stat' + (kind ? ' pn-stat--' + kind : '') + '">' +
     '<div class="pn-stat__k">' + icon + esc(label) + '</div>' +
     '<div class="pn-stat__v">' + fa(value || 0) + '</div></div>';
-}
-
-/** کارت آمار که گزارش همان عدد را باز می‌کند. */
-function statLink(label, value, icon, kind, key) {
-  return '<button type="button" class="pn-stat pn-stat--link' + (kind ? ' pn-stat--' + kind : '') + '" data-sc="' + key + '" aria-label="' + esc(label + ': ' + fa(value || 0) + ' — دیدن فهرست') + '">' +
-    '<div class="pn-stat__k">' + icon + esc(label) + '</div>' +
-    '<div class="pn-stat__v">' + fa(value || 0) + '</div>' +
-    '<span class="pn-stat__go" aria-hidden="true">' + I.chevL + '</span></button>';
 }
 
 /* ═══ تخته‌ی روزها ═══ */
