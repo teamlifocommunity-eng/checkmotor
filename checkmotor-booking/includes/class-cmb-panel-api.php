@@ -187,6 +187,7 @@ class CMB_Panel_Api {
 
 		$routes = array(
 			'panel/summary'   => array( 'GET', 'summary', $guard ),
+			'panel/shortcuts' => array( 'POST', 'save_shortcuts', $guard ),
 			'panel/board'     => array( 'GET', 'board', $guard ),
 			'panel/free'      => array( 'GET', 'free', $guard ),
 			// نظرسنجی فقط برای مدیر کل (تصمیم کارفرما، ۱.۵۳.۰)؛ نمایندگی‌ها نمی‌بینند
@@ -490,6 +491,7 @@ class CMB_Panel_Api {
 			'counts'    => $counts,
 			'byService' => $by_service,
 			'free'      => self::free_days( $branch, $today, 7 ),
+			'shortcuts' => self::shortcuts( get_current_user_id() ),
 			'week'      => self::booked_days( $branch, $today, 7 ),
 			'branch'    => $branch_row ? array(
 				'id'    => (int) $branch_row->id,
@@ -506,6 +508,39 @@ class CMB_Panel_Api {
 				'jalali' => cmb_jalali_date( $today, 'full' ),
 			),
 		);
+	}
+
+	/** میان‌برهای انتخابی کاربر برای خلاصه؛ null یعنی پیش‌فرض (۱.۵۷.۰). */
+	public static function shortcuts( $user_id ) {
+		$v = get_user_meta( (int) $user_id, 'cmb_panel_shortcuts', true );
+
+		return is_array( $v ) ? array_values( $v ) : null;
+	}
+
+	/** ذخیره‌ی میان‌برهای خلاصه برای همین کاربر (هر نقش پنل؛ فقط کلیدها، نه دسترسی). */
+	public function save_shortcuts( WP_REST_Request $request ) {
+		$uid = get_current_user_id();
+
+		if ( (int) $request->get_param( 'reset' ) ) {
+			delete_user_meta( $uid, 'cmb_panel_shortcuts' );
+
+			return rest_ensure_response( array( 'success' => true, 'message' => 'میان‌برها به حالت پیش‌فرض برگشت.', 'keys' => null ) );
+		}
+
+		$keys = array();
+
+		foreach ( (array) $request->get_param( 'keys' ) as $k ) {
+			$k = (string) $k;
+
+			if ( preg_match( '/^[a-z]:[a-z_]{1,24}$/', $k ) && ! in_array( $k, $keys, true ) ) {
+				$keys[] = $k;
+			}
+		}
+
+		$keys = array_slice( $keys, 0, 40 );
+		update_user_meta( $uid, 'cmb_panel_shortcuts', $keys );
+
+		return rest_ensure_response( array( 'success' => true, 'message' => 'میان‌برهای شما ذخیره شد.', 'keys' => $keys ) );
 	}
 
 	/**
@@ -1026,6 +1061,11 @@ class CMB_Panel_Api {
 				case 'past':
 					$where[]  = 'booking_date < %s';
 					$params[] = $today;
+					break;
+				case 'recent':
+					// «ثبت ۷ روز اخیر» خلاصه: بر اساس زمان ثبت، بدون نیمه‌کاره‌های پرداخت (۱.۵۷.۰)
+					$where[]  = "created_at >= %s AND status NOT IN ('pending','expired')";
+					$params[] = gmdate( 'Y-m-d H:i:s', strtotime( current_time( 'mysql' ) ) - 7 * DAY_IN_SECONDS );
 					break;
 				case 'all':
 					break;

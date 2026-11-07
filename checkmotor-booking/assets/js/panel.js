@@ -470,15 +470,17 @@ function viewSummary() {
 
   html += agencyBanner();
 
+  // هر کارت آمار، گزارش همان عدد را باز می‌کند (۱.۵۷.۰)
   html += '<div class="pn-stats pn-stats--count">' +
-    stat('امروز', c.today, I.cal, 'hot') +
-    stat('فردا', c.tomorrow, I.cal, '') +
-    stat('نوبت‌های پیش‌رو', c.upcoming, I.list, 'ok') +
-    stat('ثبت ۷ روز اخیر', c.week, I.gauge, '') +
-    stat('عدم مراجعه (۳۰ روز)', c.no_show, I.alert, '') +
-    stat('لغو شده (۳۰ روز)', c.cancelled, I.x, 'bad') +
+    statLink('امروز', c.today, I.cal, 'hot', 'r:today') +
+    statLink('فردا', c.tomorrow, I.cal, '', 'r:tomorrow') +
+    statLink('نوبت‌های پیش‌رو', c.upcoming, I.list, 'ok', 'r:upcoming') +
+    statLink('ثبت ۷ روز اخیر', c.week, I.gauge, '', 'r:recent') +
+    statLink('عدم مراجعه (۳۰ روز)', c.no_show, I.alert, '', 'r:noshow') +
+    statLink('لغو شده (۳۰ روز)', c.cancelled, I.x, 'bad', 'r:cancelled') +
     '</div>';
 
+  html += shortcutsCard();
   html += weekCard(s.week);
 
   if (s.byService && s.byService.length) {
@@ -498,19 +500,124 @@ function viewSummary() {
     html += '</div>';
   }
 
-  html += '<div class="pn-card"><div class="pn-card__t">' + I.info + ' دسترسی سریع</div>' +
-    '<div class="pn-head__act pn-quickacts">' +
-      '<button class="pn-btn pn-btn--pri" data-view="board">' + I.grid + ' تخته‌ی روزها</button>' +
-      '<button class="pn-btn pn-btn--soft pn-qfree" data-view="free">' + I.cal + ' نوبت‌های خالی ۷ روز' +
-        (s.free ? ' <span class="pn-qfree__n">' + fa(s.free.free) + ' خالی</span>' : '') + '</button>' +
-      '<button class="pn-btn pn-btn--soft" data-view="bookings">' + I.list + ' فهرست نوبت‌ها</button>' +
-      '<button class="pn-btn pn-btn--soft" data-view="closures">' + I.lock + ' بستن یک روز</button>' +
-      '<a class="pn-btn pn-btn--soft" href="' + esc(C.app || '/') + '" target="_blank">' + I.car + ' دیدن اپ مشتری</a>' +
-      installBtn('pn-btn pn-btn--soft', 'نصب پنل روی گوشی') +
-      (C.wpAdmin && !ctx().agency ? '<a class="pn-btn pn-btn--soft" href="' + esc(C.wpAdmin) + '" target="_blank">' + I.gear + ' تنظیمات (پیشخوان وردپرس)</a>' : '') +
-    '</div></div>';
-
   return html;
+}
+
+/* ═══ میان‌برهای خلاصه (۱.۵۷.۰) ═══
+   گزارش‌ها (فهرست نوبت‌ها با فیلتر آماده)، بخش‌های پنل (فقط آن‌هایی که نقش کاربر
+   دارد) و ابزارها. هر کاربر خودش انتخاب می‌کند کدام‌ها روی خلاصه باشد؛ روی
+   سرور برای همان کاربر ذخیره می‌شود و در همه‌ی دستگاه‌هایش یکی است. */
+
+function ymdShift(ymd, days) {
+  var p = String(ymd || '').split('-').map(Number);
+  if (p.length !== 3 || isNaN(p[0])) { return ''; }
+  var d = new Date(Date.UTC(p[0], p[1] - 1, p[2]) + days * 86400000);
+  var z = function (n) { return (n < 10 ? '0' : '') + n; };
+  return d.getUTCFullYear() + '-' + z(d.getUTCMonth() + 1) + '-' + z(d.getUTCDate());
+}
+
+function shortcutCatalog() {
+  var c = ctx(), s = S.summary || {}, n = s.counts || {};
+  var today = s.today && s.today.date ? s.today.date : '';
+  var ago30 = ymdShift(today, -30);
+  var views = {};
+  nav().forEach(function (x) { views[x.k] = x; });
+
+  var out = [
+    { k: 'r:today', g: 'r', t: 'نوبت‌های امروز', ic: I.cal, n: n.today, f: { scope: 'today' } },
+    { k: 'r:tomorrow', g: 'r', t: 'نوبت‌های فردا', ic: I.cal, n: n.tomorrow, f: { scope: 'tomorrow' } },
+    { k: 'r:week', g: 'r', t: 'نوبت‌های این هفته', ic: I.cal, f: { scope: 'week' } },
+    { k: 'r:upcoming', g: 'r', t: 'نوبت‌های پیش‌رو', ic: I.list, n: n.upcoming, f: { scope: 'upcoming', status: 'confirmed' } },
+    { k: 'r:recent', g: 'r', t: 'ثبت‌های ۷ روز اخیر', ic: I.gauge, n: n.week, f: { scope: 'recent' } },
+    { k: 'r:done', g: 'r', t: 'انجام‌شده‌های این ماه', ic: I.check, f: { scope: 'month', status: 'done' } },
+    { k: 'r:noshow', g: 'r', t: 'عدم مراجعه (۳۰ روز)', ic: I.alert, n: n.no_show, f: { scope: 'all', status: 'no_show', from: ago30 } },
+    { k: 'r:cancelled', g: 'r', t: 'لغوشده‌ها (۳۰ روز)', ic: I.x, n: n.cancelled, f: { scope: 'all', status: 'cancelled', from: ago30 } }
+  ];
+  if (PAY.used) { out.push({ k: 'r:pending', g: 'r', t: 'در انتظار پرداخت', ic: I.wallet, f: { scope: 'all', status: 'pending' } }); }
+
+  var V = [
+    ['board', 'تخته‌ی روزها'], ['free', 'نوبت‌های خالی ۷ روز'], ['bookings', 'فهرست نوبت‌ها'], ['customers', 'مشتری‌ها'],
+    ['services', 'خدمات'], ['closures', 'بستن یک روز'], ['settings', 'تنظیمات شیفت'], ['refunds', 'بیعانه و کیف پول'],
+    ['bwallet', 'کیف پول نمایندگی'], ['profile', 'پروفایل نمایندگی'], ['reviews', 'نظرسنجی'], ['agencies', 'نمایندگی‌ها'],
+    ['report', 'گزارش نمایندگی‌ها'], ['smslog', 'پیامک و کد تایید'], ['debug', 'آزمون و عیب‌یابی']
+  ];
+  V.forEach(function (v) {
+    if (!allowed(v[0])) { return; }
+    var item = { k: 'v:' + v[0], g: 'v', t: v[1], ic: views[v[0]] ? views[v[0]].ic : I.cal, v: v[0] };
+    if (v[0] === 'free' && s.free) { item.n = s.free.free; item.nl = 'خالی'; }
+    if (v[0] === 'refunds' && n.refunds) { item.n = n.refunds; item.nl = 'باز'; }
+    out.push(item);
+  });
+
+  out.push({ k: 'x:app', g: 'x', t: 'دیدن اپ مشتری', ic: I.car, href: C.app || '/' });
+  if (C.wpAdmin && !c.agency) { out.push({ k: 'x:wp', g: 'x', t: 'تنظیمات (پیشخوان وردپرس)', ic: I.gear, href: C.wpAdmin }); }
+
+  return out;
+}
+
+function shortcutDefaults() {
+  var c = ctx();
+  var keys = ['r:today', 'r:tomorrow', 'v:board', 'v:free', 'v:bookings', 'v:closures', 'v:customers'];
+  if (c.isAdmin) { keys.push('v:reviews', 'v:report'); }
+  if (c.agency) { keys.push('v:bwallet'); }
+  keys.push('x:app');
+  return keys;
+}
+
+function shortcutKeys() {
+  var s = S.summary || {};
+  return s.shortcuts && s.shortcuts.length !== undefined ? s.shortcuts : shortcutDefaults();
+}
+
+function scTile(x, editing, on) {
+  var badge = x.n ? '<span class="pn-sc__n num">' + fa(x.n) + (x.nl ? ' ' + x.nl : '') + '</span>' : '';
+  var inner = '<span class="pn-sc__ic">' + x.ic + '</span><span class="pn-sc__t">' + esc(x.t) + '</span>' + (editing ? '' : badge);
+  if (editing) {
+    return '<button type="button" class="pn-sc pn-sc--edit' + (on ? ' is-on' : '') + '" data-sc-toggle="' + x.k + '" aria-pressed="' + (on ? 'true' : 'false') + '">' +
+      inner + '<span class="pn-sc__tick">' + (on ? I.check : '') + '</span></button>';
+  }
+  if (x.href) { return '<a class="pn-sc" href="' + esc(x.href) + '" target="_blank" rel="noopener">' + inner + '</a>'; }
+  return '<button type="button" class="pn-sc pn-sc--' + x.g + '" data-sc="' + x.k + '">' + inner + '</button>';
+}
+
+function shortcutsCard() {
+  var cat = shortcutCatalog();
+  var byKey = {};
+  cat.forEach(function (x) { byKey[x.k] = x; });
+
+  if (S.scEdit) {
+    var groups = [['r', 'گزارش‌ها'], ['v', 'بخش‌ها'], ['x', 'ابزارها']];
+    return '<div class="pn-card pn-scs pn-scs--edit">' +
+      '<div class="pn-scs__hd"><div class="pn-card__t">' + I.gear + ' انتخاب میان‌برها</div></div>' +
+      '<div class="pn-hint" style="margin:-4px 0 12px">روی هر مورد بزنید تا روی خلاصه بیاید یا برود. فقط بخش‌هایی دیده می‌شوند که نقش شما به آن‌ها دسترسی دارد.</div>' +
+      groups.map(function (g) {
+        var items = cat.filter(function (x) { return x.g === g[0]; });
+        return items.length ? '<div class="pn-scs__g">' + g[1] + '</div><div class="pn-scs__grid">' +
+          items.map(function (x) { return scTile(x, true, S.scEdit.indexOf(x.k) !== -1); }).join('') + '</div>' : '';
+      }).join('') +
+      '<div class="pn-scs__ft">' +
+        '<button class="pn-btn pn-btn--pri" data-sc-save' + (S.busy ? ' disabled' : '') + '>ذخیره</button>' +
+        '<button class="pn-btn pn-btn--soft" data-sc-cancel>انصراف</button>' +
+        '<button class="pn-btn pn-btn--soft" data-sc-reset>برگشت به پیش‌فرض</button>' +
+      '</div></div>';
+  }
+
+  var mine = shortcutKeys().map(function (k) { return byKey[k]; }).filter(Boolean);
+  return '<div class="pn-card pn-scs">' +
+    '<div class="pn-scs__hd"><div class="pn-card__t">' + I.grid + ' میان‌برها</div>' +
+      '<button class="pn-btn pn-btn--soft pn-scs__edit" data-sc-edit>' + I.gear + ' ویرایش</button></div>' +
+    (mine.length ? '<div class="pn-scs__grid">' + mine.map(function (x) { return scTile(x, false); }).join('') + '</div>'
+      : '<div class="pn-hint">میان‌بری انتخاب نشده؛ «ویرایش» را بزنید و بخش‌ها و گزارش‌هایی را که لازم دارید اضافه کنید.</div>') +
+    installBtn('pn-btn pn-btn--soft pn-scs__install', 'نصب پنل روی گوشی') +
+  '</div>';
+}
+
+/** باز کردن یک میان‌بر: گزارش (فهرست با فیلتر) یا بخش. */
+function openShortcut(key) {
+  var x = shortcutCatalog().filter(function (i) { return i.k === key; })[0];
+  if (!x) { return; }
+  if (x.f) { S.filter = newFilter(x.f); S.list = null; go('bookings'); return; }
+  if (x.v) { go(x.v); }
 }
 
 /**
@@ -665,6 +772,14 @@ function stat(label, value, icon, kind, text) {
     '<div class="pn-stat__v">' + fa(value || 0) + '</div></div>';
 }
 
+/** کارت آمار که گزارش همان عدد را باز می‌کند. */
+function statLink(label, value, icon, kind, key) {
+  return '<button type="button" class="pn-stat pn-stat--link' + (kind ? ' pn-stat--' + kind : '') + '" data-sc="' + key + '" aria-label="' + esc(label + ': ' + fa(value || 0) + ' — دیدن فهرست') + '">' +
+    '<div class="pn-stat__k">' + icon + esc(label) + '</div>' +
+    '<div class="pn-stat__v">' + fa(value || 0) + '</div>' +
+    '<span class="pn-stat__go" aria-hidden="true">' + I.chevL + '</span></button>';
+}
+
 /* ═══ تخته‌ی روزها ═══ */
 
 function viewBoard() {
@@ -757,6 +872,7 @@ function viewBookings() {
     { k: 'upcoming', t: 'پیش‌رو' }, { k: 'today', t: 'امروز' }, { k: 'tomorrow', t: 'فردا' },
     { k: 'week', t: 'این هفته' }, { k: 'month', t: 'این ماه' }, { k: 'past', t: 'گذشته' }, { k: 'all', t: 'همه' }
   ];
+  if (f.scope === 'recent') { scopes.push({ k: 'recent', t: 'ثبت ۷ روز اخیر' }); }
   var ranged = !!(f.from || f.to);
   var blocks = [{ k: 'morning', t: 'شیفت صبح' }, { k: 'afternoon', t: 'شیفت عصر' }];
   if (S.list && S.list.byBlock) {
@@ -5596,6 +5712,34 @@ function bind() {
     }
 
     // خلاصه ← جای خالی: نوبت‌های همان روز و شیفت
+    if ((el = up('[data-sc]'))) { e.preventDefault(); openShortcut(el.getAttribute('data-sc')); return; }
+    if (up('[data-sc-edit]')) { e.preventDefault(); S.scEdit = shortcutKeys().slice(); paint(); return; }
+    if (up('[data-sc-cancel]')) { e.preventDefault(); S.scEdit = null; paint(); return; }
+    if (up('[data-sc-reset]')) { e.preventDefault(); S.scEdit = shortcutDefaults(); paint(); return; }
+    if ((el = up('[data-sc-toggle]'))) {
+      e.preventDefault();
+      var sk = el.getAttribute('data-sc-toggle'), si = S.scEdit ? S.scEdit.indexOf(sk) : -1;
+      if (!S.scEdit) { return; }
+      if (si === -1) { S.scEdit.push(sk); } else { S.scEdit.splice(si, 1); }
+      paint();
+      return;
+    }
+    if (up('[data-sc-save]')) {
+      e.preventDefault();
+      if (!S.scEdit || S.busy) { return; }
+      var keep = S.scEdit.slice(), isDef = keep.join() === shortcutDefaults().join();
+      S.busy = true; paint();
+      post('panel/shortcuts', isDef ? { reset: 1 } : { keys: keep }).then(function (r) {
+        S.busy = false;
+        if (r.success === false) { toast(r.message || 'ذخیره نشد.', 'bad'); paint(); return; }
+        if (S.summary) { S.summary.shortcuts = r.keys === undefined ? keep : r.keys; }
+        S.scEdit = null;
+        toast(r.message || 'ذخیره شد.', 'ok');
+        paint();
+      });
+      return;
+    }
+
     if ((el = up('[data-free-date]'))) {
       e.preventDefault();
       var fd = el.getAttribute('data-free-date');
